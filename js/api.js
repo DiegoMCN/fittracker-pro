@@ -19,6 +19,29 @@ const API = (() => {
   function _cacheSet(key, data) { _cache.set(key, { data, ts: Date.now() }); }
   function clearCache() { _cache.clear(); }
 
+  // Un solo intento de red — usado tanto por el retry loop como por la
+  // cola offline al reintentar items pendientes.
+  async function _attemptFetch(params) {
+    let res;
+    if (params.method === 'POST') {
+      // text/plain evita el preflight CORS que Apps Script no soporta.
+      // El backend hace JSON.parse(e.postData.contents) sin importar el content-type.
+      res = await fetch(CONFIG.API_URL, {
+        method: 'POST',
+        body: JSON.stringify(params),
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' }
+      });
+    } else {
+      const qs = new URLSearchParams(params).toString();
+      res = await fetch(`${CONFIG.API_URL}?${qs}`);
+    }
+
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    return data;
+  }
+
   // Fetch base con retry
   async function _fetch(params, options = {}) {
     const { useCache = true, retries = 2 } = options;
@@ -32,36 +55,29 @@ const API = (() => {
     let lastError;
     for (let attempt = 0; attempt <= retries; attempt++) {
       try {
-        let res;
-        if (params.method === 'POST') {
-          // text/plain evita el preflight CORS que Apps Script no soporta.
-          // El backend hace JSON.parse(e.postData.contents) sin importar el content-type.
-          res = await fetch(CONFIG.API_URL, {
-            method: 'POST',
-            body: JSON.stringify(params),
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' }
-          });
-        } else {
-          const qs = new URLSearchParams(params).toString();
-          res = await fetch(`${CONFIG.API_URL}?${qs}`);
-        }
-
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-
-        if (data.error) throw new Error(data.error);
-
+        const data = await _attemptFetch(params);
         _lastWasMock = false;
         if (useCache && params.method !== 'POST') _cacheSet(cacheKey, data);
         return data;
-
       } catch (err) {
         lastError = err;
         if (attempt < retries) await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
       }
     }
 
-    // Si falla todo → devuelve datos mock para desarrollo
+    // ── Todos los intentos fallaron ──
+    if (params.method === 'POST') {
+      // CRÍTICO: nunca fingir que una escritura se guardó. Se encola
+      // para sincronizar en cuanto vuelva la conexión.
+      if (typeof OfflineQueue !== 'undefined') {
+        OfflineQueue.add(params);
+        console.warn('[API] Sin conexión — escritura encolada para sincronizar después:', params.action);
+        return { success: true, queued: true, message: 'Guardado localmente — se sincronizará cuando haya conexión' };
+      }
+      throw lastError;
+    }
+
+    // GET: cae a datos de ejemplo para que la UI muestre algo mientras tanto
     _lastWasMock = true;
     console.warn('[API] Usando datos de ejemplo (sin conexión al backend):', lastError.message);
     return _getMockData(params.action);
@@ -146,7 +162,6 @@ const API = (() => {
         }))
       },
       getStrengthHistory: { history: [] },
-      getRecords: { records: {} }
     };
 
     return mocks[action] || { data: [] };
@@ -157,6 +172,7 @@ const API = (() => {
   return {
     clearCache,
     isMock: () => _lastWasMock,
+    rawPost: (params) => _attemptFetch(params),
 
     getDashboard: () =>
       _fetch({ action: 'getDashboard' }),
@@ -178,9 +194,6 @@ const API = (() => {
 
     getStrengthHistory: (exercise) =>
       _fetch({ action: 'getStrengthHistory', exercise }),
-
-    getRecords: () =>
-      _fetch({ action: 'getRecords' }),
 
     saveSession: (data) =>
       _fetch({ action: 'saveSession', method: 'POST', ...data }, { useCache: false }),

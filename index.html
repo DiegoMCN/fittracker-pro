@@ -6,6 +6,12 @@
 <meta name="theme-color" content="#08080F">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="FitTracker">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="assets/icons/icon-192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="assets/icons/icon-512.png">
 <title>FitTracker Pro · Diego</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -89,10 +95,19 @@
         <button class="btn btn-ghost btn-sm" style="flex:1;justify-content:center" id="sound-toggle" onclick="toggleSound()">
           🔊 Sonido
         </button>
-        <button class="btn btn-ghost btn-icon" onclick="API.clearCache();Toast.success('Caché limpiado')" title="Actualizar datos">🔄</button>
+        <button class="btn btn-ghost btn-icon" onclick="API.clearCache();OfflineQueue.flush();Toast.success('Actualizando...')" title="Actualizar datos y sincronizar pendientes" style="position:relative">
+          🔄
+          <span id="offline-queue-badge" style="display:none;position:absolute;top:-4px;right:-4px;
+            background:var(--warning);color:var(--bg-primary);font-size:9px;font-weight:800;
+            width:16px;height:16px;border-radius:50%;align-items:center;justify-content:center">0</span>
+        </button>
       </div>
       <div class="sidebar-user">
-        <div class="sidebar-avatar">D</div>
+        <div class="sidebar-avatar" style="position:relative">
+          D
+          <span id="connectivity-dot" title="Conectado" style="position:absolute;bottom:-1px;right:-1px;
+            width:10px;height:10px;border-radius:50%;background:var(--accent);border:2px solid var(--bg-secondary)"></span>
+        </div>
         <div>
           <div class="sidebar-user-name">Diego MCN</div>
           <div class="sidebar-user-phase">92.1 kg · 21.9% grasa</div>
@@ -158,10 +173,15 @@
 <script src="js/config.js"></script>
 <script src="js/api.js"></script>
 <script src="js/utils.js"></script>
+<script src="js/offline.js"></script>
+<script src="js/modules/celebration.js"></script>
 <script src="js/modules/dashboard.js"></script>
 <script src="js/modules/workout.js"></script>
+<script src="js/modules/cardio.js"></script>
 <script src="js/modules/plan.js"></script>
 <script src="js/modules/history.js"></script>
+<script src="js/modules/exercises.js"></script>
+<script src="js/modules/metrics.js"></script>
 
 <script>
 // ── KEYBOARD SHORTCUTS ────────────────────────────────────────────────────
@@ -224,36 +244,27 @@ function showQuickLog() {
 // ── ROUTER SETUP ──────────────────────────────────────────────────────────
 Router.register('dashboard', (container) => initDashboard(container));
 Router.register('workout',   (container) => initWorkout(container));
-Router.register('cardio',    (container) => {
-  container.innerHTML = `
-    <div style="text-align:center;padding:80px 20px">
-      <div style="font-size:64px;margin-bottom:20px">🏃</div>
-      <h2 style="font-size:24px;font-weight:700;margin-bottom:12px">Cardio / HIT</h2>
-      <p style="color:var(--text-3);margin-bottom:24px">Timer HIT + zonas cardíacas.<br>Disponible en Fase 3.</p>
-      <button class="btn btn-primary btn-lg" onclick="Router.navigate('dashboard')">← Volver al Dashboard</button>
-    </div>`;
-});
+Router.register('cardio',    (container) => initCardio(container));
 Router.register('plan',      (container) => initPlan(container));
 Router.register('history',   (container) => initHistory(container));
-Router.register('metrics',   (container) => {
-  container.innerHTML = `<div style="text-align:center;padding:80px 20px">
-    <div style="font-size:64px;margin-bottom:20px">📈</div>
-    <h2 style="font-size:24px;font-weight:700;margin-bottom:12px">Métricas & Gráficas</h2>
-    <p style="color:var(--text-3);margin-bottom:24px">Evolución de todos tus indicadores.<br>Disponible en Fase 4.</p>
-    <button class="btn btn-primary btn-lg" onclick="Router.navigate('dashboard')">← Volver al Dashboard</button>
-  </div>`;
-});
-Router.register('exercises', (container) => {
-  container.innerHTML = `<div style="text-align:center;padding:80px 20px">
-    <div style="font-size:64px;margin-bottom:20px">🎯</div>
-    <h2 style="font-size:24px;font-weight:700;margin-bottom:12px">Catálogo de Ejercicios</h2>
-    <p style="color:var(--text-3);margin-bottom:24px">Ejercicios con fotos, videos y cargas.<br>Disponible en Fase 3.</p>
-    <button class="btn btn-primary btn-lg" onclick="Router.navigate('dashboard')">← Volver al Dashboard</button>
-  </div>`;
-});
+Router.register('metrics',   (container) => initMetrics(container));
+Router.register('exercises', (container) => initExercises(container));
+
+// ── SERVICE WORKER (PWA / offline) ───────────────────────────────────────
+// file:// no soporta Service Workers — solo registra en http(s).
+if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js')
+      .then(() => console.log('[SW] Registrado'))
+      .catch(err => console.warn('[SW] Error al registrar:', err));
+  });
+}
 
 // ── INIT ──────────────────────────────────────────────────────────────────
-Router.navigate('dashboard');
+// Soporta accesos directos del ícono de la app (?page=workout, ?page=cardio)
+const _initialPage = new URLSearchParams(location.search).get('page');
+const _validPages = ['dashboard','workout','cardio','plan','history','metrics','exercises'];
+Router.navigate(_validPages.includes(_initialPage) ? _initialPage : 'dashboard');
 </script>
 
 </body>

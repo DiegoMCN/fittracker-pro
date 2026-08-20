@@ -26,6 +26,13 @@ const Workout = (() => {
     return planData.find(p => p.dayOfWeek === day) || null;
   }
 
+  // Heurística: ejercicios "asistidos" (dominadas/fondos con máquina)
+  // por defecto sugieren modo asistencia; el resto, carga. Siempre editable
+  // por serie porque el mismo ejercicio puede entrenarse distinto según el día.
+  function _defaultKind(name) {
+    return /asistid/i.test(name || '') ? 'assist' : 'load';
+  }
+
   function _freshState(day, dayPlan) {
     const exercises = dayPlan?.exercises || [];
     return {
@@ -43,7 +50,7 @@ const Workout = (() => {
         collapsed: false,
         sets: Array.from({ length: ex.sets }, () => ({
           repsTarget: `${ex.repsMin}-${ex.repsMax}`,
-          reps: '', kg: '', unit: ex.unit, done: false,
+          reps: '', kg: '', unit: ex.unit, kind: _defaultKind(ex.name), done: false,
         })),
       })),
       rest: { running: false, remaining: 0, total: 0 },
@@ -154,6 +161,8 @@ const Workout = (() => {
           ⚡ Iniciar Sesión
         </button>
       </div>`;
+
+    _hydrateHistories();
   }
 
   function backToPicker() {
@@ -230,6 +239,7 @@ const Workout = (() => {
 
     _renderRestWidget();
     _renderFloatingBar();
+    _hydrateHistories();
   }
 
   function _exerciseCard(ex, exIdx, previewMode) {
@@ -260,6 +270,11 @@ const Workout = (() => {
       ${!ex.collapsed ? `
         ${ex.notes ? `<div style="font-size:11px;color:var(--text-3);background:var(--bg-input);border-radius:8px;padding:8px 10px;margin-bottom:12px;line-height:1.5">💡 ${ex.notes}</div>` : ''}
 
+        ${ex.group !== 'Core' && ex.group !== 'Cardio' ? `
+        <div data-hist-name="${ex.name}" style="background:var(--bg-input);border-radius:8px;padding:10px 12px;margin-bottom:12px">
+          ${_sparkHTML(ex.name)}
+        </div>` : ''}
+
         <div style="display:flex;flex-direction:column;gap:8px">
           ${ex.sets.map((set, sIdx) => _setRow(ex, exIdx, set, sIdx, previewMode)).join('')}
         </div>
@@ -271,43 +286,72 @@ const Workout = (() => {
 
   function _setRow(ex, exIdx, set, sIdx, previewMode) {
     const isTime = set.unit === 'seg';
+    const showWeight = !isTime && set.unit !== 'PC';
+
     return `
-    <div style="display:flex;align-items:center;gap:8px;background:${set.done ? 'var(--accent-glow)' : 'var(--bg-input)'};
+    <div style="display:flex;flex-direction:column;gap:6px;background:${set.done ? 'var(--accent-glow)' : 'var(--bg-input)'};
       border:1px solid ${set.done ? 'var(--border-accent)' : 'transparent'};border-radius:10px;padding:8px 10px;transition:all 0.2s">
-      <div style="width:24px;height:24px;border-radius:6px;background:var(--bg-card);display:flex;align-items:center;justify-content:center;
-        font-size:11px;font-weight:700;color:var(--text-3);flex-shrink:0">${sIdx + 1}</div>
 
-      ${previewMode ? `
-        <span style="font-size:12px;color:var(--text-3)">objetivo: ${set.repsTarget} ${isTime ? 'seg' : 'reps'}${set.unit !== 'PC' && set.unit !== 'seg' ? ` · ${set.unit}` : ''}</span>
-      ` : `
-        <input type="number" inputmode="numeric" placeholder="${isTime ? 'seg' : 'reps'}" value="${set.reps}"
-          style="width:56px;background:var(--bg-card);border:1px solid var(--border);border-radius:6px;color:var(--text-1);
-          font-size:13px;font-weight:600;padding:6px 4px;text-align:center"
-          onchange="Workout.updateSet(${exIdx},${sIdx},'reps',this.value)">
+      <div style="display:flex;align-items:center;gap:8px">
+        <div style="width:24px;height:24px;border-radius:6px;background:var(--bg-card);display:flex;align-items:center;justify-content:center;
+          font-size:11px;font-weight:700;color:var(--text-3);flex-shrink:0">${sIdx + 1}</div>
 
-        <span style="color:var(--text-4);font-size:11px">${isTime ? '' : '×'}</span>
-
-        ${set.unit !== 'PC' && set.unit !== 'seg' ? `
-          <input type="number" inputmode="decimal" placeholder="peso" value="${set.kg}"
-            style="width:64px;background:var(--bg-card);border:1px solid var(--border);border-radius:6px;color:var(--text-1);
+        ${previewMode ? `
+          <span style="font-size:12px;color:var(--text-3)">objetivo: ${set.repsTarget} ${isTime ? 'seg' : 'reps'}</span>
+        ` : `
+          <input type="number" inputmode="numeric" placeholder="${isTime ? 'seg' : 'reps'}" value="${set.reps}"
+            style="width:56px;background:var(--bg-card);border:1px solid var(--border);border-radius:6px;color:var(--text-1);
             font-size:13px;font-weight:600;padding:6px 4px;text-align:center"
-            onchange="Workout.updateSet(${exIdx},${sIdx},'kg',this.value)">
-          <select onchange="Workout.updateSet(${exIdx},${sIdx},'unit',this.value)"
-            style="background:var(--bg-card);border:1px solid var(--border);border-radius:6px;color:var(--text-3);
-            font-size:11px;padding:6px 2px">
-            <option value="kg" ${set.unit === 'kg' ? 'selected' : ''}>kg</option>
-            <option value="lbs" ${set.unit === 'lbs' ? 'selected' : ''}>lbs</option>
-          </select>` : `<span style="font-size:10px;color:var(--text-4);width:64px;text-align:center">${set.unit === 'PC' ? 'peso corp.' : 'tiempo'}</span>`}
+            onchange="Workout.updateSet(${exIdx},${sIdx},'reps',this.value)">
 
-        <span style="font-size:10px;color:var(--text-4);margin-left:auto;white-space:nowrap">obj: ${set.repsTarget}</span>
+          <span style="color:var(--text-4);font-size:11px">${isTime ? '' : '×'}</span>
 
-        <button onclick="Workout.toggleSetDone(${exIdx},${sIdx})" style="
-          width:30px;height:30px;border-radius:8px;flex-shrink:0;font-size:14px;
-          background:${set.done ? 'var(--accent)' : 'var(--bg-card)'};
-          color:${set.done ? 'var(--bg-primary)' : 'var(--text-3)'};
-          border:1px solid ${set.done ? 'var(--accent)' : 'var(--border)'};
-          transition:all 0.2s">${set.done ? '✓' : ''}</button>
-      `}
+          ${!isTime ? `
+            <select id="unit-select-${exIdx}-${sIdx}" onchange="Workout.changeUnit(${exIdx},${sIdx},this.value)"
+              style="background:var(--bg-card);border:1px solid var(--border);border-radius:6px;color:var(--text-3);
+              font-size:11px;padding:6px 3px">
+              <option value="PC"  ${set.unit === 'PC'  ? 'selected' : ''}>Peso corp.</option>
+              <option value="kg"  ${set.unit === 'kg'  ? 'selected' : ''}>kg</option>
+              <option value="lbs" ${set.unit === 'lbs' ? 'selected' : ''}>lbs</option>
+            </select>
+
+            ${showWeight ? `
+              <input type="number" inputmode="decimal" placeholder="peso" value="${set.kg}" id="kg-input-${exIdx}-${sIdx}"
+                style="width:60px;background:var(--bg-card);border:1px solid var(--border);border-radius:6px;color:var(--text-1);
+                font-size:13px;font-weight:600;padding:6px 4px;text-align:center"
+                oninput="Workout.refreshKgHint(${exIdx},${sIdx})">
+            ` : ''}
+          ` : ''}
+
+          <span style="font-size:10px;color:var(--text-4);margin-left:auto;white-space:nowrap">obj: ${set.repsTarget}</span>
+
+          <button onclick="Workout.toggleSetDone(${exIdx},${sIdx})" style="
+            width:30px;height:30px;border-radius:8px;flex-shrink:0;font-size:14px;
+            background:${set.done ? 'var(--accent)' : 'var(--bg-card)'};
+            color:${set.done ? 'var(--bg-primary)' : 'var(--text-3)'};
+            border:1px solid ${set.done ? 'var(--accent)' : 'var(--border)'};
+            transition:all 0.2s">${set.done ? '✓' : ''}</button>
+        `}
+      </div>
+
+      ${!previewMode && showWeight ? `
+        <div style="display:flex;align-items:center;gap:8px;padding-left:32px">
+          <div style="display:flex;background:var(--bg-card);border-radius:6px;padding:2px;gap:2px">
+            <button id="kind-load-${exIdx}-${sIdx}" onclick="Workout.setKind(${exIdx},${sIdx},'load')"
+              style="font-size:10px;padding:3px 8px;border-radius:5px;font-weight:600;
+              background:${set.kind !== 'assist' ? 'var(--accent)' : 'transparent'};
+              color:${set.kind !== 'assist' ? 'var(--bg-primary)' : 'var(--text-3)'}">Carga</button>
+            <button id="kind-assist-${exIdx}-${sIdx}" onclick="Workout.setKind(${exIdx},${sIdx},'assist')"
+              style="font-size:10px;padding:3px 8px;border-radius:5px;font-weight:600;
+              background:${set.kind === 'assist' ? 'var(--warning)' : 'transparent'};
+              color:${set.kind === 'assist' ? 'var(--bg-primary)' : 'var(--text-3)'}">Asistencia</button>
+          </div>
+          <span id="kg-hint-${exIdx}-${sIdx}" style="font-size:9px;color:var(--text-4);white-space:nowrap">
+            ${set.unit === 'lbs' && set.kg ? '≈ ' + Utils.formatNum(Utils.lbsToKg(parseFloat(set.kg) || 0), 1) + ' kg' : ''}
+            ${set.unit === 'kg'  && set.kg ? '≈ ' + Utils.formatNum(Utils.kgToLbs(parseFloat(set.kg) || 0), 1) + ' lbs' : ''}
+          </span>
+        </div>
+      ` : ''}
     </div>`;
   }
 
@@ -409,6 +453,131 @@ const Workout = (() => {
     state.exercises[exIdx].sets[sIdx][field] = value;
   }
 
+  // Cambiar PC↔kg↔lbs sí necesita re-render completo (aparece/desaparece
+  // el input de peso y el toggle carga/asistencia). Los selects no
+  // pierden nada al perder foco, así que esto es seguro.
+  function changeUnit(exIdx, sIdx, newUnit) {
+    state.exercises[exIdx].sets[sIdx].unit = newUnit;
+    Sounds.click();
+    _rerender();
+  }
+
+  // Alterna entre "carga" (peso agregado, más = mejor) y "asistencia"
+  // (peso de la máquina, menos = mejor). Solo cambia clases de los
+  // botones — no re-renderiza para no interrumpir si hay un input activo.
+  function setKind(exIdx, sIdx, kind) {
+    state.exercises[exIdx].sets[sIdx].kind = kind;
+    Sounds.click();
+    const loadBtn   = document.getElementById(`kind-load-${exIdx}-${sIdx}`);
+    const assistBtn = document.getElementById(`kind-assist-${exIdx}-${sIdx}`);
+    if (loadBtn && assistBtn) {
+      loadBtn.style.background   = kind === 'load' ? 'var(--accent)' : 'transparent';
+      loadBtn.style.color        = kind === 'load' ? 'var(--bg-primary)' : 'var(--text-3)';
+      assistBtn.style.background = kind === 'assist' ? 'var(--warning)' : 'transparent';
+      assistBtn.style.color      = kind === 'assist' ? 'var(--bg-primary)' : 'var(--text-3)';
+    }
+  }
+
+  // Actualiza el valor + muestra conversión kg↔lbs en vivo sin re-renderizar
+  // (evita perder el foco del input mientras escribes)
+  function refreshKgHint(exIdx, sIdx) {
+    const kgInput = document.getElementById(`kg-input-${exIdx}-${sIdx}`);
+    const hint = document.getElementById(`kg-hint-${exIdx}-${sIdx}`);
+    if (!kgInput) return;
+
+    const val = parseFloat(kgInput.value) || 0;
+    const unit = state.exercises[exIdx].sets[sIdx].unit;
+    updateSet(exIdx, sIdx, 'kg', kgInput.value);
+
+    if (!hint) return;
+    if (val <= 0) { hint.textContent = ''; return; }
+    hint.textContent = unit === 'lbs'
+      ? `≈ ${Utils.formatNum(Utils.lbsToKg(val), 1)} kg`
+      : `≈ ${Utils.formatNum(Utils.kgToLbs(val), 1)} lbs`;
+  }
+
+  // ── HISTORIAL POR EJERCICIO (mini-gráfica de progreso) ────────────────
+  const _historyCache = {}; // { [nombreEjercicio]: { loading, values: [{date, kg}] } }
+
+  async function _ensureHistoryLoaded(name) {
+    if (_historyCache[name]) return; // ya cargado o cargando
+    _historyCache[name] = { loading: true };
+
+    try {
+      const res = await API.getStrengthHistory(name);
+      const rows = res.history || [];
+      // Agrupa por fecha, toma el peso máximo de esa sesión, convertido siempre a kg
+      const byDate = {};
+      rows.forEach(r => {
+        const raw = parseFloat(r.kg) || 0;
+        if (raw <= 0) return;
+        const kg = r.unit === 'lbs' ? Utils.lbsToKg(raw) : raw;
+        if (!byDate[r.date] || kg > byDate[r.date]) byDate[r.date] = kg;
+      });
+      const values = Object.entries(byDate)
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .slice(-6)
+        .map(([date, kg]) => ({ date, kg }));
+      _historyCache[name] = { loading: false, values };
+    } catch(e) {
+      _historyCache[name] = { loading: false, values: [] };
+    }
+
+    // Actualiza cualquier tarjeta visible de este ejercicio, sin re-render completo
+    document.querySelectorAll(`[data-hist-name]`).forEach(el => {
+      if (el.getAttribute('data-hist-name') === name) el.innerHTML = _sparkHTML(name);
+    });
+  }
+
+  function _sparkHTML(name) {
+    const entry = _historyCache[name];
+    if (!entry || entry.loading) {
+      return `<div style="font-size:10px;color:var(--text-4)">Cargando historial...</div>`;
+    }
+    if (!entry.values || entry.values.length === 0) {
+      return `<div style="font-size:10px;color:var(--text-4)">Sin sesiones previas registradas</div>`;
+    }
+
+    const vals = entry.values;
+    const kgs = vals.map(v => v.kg);
+    const max = Math.max(...kgs), min = Math.min(...kgs);
+    const range = (max - min) || 1;
+    const w = 110, h = 32, pad = 4;
+
+    const coords = vals.map((v, i) => {
+      const x = pad + (i / (vals.length - 1 || 1)) * (w - pad * 2);
+      const y = h - pad - ((v.kg - min) / range) * (h - pad * 2);
+      return { x, y };
+    });
+    const points = coords.map(c => `${c.x},${c.y}`).join(' ');
+
+    const last = vals[vals.length - 1];
+    const prev = vals.length > 1 ? vals[vals.length - 2] : null;
+    const delta = prev !== null ? Math.round((last.kg - prev.kg) * 10) / 10 : null;
+
+    return `
+      <div style="display:flex;align-items:center;gap:10px">
+        <svg width="${w}" height="${h}" style="flex-shrink:0">
+          <polyline points="${points}" fill="none" stroke="var(--accent)" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round"/>
+          ${coords.map(c => `<circle cx="${c.x}" cy="${c.y}" r="2.2" fill="var(--accent)"/>`).join('')}
+        </svg>
+        <div>
+          <div style="font-size:13px;font-weight:700;color:var(--accent)">${Utils.formatNum(last.kg, 1)} kg</div>
+          ${delta !== null
+            ? `<div style="font-size:10px;color:${delta >= 0 ? 'var(--success)' : 'var(--text-3)'}">${delta >= 0 ? '+' : ''}${Utils.formatNum(delta, 1)} kg vs anterior</div>`
+            : `<div style="font-size:10px;color:var(--text-4)">${Utils.formatDateShort(last.date)}</div>`}
+        </div>
+      </div>`;
+  }
+
+  function _hydrateHistories() {
+    state.exercises.forEach(ex => {
+      if (ex.group === 'Core' || ex.group === 'Cardio') return; // seg/tiempo no aplica gráfica de peso
+      _ensureHistoryLoaded(ex.name);
+    });
+  }
+
   function toggleSetDone(exIdx, sIdx) {
     const set = state.exercises[exIdx].sets[sIdx];
     set.done = !set.done;
@@ -421,7 +590,8 @@ const Workout = (() => {
     const lastSet = ex.sets[ex.sets.length - 1];
     ex.sets.push({
       repsTarget: lastSet?.repsTarget || '',
-      reps: '', kg: lastSet?.kg || '', unit: lastSet?.unit || 'kg', done: false
+      reps: '', kg: lastSet?.kg || '', unit: lastSet?.unit || 'PC',
+      kind: lastSet?.kind || _defaultKind(ex.name), done: false
     });
     Sounds.click();
     _rerender();
@@ -494,7 +664,7 @@ const Workout = (() => {
 
     state.exercises.push({
       id: Utils.uid(), name, group, notes: '', collapsed: false,
-      sets: Array.from({ length: sets }, () => ({ repsTarget: reps, reps: '', kg: '', unit, done: false })),
+      sets: Array.from({ length: sets }, () => ({ repsTarget: reps, reps: '', kg: '', unit, kind: _defaultKind(name), done: false })),
     });
 
     document.querySelector('.modal-overlay')?.remove();
@@ -524,7 +694,11 @@ const Workout = (() => {
     if (!bar) return;
 
     const shouldShow = state && state.started && !state.finished && Router.current() !== 'workout';
-    if (!shouldShow) { bar.style.display = 'none'; return; }
+    if (!shouldShow) {
+      // No pisar la barra de Cardio si esa está activa
+      if (!(typeof Cardio !== 'undefined' && Cardio.hasActiveSession?.())) bar.style.display = 'none';
+      return;
+    }
 
     const secs = Math.floor((Date.now() - state.startedAt) / 1000);
     const totalSets = state.exercises.reduce((s, e) => s + e.sets.length, 0);
@@ -588,7 +762,9 @@ const Workout = (() => {
     const durationMin = state.startedAt ? Math.round((Date.now() - state.startedAt) / 60000) : 0;
     const volume = state.exercises.reduce((sum, ex) =>
       sum + ex.sets.reduce((s, set) => {
-        if (set.unit === 'seg' || set.unit === 'PC' || !set.done) return s;
+        // Asistencia no cuenta como volumen movido — es peso que la
+        // máquina te QUITA, no que mueves. Igual que peso corporal/tiempo.
+        if (set.unit === 'seg' || set.unit === 'PC' || set.kind === 'assist' || !set.done) return s;
         const kg = set.unit === 'lbs' ? Utils.lbsToKg(parseFloat(set.kg) || 0) : (parseFloat(set.kg) || 0);
         return s + (parseFloat(set.reps) || 0) * kg;
       }, 0), 0);
@@ -605,19 +781,27 @@ const Workout = (() => {
       exercises: state.exercises.map(ex => ({
         name: ex.name, group: ex.group,
         sets: ex.sets.filter(s => s.done).map(s => ({
-          repsReal: s.reps, kg: s.kg, unit: s.unit, repsObj: s.repsTarget
+          repsReal: s.reps, kg: s.kg, unit: s.unit, kind: s.kind, repsObj: s.repsTarget
         }))
       })).filter(ex => ex.sets.length > 0),
     };
 
     Toast.show('Guardando sesión en tu Sheet...', 'info', 2000);
     try {
-      await API.saveSession(payload);
+      const result = await API.saveSession(payload);
       API.clearCache();
-      Sounds.sessionDone(); Haptics.done();
       state.finished = true;
       _fullCleanup();
-      _showSummary(payload, doneSets, totalSets);
+
+      if (result.queued) {
+        Sounds.click(); Haptics.medium();
+        Toast.warning('Sin conexión — guardado localmente. Se sincronizará solo.');
+        _showSummary(payload, doneSets, totalSets, true);
+      } else {
+        Sounds.sessionDone(); Haptics.done();
+        await RecordCelebration.checkStrength(payload);
+        _showSummary(payload, doneSets, totalSets, false);
+      }
     } catch(err) {
       Sounds.error();
       Toast.error('Error al guardar. Revisa la conexión con el backend.');
@@ -625,13 +809,14 @@ const Workout = (() => {
     }
   }
 
-  function _showSummary(payload, doneSets, totalSets) {
+  function _showSummary(payload, doneSets, totalSets, queued) {
     const container = document.getElementById('page-content');
     container.innerHTML = `
       <div style="max-width:480px;margin:60px auto;text-align:center" class="animate-bounce-in">
-        <div style="font-size:64px;margin-bottom:16px">🎉</div>
-        <h2 style="font-size:22px;font-weight:800;margin-bottom:6px">¡Sesión completada!</h2>
-        <p style="color:var(--text-3);font-size:13px;margin-bottom:28px">${payload.notes} · ${Utils.formatDuration(payload.duration)}</p>
+        <div style="font-size:64px;margin-bottom:16px">${queued ? '📥' : '🎉'}</div>
+        <h2 style="font-size:22px;font-weight:800;margin-bottom:6px">${queued ? 'Guardado localmente' : '¡Sesión completada!'}</h2>
+        <p style="color:var(--text-3);font-size:13px;margin-bottom:${queued ? '8px' : '28px'}">${payload.notes} · ${Utils.formatDuration(payload.duration)}</p>
+        ${queued ? `<p style="color:var(--warning);font-size:11px;margin-bottom:28px">⏳ Se sincronizará con tu Sheet automáticamente cuando vuelva la conexión</p>` : ''}
 
         <div class="grid-2" style="margin-bottom:28px">
           <div class="metric-card">
@@ -652,9 +837,10 @@ const Workout = (() => {
   }
 
   return {
-    init, selectDay, backToPicker, startSession, toggleCollapse, updateSet, toggleSetDone, addSet,
+    init, selectDay, backToPicker, startSession, toggleCollapse, updateSet, changeUnit, setKind, refreshKgHint, toggleSetDone, addSet,
     removeExercise, addExercise, confirmAddExercise, startRest, addRestTime,
     skipRest, customRest, finishSession, discardSession, cleanup, onRouteChange,
+    hasActiveSession: () => !!(state && state.started && !state.finished),
   };
 })();
 

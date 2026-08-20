@@ -60,6 +60,7 @@ const CONFIG = {
   HIT_PROTOCOLS: {
     'nivel1': {
       name: 'HIT 10\' Nivel 1',
+      day: 2,
       phases: [
         { duration: 60,  speed: '5-6',   effort: 'easy',     label: 'Calentamiento' },
         { duration: 120, speed: '7-9',   effort: 'moderate', label: 'Moderado' },
@@ -72,8 +73,28 @@ const CONFIG = {
         { duration: 60,  speed: '5-6',   effort: 'easy',     label: 'Enfriamiento' }
       ]
     },
+    'sprint-tecnico': {
+      name: 'Sprint Técnico — Cadencia',
+      day: 4,
+      phases: [
+        { duration: 120, speed: '6',     effort: 'moderate', label: 'Cadencia 140-150 spm (1/5)' },
+        { duration: 120, speed: '6',     effort: 'moderate', label: 'Cadencia 140-150 spm (2/5)' },
+        { duration: 120, speed: '6',     effort: 'moderate', label: 'Cadencia 140-150 spm (3/5)' },
+        { duration: 120, speed: '6',     effort: 'moderate', label: 'Cadencia 140-150 spm (4/5)' },
+        { duration: 120, speed: '6',     effort: 'moderate', label: 'Cadencia 140-150 spm (5/5)' },
+        { duration: 60,  speed: '8',     effort: 'moderate', label: 'Progresión → 8 km/h' },
+        { duration: 60,  speed: '10',    effort: 'moderate', label: 'Progresión → 10 km/h' },
+        { duration: 60,  speed: '12',    effort: 'max',      label: 'Progresión → 12 km/h' },
+        { duration: 120, speed: '6',     effort: 'easy',     label: 'Recuperación' },
+        { duration: 60,  speed: '8',     effort: 'moderate', label: 'Ronda 2 → 8 km/h' },
+        { duration: 60,  speed: '10',    effort: 'moderate', label: 'Ronda 2 → 10 km/h' },
+        { duration: 60,  speed: '12',    effort: 'max',      label: 'Ronda 2 → 12 km/h' },
+        { duration: 120, speed: '6',     effort: 'easy',     label: 'Enfriamiento' }
+      ]
+    },
     'zona2': {
       name: 'Zona 2 — 35 min',
+      day: 6,
       phases: [
         { duration: 2100, speed: 'constante', effort: 'z2', label: '143–153 bpm constante' }
       ]

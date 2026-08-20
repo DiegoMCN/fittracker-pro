@@ -332,8 +332,9 @@ const Router = (() => {
       document.getElementById('sidebar')?.classList.remove('open');
       document.getElementById('sidebar-overlay')?.classList.remove('open');
 
-      // Notificar al módulo Workout para actualizar la barra flotante
+      // Notificar a los módulos de sesión persistente para actualizar la barra flotante
       if (typeof Workout !== 'undefined') Workout.onRouteChange();
+      if (typeof Cardio !== 'undefined') Cardio.onRouteChange();
     },
 
     current() { return _current; }

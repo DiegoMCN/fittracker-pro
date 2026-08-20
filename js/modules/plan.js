@@ -196,10 +196,15 @@ const Plan = (() => {
     Toast.show('Guardando en tu Sheet...', 'info', 1800);
 
     try {
-      await API.saveSession(payload);
+      const result = await API.saveSession(payload);
       API.clearCache();
-      Sounds.serieDone(); Haptics.success();
-      Toast.success(`"${info.name}" registrado`);
+      if (result.queued) {
+        Sounds.click(); Haptics.medium();
+        Toast.warning('Sin conexión — guardado localmente, se sincronizará solo');
+      } else {
+        Sounds.serieDone(); Haptics.success();
+        Toast.success(`"${info.name}" registrado`);
+      }
       _weekSessions.push(payload);
       render();
     } catch(err) {
