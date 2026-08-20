@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#08080F">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>FitTracker Pro · Diego</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/main.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+</head>
+<body>
+
+<div class="app-shell">
+
+  <!-- ═══════════════ SIDEBAR ═══════════════ -->
+  <nav class="sidebar" id="sidebar">
+
+    <!-- Logo -->
+    <div class="sidebar-logo">
+      <div class="sidebar-logo-icon">⚡</div>
+      <div>
+        <div class="sidebar-logo-text">FitTracker</div>
+        <div class="sidebar-logo-sub">Pro · Diego</div>
+      </div>
+    </div>
+
+    <!-- Nav principal -->
+    <div class="sidebar-section">
+      <div class="sidebar-section-label">Principal</div>
+      <div class="nav-item active" data-page="dashboard" onclick="Router.navigate('dashboard')">
+        <span class="nav-icon">📊</span>
+        <span>Dashboard</span>
+      </div>
+      <div class="nav-item" data-page="workout" onclick="Router.navigate('workout')">
+        <span class="nav-icon">💪</span>
+        <span>Sesión Activa</span>
+        <span class="nav-badge">HOY</span>
+      </div>
+      <div class="nav-item" data-page="cardio" onclick="Router.navigate('cardio')">
+        <span class="nav-icon">🏃</span>
+        <span>Cardio / HIT</span>
+      </div>
+      <div class="nav-item" data-page="plan" onclick="Router.navigate('plan')">
+        <span class="nav-icon">📅</span>
+        <span>Plan Semanal</span>
+      </div>
+    </div>
+
+    <!-- Nav análisis -->
+    <div class="sidebar-section">
+      <div class="sidebar-section-label">Análisis</div>
+      <div class="nav-item" data-page="history" onclick="Router.navigate('history')">
+        <span class="nav-icon">📚</span>
+        <span>Bitácora</span>
+      </div>
+      <div class="nav-item" data-page="metrics" onclick="Router.navigate('metrics')">
+        <span class="nav-icon">📈</span>
+        <span>Métricas</span>
+      </div>
+      <div class="nav-item" data-page="exercises" onclick="Router.navigate('exercises')">
+        <span class="nav-icon">🎯</span>
+        <span>Ejercicios</span>
+      </div>
+    </div>
+
+    <!-- Indicador de fase -->
+    <div class="sidebar-section">
+      <div style="background:var(--bg-card);border:1px solid var(--border-card);border-radius:12px;padding:14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <span style="font-size:11px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:.08em">Fase 1</span>
+          <span style="font-size:10px;color:var(--text-4)">Sem 3 / 4</span>
+        </div>
+        <div style="font-size:12px;color:var(--text-2);font-weight:500;margin-bottom:8px">Reconstrucción</div>
+        <div class="progress-bar">
+          <div class="progress-fill" style="width:75%"></div>
+        </div>
+        <div style="font-size:10px;color:var(--text-4);margin-top:6px">3 semanas completadas</div>
+      </div>
+    </div>
+
+    <!-- Footer usuario -->
+    <div class="sidebar-footer">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <button class="btn btn-ghost btn-sm" style="flex:1;justify-content:center" id="sound-toggle" onclick="toggleSound()">
+          🔊 Sonido
+        </button>
+        <button class="btn btn-ghost btn-icon" onclick="API.clearCache();Toast.success('Caché limpiado')" title="Actualizar datos">🔄</button>
+      </div>
+      <div class="sidebar-user">
+        <div class="sidebar-avatar">D</div>
+        <div>
+          <div class="sidebar-user-name">Diego MCN</div>
+          <div class="sidebar-user-phase">92.1 kg · 21.9% grasa</div>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Overlay para cerrar sidebar en mobile -->
+  <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
+
+  <!-- ═══════════════ MAIN ═══════════════ -->
+  <main class="main-content">
+
+    <!-- Topbar (desktop) -->
+    <div class="topbar">
+      <div>
+        <div class="topbar-title" id="topbar-title">Dashboard</div>
+        <div class="topbar-subtitle" id="topbar-subtitle">Tu progreso en tiempo real</div>
+      </div>
+      <div class="topbar-actions">
+        <button class="btn btn-secondary btn-sm" onclick="showQuickLog()">+ Log rápido</button>
+        <button class="btn btn-primary" onclick="Router.navigate('workout')">
+          ⚡ Entrenar ahora
+        </button>
+      </div>
+    </div>
+
+    <!-- Topbar (mobile) -->
+    <div class="mobile-topbar">
+      <button class="menu-toggle" onclick="toggleSidebar()">☰</button>
+      <span style="font-weight:700;font-size:15px" id="mobile-title">Dashboard</span>
+      <button class="btn btn-primary btn-sm" onclick="Router.navigate('workout')">⚡</button>
+    </div>
+
+    <!-- Contenido de página -->
+    <div class="page-content" id="page-content">
+      <!-- Router inyecta aquí -->
+    </div>
+
+  </main>
+</div>
+
+<!-- Barra flotante de sesión activa en background -->
+<div id="floating-session-bar" style="
+  display:none;
+  position:fixed;
+  bottom:20px; left:50%;
+  transform:translateX(-50%);
+  max-width:400px; width:calc(100% - 32px);
+  background:var(--bg-card);
+  border:1px solid var(--border-accent);
+  border-radius:16px;
+  padding:12px 14px;
+  align-items:center;
+  gap:12px;
+  box-shadow:var(--shadow-lg), var(--shadow-accent);
+  z-index:150;
+  backdrop-filter:blur(20px);
+"></div>
+
+<!-- ═══════════════ SCRIPTS ═══════════════ -->
+<script src="js/config.js"></script>
+<script src="js/api.js"></script>
+<script src="js/utils.js"></script>
+<script src="js/modules/dashboard.js"></script>
+<script src="js/modules/workout.js"></script>
+<script src="js/modules/plan.js"></script>
+<script src="js/modules/history.js"></script>
+
+<script>
+// ── KEYBOARD SHORTCUTS ────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  const shortcuts = {
+    '1': 'dashboard', '2': 'workout', '3': 'cardio',
+    '4': 'plan', '5': 'history', '6': 'metrics', '7': 'exercises'
+  };
+  if (shortcuts[e.key]) Router.navigate(shortcuts[e.key]);
+});
+
+// ── SIDEBAR MOBILE ────────────────────────────────────────────────────────
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('open');
+  document.getElementById('sidebar-overlay').classList.toggle('open');
+}
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebar-overlay').classList.remove('open');
+}
+
+// ── SOUND TOGGLE ──────────────────────────────────────────────────────────
+function toggleSound() {
+  const on = Sounds.toggle();
+  const btn = document.getElementById('sound-toggle');
+  if (btn) btn.innerHTML = on ? '🔊 Sonido' : '🔇 Mudo';
+  if (on) { Sounds.click(); Toast.success('Sonido activado'); }
+  else Toast.warning('Sonido desactivado');
+}
+
+// ── QUICK LOG MODAL ───────────────────────────────────────────────────────
+function showQuickLog() {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal" style="max-width:380px">
+      <div class="modal-header">
+        <div class="modal-title">⚡ Log rápido</div>
+        <button class="btn btn-ghost btn-icon" onclick="this.closest('.modal-overlay').remove()">✕</button>
+      </div>
+      <div class="modal-body" style="display:flex;flex-direction:column;gap:16px">
+        <p style="font-size:13px;color:var(--text-3)">¿Qué quieres registrar?</p>
+        ${[
+          { icon:'💪', label:'Sesión de fuerza',  page:'workout' },
+          { icon:'🏃', label:'Cardio / HIT',      page:'cardio'  },
+          { icon:'📏', label:'Métricas corporales',page:'metrics' },
+        ].map(o => `
+          <button onclick="this.closest('.modal-overlay').remove();Router.navigate('${o.page}')"
+            class="btn btn-secondary" style="justify-content:flex-start;gap:12px;padding:14px 16px;font-size:14px">
+            <span style="font-size:22px">${o.icon}</span>
+            ${o.label}
+          </button>`).join('')}
+      </div>
+    </div>`;
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+}
+
+// ── ROUTER SETUP ──────────────────────────────────────────────────────────
+Router.register('dashboard', (container) => initDashboard(container));
+Router.register('workout',   (container) => initWorkout(container));
+Router.register('cardio',    (container) => {
+  container.innerHTML = `
+    <div style="text-align:center;padding:80px 20px">
+      <div style="font-size:64px;margin-bottom:20px">🏃</div>
+      <h2 style="font-size:24px;font-weight:700;margin-bottom:12px">Cardio / HIT</h2>
+      <p style="color:var(--text-3);margin-bottom:24px">Timer HIT + zonas cardíacas.<br>Disponible en Fase 3.</p>
+      <button class="btn btn-primary btn-lg" onclick="Router.navigate('dashboard')">← Volver al Dashboard</button>
+    </div>`;
+});
+Router.register('plan',      (container) => initPlan(container));
+Router.register('history',   (container) => initHistory(container));
+Router.register('metrics',   (container) => {
+  container.innerHTML = `<div style="text-align:center;padding:80px 20px">
+    <div style="font-size:64px;margin-bottom:20px">📈</div>
+    <h2 style="font-size:24px;font-weight:700;margin-bottom:12px">Métricas & Gráficas</h2>
+    <p style="color:var(--text-3);margin-bottom:24px">Evolución de todos tus indicadores.<br>Disponible en Fase 4.</p>
+    <button class="btn btn-primary btn-lg" onclick="Router.navigate('dashboard')">← Volver al Dashboard</button>
+  </div>`;
+});
+Router.register('exercises', (container) => {
+  container.innerHTML = `<div style="text-align:center;padding:80px 20px">
+    <div style="font-size:64px;margin-bottom:20px">🎯</div>
+    <h2 style="font-size:24px;font-weight:700;margin-bottom:12px">Catálogo de Ejercicios</h2>
+    <p style="color:var(--text-3);margin-bottom:24px">Ejercicios con fotos, videos y cargas.<br>Disponible en Fase 3.</p>
+    <button class="btn btn-primary btn-lg" onclick="Router.navigate('dashboard')">← Volver al Dashboard</button>
+  </div>`;
+});
+
+// ── INIT ──────────────────────────────────────────────────────────────────
+Router.navigate('dashboard');
+</script>
+
+</body>
+</html>
