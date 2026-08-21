@@ -37,13 +37,23 @@ const CONFIG = {
     5: { name: 'Z5', min: 177, max: 999, color: '#EF4444', label: 'Máximo' }
   },
 
+  // Fecha real de inicio de Fase 1 — cambia esto si reinicias el programa.
+  // La semana actual se calcula sola a partir de aquí, en vez de estar
+  // hardcodeada (por eso antes se quedaba trabada en "Semana 3" para siempre).
+  PROGRAM_START_DATE: '2026-08-17', // lunes de esta semana
+
   // Fase actual del programa
   CURRENT_PHASE: {
     number: 1,
     name: 'Fase 1 — Reconstrucción',
     startWeek: 1,
     endWeek: 4,
-    currentWeek: 3
+    get currentWeek() {
+      const start = new Date(CONFIG.PROGRAM_START_DATE + 'T00:00:00');
+      const now = new Date();
+      const diffDays = Math.floor((now - start) / 86400000);
+      return Math.max(1, Math.floor(diffDays / 7) + 1);
+    }
   },
 
   // Objetivos
@@ -110,7 +120,7 @@ const CONFIG = {
   // Ejercicios del plan por día (base editable en la sesión activa)
   PLAN_EXERCISES: {
     1: [ // Lunes — Jalón + Bíceps + Core
-      { name:'Dominadas Asistidas',    group:'Calistenia', sets:4, repsMin:6,  repsMax:8,  unit:'PC',  rest:90, notes:'Menor asistencia posible. Baja 5kg cuando logres 3x8 limpio.' },
+      { name:'Dominadas Asistidas',    group:'Calistenia', sets:4, repsMin:6,  repsMax:8,  unit:'lbs', rest:90, notes:'Peso = asistencia de la máquina. Menor asistencia posible. Baja cuando logres 3x8 limpio.' },
       { name:'Jalón Pecho Prono',      group:'Espalda',    sets:4, repsMin:8,  repsMax:10, unit:'kg',  rest:60, notes:'Misma línea de fuerza que la dominada.' },
       { name:'Remo en Polea Baja',     group:'Espalda',    sets:3, repsMin:10, repsMax:12, unit:'lbs', rest:60, notes:'Codos pegados al cuerpo al subir.' },
       { name:'Jalón Pecho Supino',     group:'Espalda',    sets:3, repsMin:12, repsMax:12, unit:'kg',  rest:45, notes:'Carga más el bíceps. Cierre del jalón vertical.' },
@@ -127,7 +137,7 @@ const CONFIG = {
       { name:'Sentadilla con Salto',   group:'Cuadriceps', sets:3, repsMin:5,  repsMax:5,  unit:'PC',  rest:90, notes:'3x5 saltos máximos con reset — NO 3x10 rápidos.' },
     ],
     3: [ // Miércoles — Empuje + Tríceps
-      { name:'Fondos Asistidos',       group:'Calistenia', sets:4, repsMin:6,  repsMax:8,  unit:'PC',  rest:90, notes:'Baja hasta hombros al nivel de codos.' },
+      { name:'Fondos Asistidos',       group:'Calistenia', sets:4, repsMin:6,  repsMax:8,  unit:'lbs', rest:90, notes:'Peso = asistencia de la máquina. Baja hasta hombros al nivel de codos.' },
       { name:'Flexiones Pies Elevados',group:'Pecho',      sets:3, repsMin:1,  repsMax:20, unit:'PC',  rest:60, notes:'Máx reps. Preparación para muscle-up.' },
       { name:'Press Pecho Declinado',  group:'Pecho',      sets:4, repsMin:8,  repsMax:10, unit:'kg',  rest:75, notes:'Objetivo: 25 kg por brazo.' },
       { name:'Cristos Peck Fly',       group:'Pecho',      sets:3, repsMin:12, repsMax:12, unit:'lbs', rest:60, notes:'Baseline: 115 lbs (52kg).' },
@@ -143,7 +153,7 @@ const CONFIG = {
       { name:'Abdominales de Remador', group:'Core',       sets:3, repsMin:12, repsMax:15, unit:'kg',  rest:45, notes:'Baseline: 8kg. +1kg cada 2 semanas.' },
     ],
     5: [ // Viernes — Espalda + Hombro
-      { name:'Dominadas Asistidas',    group:'Calistenia', sets:3, repsMin:6,  repsMax:8,  unit:'PC',  rest:90, notes:'Misma carga que el lunes.' },
+      { name:'Dominadas Asistidas',    group:'Calistenia', sets:3, repsMin:6,  repsMax:8,  unit:'lbs', rest:90, notes:'Peso = asistencia de la máquina. Misma carga que el lunes.' },
       { name:'Remo con Barra',         group:'Espalda',    sets:4, repsMin:8,  repsMax:10, unit:'kg',  rest:75, notes:'Espalda gruesa. ⚠ Subir carga — sigue ligero.' },
       { name:'Remo Polea Agarre Ancho',group:'Espalda',    sets:3, repsMin:12, repsMax:12, unit:'kg',  rest:60, notes:'Dorsal ancho, distinto al agarre neutro del lunes.' },
       { name:'Pullover en Polea',      group:'Espalda',    sets:3, repsMin:12, repsMax:12, unit:'kg',  rest:60, notes:'Rango más largo — clave para la dominada.' },

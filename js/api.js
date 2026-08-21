@@ -162,6 +162,15 @@ const API = (() => {
         }))
       },
       getStrengthHistory: { history: [] },
+      getProfile: { profile: null },
+      getBodyComposition: { history: [] },
+      getPersonalRecords: {
+        fcRecovery: { value: null, date: null },
+        cadencePeak: { value: 0, date: null },
+        z3Time: { value: 0, date: null },
+        sessionVolume: { value: 0, date: null },
+        plankMax: { value: 0, date: null },
+      },
     };
 
     return mocks[action] || { data: [] };
@@ -195,6 +204,15 @@ const API = (() => {
     getStrengthHistory: (exercise) =>
       _fetch({ action: 'getStrengthHistory', exercise }),
 
+    getProfile: () =>
+      _fetch({ action: 'getProfile' }),
+
+    getBodyComposition: (limit = 50) =>
+      _fetch({ action: 'getBodyComposition', limit }),
+
+    getPersonalRecords: () =>
+      _fetch({ action: 'getPersonalRecords' }),
+
     saveSession: (data) =>
       _fetch({ action: 'saveSession', method: 'POST', ...data }, { useCache: false }),
 
@@ -206,6 +224,15 @@ const API = (() => {
 
     saveExercise: (data) =>
       _fetch({ action: 'saveExercise', method: 'POST', ...data }, { useCache: false }),
+
+    saveProfile: (data) =>
+      _fetch({ action: 'saveProfile', method: 'POST', ...data }, { useCache: false }),
+
+    saveBodyComposition: (data) =>
+      _fetch({ action: 'saveBodyComposition', method: 'POST', ...data }, { useCache: false }),
+
+    updateSession: (data) =>
+      _fetch({ action: 'updateSession', method: 'POST', ...data }, { useCache: false }),
   };
 
 })();

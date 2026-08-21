@@ -15,12 +15,29 @@ async function initDashboard(container) {
       </div>
     </div>`;
 
-  const data = await API.getDashboard();
+  // Se piden sin caché — recién guardaste una sesión y necesitas ver
+  // el dato fresco, no uno de hace 5 minutos.
+  const [data, sesRes, recordsRes] = await Promise.all([
+    API.getDashboard(),
+    API.getSessions(30),
+    API.getPersonalRecords(),
+  ]);
+
+  // Sesiones reales de esta semana (Lun-Dom), para marcar los días
+  // correctos en "Plan de esta semana" — antes se adivinaba por fecha,
+  // ahora se verifica contra lo que de verdad está guardado en el Sheet.
+  const monday = new Date();
+  monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
+  monday.setHours(0,0,0,0);
+  const mondayStr = monday.toISOString().split('T')[0];
+  const weekSessions = (sesRes.sessions || []).filter(s => s.date >= mondayStr);
+  const doneDayNames = new Set(weekSessions.map(s => s.day));
+
   Store.set({ dashboard: data });
-  _renderDashboard(container, data);
+  _renderDashboard(container, data, doneDayNames, recordsRes, sesRes.sessions || []);
 }
 
-function _renderDashboard(container, data) {
+function _renderDashboard(container, data, doneDayNames, records, allSessions) {
   const today     = new Date().getDay();
   const nextSes   = CONFIG.WEEK_PLAN[today] || CONFIG.WEEK_PLAN[(today + 1) % 7];
   const goals     = CONFIG.GOALS;
@@ -117,12 +134,14 @@ function _renderDashboard(container, data) {
       <div style="display:flex;flex-direction:column;gap:14px">
         ${Object.entries(goals).map(([key, g]) => {
           const current = key === 'hrRecovery'
-            ? (rec.delta || CONFIG.BASELINE.hrAvgStrength * -0.1)
-            : _getCurrentGoalValue(key);
+            ? (records.fcRecovery?.value ?? rec.delta ?? null)
+            : key === 'plank'
+              ? (records.plankMax?.value || null)
+              : _getCurrentGoalValue(key);
           const baseline = CONFIG.BASELINE[_baselineKey(key)] || g.target * 0.5;
           const pct = key === 'hrRecovery'
-            ? Utils.progress(current, -5, -20)
-            : Utils.progress(current, baseline, g.target);
+            ? Utils.progress(current ?? -5, -5, -20)
+            : Utils.progress(current ?? baseline, baseline, g.target);
           const color = _goalColor(key);
           return `
           <div>
@@ -155,8 +174,9 @@ function _renderDashboard(container, data) {
         ${[1,2,3,4,5,6,0].map(day => {
           const info = CONFIG.WEEK_PLAN[day];
           const dayName = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'][day];
+          const dayFullName = ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'][day];
           const isToday = day === today;
-          const isPast  = _isDayPast(day, today);
+          const isDone  = doneDayNames.has(dayFullName);
           return `
           <div style="display:flex;align-items:center;gap:12px;padding:8px 10px;border-radius:10px;
             background:${isToday ? 'var(--accent-glow)' : 'transparent'};
@@ -167,10 +187,10 @@ function _renderDashboard(container, data) {
             onmouseleave="this.style.background='${isToday ? 'var(--accent-glow)' : 'transparent'}'">
             <div style="width:36px;height:36px;border-radius:8px;background:${info.color}22;
               display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">
-              ${isPast && info.type !== 'rest' ? '✅' : info.icon}
+              ${isDone ? '✅' : info.icon}
             </div>
             <div style="flex:1;min-width:0">
-              <div style="font-size:12px;font-weight:600;color:${isToday ? 'var(--accent)' : isPast ? 'var(--text-3)' : 'var(--text-1)'};
+              <div style="font-size:12px;font-weight:600;color:${isToday ? 'var(--accent)' : isDone ? 'var(--text-3)' : 'var(--text-1)'};
                 white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${info.name}</div>
               <div style="font-size:10px;color:var(--text-4)">${dayName}${isToday ? ' · HOY' : ''}</div>
             </div>
@@ -191,13 +211,7 @@ function _renderDashboard(container, data) {
         <button class="btn btn-ghost btn-sm" onclick="Router.navigate('metrics')">Historial →</button>
       </div>
       <div style="display:flex;flex-direction:column;gap:0">
-        ${[
-          { icon:'❤️', label:'Mejor recuperación FC', value:'-14 bpm', date:'11 May', color:'var(--success)', sub:'2 min post-esfuerzo' },
-          { icon:'🦵', label:'Pico de cadencia',       value:'202 spm', date:'7 May',  color:'var(--purple-light)', sub:'Indoor Run sprint' },
-          { icon:'⏱',  label:'Tiempo Z4+ en cardio',   value:'8:07 min',date:'7 May',  color:'var(--warning)', sub:'165+ bpm sostenido' },
-          { icon:'🏋️', label:'Mayor volumen sesión',   value:'8,900 kg',date:'26 Mar', color:'var(--cyan)', sub:'Sesión piernas' },
-          { icon:'📏',  label:'Plancha máxima',         value:'50 seg',  date:'11 May', color:'var(--info)', sub:'+5 seg vs anterior' },
-        ].map(r => `
+        ${_realRecordsList(records).map(r => `
           <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)">
             <span style="font-size:20px;width:28px;text-align:center">${r.icon}</span>
             <div style="flex:1">
@@ -224,28 +238,7 @@ function _renderDashboard(container, data) {
       <div style="position:relative;height:160px;width:100%;overflow:hidden;flex-shrink:0">
         <canvas id="fc-trend-chart" style="display:block"></canvas>
       </div>
-      <div style="display:flex;justify-content:space-between;margin-top:16px">
-        <div style="text-align:center">
-          <div style="font-size:11px;color:var(--text-4)">Día 1</div>
-          <div style="font-size:20px;font-weight:700;color:var(--danger)">140</div>
-          <div style="font-size:10px;color:var(--text-4)">bpm</div>
-        </div>
-        <div style="text-align:center">
-          <div style="font-size:11px;color:var(--text-4)">Hoy</div>
-          <div style="font-size:20px;font-weight:700;color:var(--success)">137</div>
-          <div style="font-size:10px;color:var(--text-4)">bpm</div>
-        </div>
-        <div style="text-align:center">
-          <div style="font-size:11px;color:var(--text-4)">Objetivo</div>
-          <div style="font-size:20px;font-weight:700;color:var(--accent)">120</div>
-          <div style="font-size:10px;color:var(--text-4)">bpm</div>
-        </div>
-        <div style="text-align:center;background:var(--accent-glow);border:1px solid var(--border-accent);border-radius:10px;padding:8px 14px">
-          <div style="font-size:11px;color:var(--accent)">Mejora</div>
-          <div style="font-size:20px;font-weight:700;color:var(--accent)">-3</div>
-          <div style="font-size:10px;color:var(--accent)">bpm</div>
-        </div>
-      </div>
+      <div id="fc-trend-footer" style="display:flex;justify-content:space-between;margin-top:16px"></div>
     </div>
 
   </div>
@@ -286,16 +279,64 @@ function _renderDashboard(container, data) {
   </div>`;
 
   // Renderizar chart FC tendencia — esperar a que el DOM esté pintado
-  setTimeout(_renderFCChart, 100);
+  setTimeout(() => _renderFCChart(allSessions), 100);
 }
 
-function _renderFCChart() {
+// Construye la lista de récords reales — si no hay datos suficientes
+// en el Sheet todavía, lo dice claramente en vez de mostrar algo falso.
+function _realRecordsList(records) {
+  const list = [];
+  if (records?.fcRecovery?.value !== null && records?.fcRecovery?.value !== undefined) {
+    list.push({ icon:'❤️', label:'Mejor recuperación FC', value:`${records.fcRecovery.value} bpm`, date:Utils.formatDateShort(records.fcRecovery.date), color:'var(--success)', sub:'2 min post-esfuerzo' });
+  }
+  if (records?.cadencePeak?.value > 0) {
+    list.push({ icon:'🦵', label:'Pico de cadencia', value:`${records.cadencePeak.value} spm`, date:Utils.formatDateShort(records.cadencePeak.date), color:'var(--purple-light)', sub:'Sesión de cardio' });
+  }
+  if (records?.z3Time?.value > 0) {
+    list.push({ icon:'⏱', label:'Mayor tiempo en Z3+', value:`${records.z3Time.value} min`, date:Utils.formatDateShort(records.z3Time.date), color:'var(--warning)', sub:'Zona cardiovascular alta' });
+  }
+  if (records?.sessionVolume?.value > 0) {
+    list.push({ icon:'🏋️', label:'Mayor volumen sesión', value:`${Utils.formatNum(records.sessionVolume.value)} kg`, date:Utils.formatDateShort(records.sessionVolume.date), color:'var(--cyan)', sub:'Fuerza' });
+  }
+  if (records?.plankMax?.value > 0) {
+    list.push({ icon:'📏', label:'Plancha máxima', value:`${records.plankMax.value} seg`, date:Utils.formatDateShort(records.plankMax.date), color:'var(--info)', sub:'Isométrica' });
+  }
+  if (list.length === 0) {
+    return [{ icon:'🎯', label:'Sin récords todavía', value:'—', date:'', color:'var(--text-3)', sub:'Completa sesiones para ver tus marcas aquí' }];
+  }
+  return list;
+}
+
+function _renderFCChart(allSessions) {
   const canvas = document.getElementById('fc-trend-chart');
+  const footer = document.getElementById('fc-trend-footer');
   if (!canvas || !window.Chart) return;
 
   // Destruir instancia previa si existe
   const existing = Chart.getChart(canvas);
   if (existing) existing.destroy();
+
+  // Sesiones de fuerza con FC registrada, en orden cronológico
+  // (allSessions llega más reciente primero, hay que invertir).
+  const strengthSessions = (allSessions || [])
+    .filter(s => s.type === 'Fuerza' && s.fcAvg)
+    .slice().reverse();
+
+  if (strengthSessions.length === 0) {
+    const ctx = canvas.getContext('2d');
+    canvas.width = canvas.parentElement.offsetWidth || 400;
+    canvas.height = 160;
+    ctx.font = '12px Poppins';
+    ctx.fillStyle = '#6E6D8A';
+    ctx.textAlign = 'center';
+    ctx.fillText('Sin sesiones con FC registrada todavía', canvas.width / 2, canvas.height / 2);
+    if (footer) footer.innerHTML = `<div style="font-size:11px;color:var(--text-4);text-align:center;width:100%">Captura FC promedio al terminar una sesión para ver tu tendencia aquí</div>`;
+    return;
+  }
+
+  const recent = strengthSessions.slice(-8); // últimas 8 para no saturar la gráfica
+  const labels = recent.map(s => Utils.formatDateShort(s.date));
+  const values = recent.map(s => s.fcAvg);
 
   // Forzar dimensiones antes de que Chart.js las lea
   const parent = canvas.parentElement;
@@ -304,8 +345,8 @@ function _renderFCChart() {
   canvas.width  = w;
   canvas.height = h;
 
-  const labels = ['23 Mar\nD', '26 Mar\nPiernas', '27 Mar\nEspalda', '21 Abr\nJalón', '24 Abr\nEspalda', '7 May\nCore', '11 May\nJalón'];
-  const values = [140, 132, 132, 126, 126, 135, 137];
+  const minVal = Math.min(...values), maxVal = Math.max(...values);
+  const yMin = Math.max(0, minVal - 10), yMax = maxVal + 10;
 
   new Chart(canvas, {
     type: 'line',
@@ -318,7 +359,7 @@ function _renderFCChart() {
         tension: 0.4,
         fill: true,
         pointRadius: 5,
-        pointBackgroundColor: values.map(v => v <= 126 ? '#00FF87' : '#EF4444'),
+        pointBackgroundColor: values.map(v => v <= (minVal + (maxVal-minVal)*0.3) ? '#00FF87' : '#EF4444'),
         pointBorderColor: 'transparent',
         borderWidth: 2,
       }]
@@ -346,7 +387,7 @@ function _renderFCChart() {
           border: { display: false }
         },
         y: {
-          min: 118, max: 148,
+          min: yMin, max: yMax,
           ticks: { color: '#6E6D8A', font: { size: 10, family: 'Poppins' }, callback: v => v + ' bpm', maxTicksLimit: 4 },
           grid: { color: 'rgba(255,255,255,0.04)' },
           border: { display: false }
@@ -354,6 +395,34 @@ function _renderFCChart() {
       }
     }
   });
+
+  // Footer con datos reales: primera sesión registrada vs la más reciente
+  if (footer) {
+    const first = strengthSessions[0].fcAvg;
+    const today = strengthSessions[strengthSessions.length - 1].fcAvg;
+    const mejora = Math.round((today - first) * 10) / 10;
+    footer.innerHTML = `
+      <div style="text-align:center">
+        <div style="font-size:11px;color:var(--text-4)">Primera sesión</div>
+        <div style="font-size:20px;font-weight:700;color:var(--danger)">${first}</div>
+        <div style="font-size:10px;color:var(--text-4)">bpm</div>
+      </div>
+      <div style="text-align:center">
+        <div style="font-size:11px;color:var(--text-4)">Más reciente</div>
+        <div style="font-size:20px;font-weight:700;color:var(--success)">${today}</div>
+        <div style="font-size:10px;color:var(--text-4)">bpm</div>
+      </div>
+      <div style="text-align:center">
+        <div style="font-size:11px;color:var(--text-4)">Objetivo</div>
+        <div style="font-size:20px;font-weight:700;color:var(--accent)">120</div>
+        <div style="font-size:10px;color:var(--text-4)">bpm</div>
+      </div>
+      <div style="text-align:center;background:var(--accent-glow);border:1px solid var(--border-accent);border-radius:10px;padding:8px 14px">
+        <div style="font-size:11px;color:var(--accent)">Cambio</div>
+        <div style="font-size:20px;font-weight:700;color:var(--accent)">${mejora >= 0 ? '+' : ''}${mejora}</div>
+        <div style="font-size:10px;color:var(--accent)">bpm</div>
+      </div>`;
+  }
 }
 
 // Helpers
@@ -389,9 +458,4 @@ function _goalColor(key) {
     deadHang: '#F59E0B',
   };
   return map[key] || '#00FF87';
-}
-
-function _isDayPast(day, today) {
-  if (day === 0) return today > 0;
-  return day < today;
 }

@@ -406,15 +406,30 @@ const Cardio = (() => {
         </div>
 
         <div style="display:flex;gap:10px;margin-top:20px">
-          <button class="btn btn-secondary" style="flex:1" onclick="Cardio.skipStats()">Omitir</button>
-          <button class="btn btn-primary" style="flex:1" onclick="Cardio.saveStats()">Guardar en Sheet</button>
+          <button class="btn btn-secondary" style="flex:1" id="cs-skip-btn" onclick="Cardio.skipStats()">Omitir</button>
+          <button class="btn btn-primary" style="flex:1" id="cs-save-btn" onclick="Cardio.saveStats()">Guardar en Sheet</button>
         </div>
       </div>`;
   }
 
-  function skipStats() { _saveCardioSession({}); }
+  function _lockButtons(activeId) {
+    const skip = document.getElementById('cs-skip-btn');
+    const save = document.getElementById('cs-save-btn');
+    if (skip?.disabled) return false; // ya se está guardando, ignora el segundo click
+    if (skip) skip.disabled = true;
+    if (save) save.disabled = true;
+    const active = document.getElementById(activeId);
+    if (active) active.innerHTML = '⏳ Guardando...';
+    return true;
+  }
+
+  function skipStats() {
+    if (!_lockButtons('cs-skip-btn')) return;
+    _saveCardioSession({});
+  }
 
   function saveStats() {
+    if (!_lockButtons('cs-save-btn')) return;
     const val = id => document.getElementById(id)?.value || '';
     _saveCardioSession({
       fcAvg: val('cs-fcavg'), fcPeak: val('cs-fcpeak'),

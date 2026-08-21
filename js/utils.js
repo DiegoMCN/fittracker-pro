@@ -83,15 +83,22 @@ const WakeLock = (() => {
 
 // ── UTILS ─────────────────────────────────────────────────────────────────
 const Utils = {
-  // Formato de fecha
+  // Formato de fecha — robusto ante fechas mal formadas (ej. si el Sheet
+  // devuelve un timestamp ISO completo en vez de solo YYYY-MM-DD).
   formatDate(dateStr) {
     if (!dateStr) return '—';
-    const d = new Date(dateStr + 'T00:00:00');
+    let iso = String(dateStr);
+    if (iso.includes('T')) iso = iso.split('T')[0];
+    const d = new Date(iso + 'T00:00:00');
+    if (isNaN(d.getTime())) return '—';
     return d.toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' });
   },
   formatDateShort(dateStr) {
     if (!dateStr) return '—';
-    const d = new Date(dateStr + 'T00:00:00');
+    let iso = String(dateStr);
+    if (iso.includes('T')) iso = iso.split('T')[0];
+    const d = new Date(iso + 'T00:00:00');
+    if (isNaN(d.getTime())) return '—';
     return d.toLocaleDateString('es-MX', { day: 'numeric', month: 'short' });
   },
   dayName(dayNum) {
@@ -301,6 +308,8 @@ const Router = (() => {
         history:   { title: 'Bitácora', sub: 'Historial de sesiones' },
         metrics:   { title: 'Métricas', sub: 'Evolución y gráficas' },
         exercises: { title: 'Ejercicios', sub: 'Catálogo y cargas' },
+        perfil:    { title: 'Perfil', sub: 'Datos básicos y composición corporal' },
+        import:    { title: 'Importar CSV', sub: 'Carga masiva desde Apple Watch' },
       };
       const info = titles[page] || { title: page, sub: '' };
       const ttl  = document.getElementById('topbar-title');

@@ -169,13 +169,20 @@ const Plan = (() => {
         </div>
         <div class="modal-footer">
           <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancelar</button>
-          <button class="btn btn-primary" onclick="Plan.confirmQuickLog(${day})">Guardar en Sheet</button>
+          <button class="btn btn-primary" id="ql-save-btn" onclick="Plan.confirmQuickLog(${day})">Guardar en Sheet</button>
         </div>
       </div>`;
     document.body.appendChild(overlay);
   }
 
+  let _savingQuickLog = false;
+
   async function confirmQuickLog(day) {
+    if (_savingQuickLog) return; // evita doble click / doble guardado
+    _savingQuickLog = true;
+    const btn = document.getElementById('ql-save-btn');
+    if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Guardando...'; }
+
     const info = _dayPlan(day);
     const duration = parseInt(document.getElementById('ql-duration').value) || 60;
     const effort   = parseInt(document.getElementById('ql-effort').value) || 7;
@@ -192,9 +199,6 @@ const Plan = (() => {
       exercises: [],
     };
 
-    document.querySelector('.modal-overlay')?.remove();
-    Toast.show('Guardando en tu Sheet...', 'info', 1800);
-
     try {
       const result = await API.saveSession(payload);
       API.clearCache();
@@ -205,12 +209,16 @@ const Plan = (() => {
         Sounds.serieDone(); Haptics.success();
         Toast.success(`"${info.name}" registrado`);
       }
+      document.querySelector('.modal-overlay')?.remove();
       _weekSessions.push(payload);
       render();
     } catch(err) {
       Sounds.error();
       Toast.error('Error al guardar en el Sheet');
       console.error(err);
+      if (btn) { btn.disabled = false; btn.innerHTML = 'Guardar en Sheet'; }
+    } finally {
+      _savingQuickLog = false;
     }
   }
 

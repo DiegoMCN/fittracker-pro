@@ -72,6 +72,14 @@
         <span class="nav-icon">🎯</span>
         <span>Ejercicios</span>
       </div>
+      <div class="nav-item" data-page="perfil" onclick="Router.navigate('perfil')">
+        <span class="nav-icon">🧬</span>
+        <span>Perfil</span>
+      </div>
+      <div class="nav-item" data-page="import" onclick="Router.navigate('import')">
+        <span class="nav-icon">📥</span>
+        <span>Importar CSV</span>
+      </div>
     </div>
 
     <!-- Indicador de fase -->
@@ -182,6 +190,8 @@
 <script src="js/modules/history.js"></script>
 <script src="js/modules/exercises.js"></script>
 <script src="js/modules/metrics.js"></script>
+<script src="js/modules/profile.js"></script>
+<script src="js/modules/import.js"></script>
 
 <script>
 // ── KEYBOARD SHORTCUTS ────────────────────────────────────────────────────
@@ -189,7 +199,7 @@ document.addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
   const shortcuts = {
     '1': 'dashboard', '2': 'workout', '3': 'cardio',
-    '4': 'plan', '5': 'history', '6': 'metrics', '7': 'exercises'
+    '4': 'plan', '5': 'history', '6': 'metrics', '7': 'exercises', '8': 'perfil'
   };
   if (shortcuts[e.key]) Router.navigate(shortcuts[e.key]);
 });
@@ -249,6 +259,8 @@ Router.register('plan',      (container) => initPlan(container));
 Router.register('history',   (container) => initHistory(container));
 Router.register('metrics',   (container) => initMetrics(container));
 Router.register('exercises', (container) => initExercises(container));
+Router.register('perfil',    (container) => initProfile(container));
+Router.register('import',    (container) => initImport(container));
 
 // ── SERVICE WORKER (PWA / offline) ───────────────────────────────────────
 // file:// no soporta Service Workers — solo registra en http(s).

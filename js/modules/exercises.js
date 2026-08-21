@@ -238,17 +238,24 @@ const Exercises = (() => {
         </div>
         <div class="modal-footer">
           <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancelar</button>
-          <button class="btn btn-primary" onclick="Exercises.save(${ex ? `'${ex.ID}'` : 'null'})">Guardar</button>
+          <button class="btn btn-primary" id="ed-save-btn" onclick="Exercises.save(${ex ? `'${ex.ID}'` : 'null'})">Guardar</button>
         </div>
       </div>`;
     document.body.appendChild(overlay);
     document.getElementById('ed-name').focus();
   }
 
+  let _savingExercise = false;
+
   async function save(id) {
+    if (_savingExercise) return; // evita doble click / doble guardado
     const val = k => document.getElementById(k)?.value.trim() || '';
     const name = val('ed-name');
     if (!name) { Sounds.error(); Toast.error('El nombre es obligatorio'); return; }
+
+    _savingExercise = true;
+    const btn = document.getElementById('ed-save-btn');
+    if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Guardando...'; }
 
     const payload = {
       id: id || undefined,
@@ -262,12 +269,10 @@ const Exercises = (() => {
       notes: val('ed-notes'),
     };
 
-    document.querySelector('.modal-overlay')?.remove();
-    Toast.show('Guardando en tu Sheet...', 'info', 1500);
-
     try {
       const result = await API.saveExercise(payload);
       API.clearCache();
+      document.querySelector('.modal-overlay')?.remove();
       if (result.queued) {
         Sounds.click(); Haptics.medium();
         Toast.warning('Sin conexión — guardado localmente, se sincronizará solo');
@@ -291,6 +296,9 @@ const Exercises = (() => {
       Sounds.error();
       Toast.error('Error al guardar en el Sheet');
       console.error(err);
+      if (btn) { btn.disabled = false; btn.innerHTML = 'Guardar'; }
+    } finally {
+      _savingExercise = false;
     }
   }
 

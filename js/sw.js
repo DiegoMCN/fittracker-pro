@@ -4,7 +4,7 @@
 //    o el navegador seguirá sirviendo archivos viejos desde caché.
 // ═══════════════════════════════════════════
 
-const CACHE_VERSION = 'fittracker-v1';
+const CACHE_VERSION = 'fittracker-v2';
 
 const APP_SHELL = [
   './',

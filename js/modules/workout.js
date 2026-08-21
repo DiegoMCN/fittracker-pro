@@ -759,6 +759,150 @@ const Workout = (() => {
       if (!confirm('No has marcado ninguna serie como completada. ¿Terminar de todas formas?')) return;
     }
 
+    _renderStatsForm(doneSets, totalSets);
+  }
+
+  // ── CAPTURA DE DATOS DEL RELOJ (calorías, FC, esfuerzo) ────────────────
+  // Se pide ANTES de guardar — así el registro queda completo desde el
+  // inicio y el dashboard no muestra "0 kcal" ni "—/10" de esfuerzo.
+  function _renderStatsForm(doneSets, totalSets) {
+    const container = document.getElementById('page-content');
+    if (!container) return;
+
+    container.innerHTML = `
+      <div style="max-width:480px;margin:0 auto">
+        <div style="text-align:center;margin-bottom:20px">
+          <div style="font-size:48px;margin-bottom:8px">⌚</div>
+          <h2 style="font-size:18px;font-weight:800">Datos del Apple Watch</h2>
+          <p style="color:var(--text-3);font-size:12px;margin-top:4px">Últimos datos antes de guardar — opcional pero recomendado</p>
+        </div>
+
+        <div class="card">
+          <div style="display:flex;flex-direction:column;gap:12px">
+            <div class="input-row">
+              <div class="input-group" style="flex:1">
+                <label class="input-label">Calorías activas</label>
+                <input class="input" type="number" id="ws-kcalact" placeholder="kcal">
+              </div>
+              <div class="input-group" style="flex:1">
+                <label class="input-label">Calorías totales</label>
+                <input class="input" type="number" id="ws-kcaltot" placeholder="kcal">
+              </div>
+            </div>
+            <div class="input-row">
+              <div class="input-group" style="flex:1">
+                <label class="input-label">FC promedio</label>
+                <input class="input" type="number" id="ws-fcavg" placeholder="bpm">
+              </div>
+              <div class="input-group" style="flex:1">
+                <label class="input-label">FC pico</label>
+                <input class="input" type="number" id="ws-fcpeak" placeholder="bpm">
+              </div>
+            </div>
+            <div class="input-row">
+              <div class="input-group" style="flex:1">
+                <label class="input-label">Esfuerzo (1-10)</label>
+                <input class="input" type="number" id="ws-effort" min="1" max="10" placeholder="7">
+              </div>
+              <div class="input-group" style="flex:1">
+                <label class="input-label">Peso corporal (opcional)</label>
+                <input class="input" type="number" step="0.1" id="ws-weight" placeholder="kg">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <button class="btn btn-ghost btn-sm" style="width:100%;margin-top:10px" onclick="Workout.toggleAdvancedStats()">
+          <span id="ws-advanced-arrow">▸</span> Zonas de FC y recuperación (opcional)
+        </button>
+
+        <div id="ws-advanced-block" style="display:none">
+          <div class="card" style="margin-top:10px">
+            <div style="font-size:11px;color:var(--text-3);margin-bottom:12px">
+              Del reloj: pantalla "Heart Rate" del entrenamiento → tiempo en cada zona y FC post-esfuerzo a 0/1/2 min.
+            </div>
+            <div class="input-row">
+              <div class="input-group" style="flex:1">
+                <label class="input-label">FC mínima</label>
+                <input class="input" type="number" id="ws-fcmin" placeholder="bpm">
+              </div>
+            </div>
+            <div style="font-size:10px;color:var(--text-3);margin:10px 0 6px">Tiempo en cada zona (mm:ss)</div>
+            <div class="input-row">
+              <div class="input-group" style="flex:1">
+                <label class="input-label">Zona 1</label>
+                <input class="input" id="ws-z1" placeholder="45:35">
+              </div>
+              <div class="input-group" style="flex:1">
+                <label class="input-label">Zona 2</label>
+                <input class="input" id="ws-z2" placeholder="01:36">
+              </div>
+              <div class="input-group" style="flex:1">
+                <label class="input-label">Zona 3</label>
+                <input class="input" id="ws-z3" placeholder="00:15">
+              </div>
+            </div>
+            <div class="input-row">
+              <div class="input-group" style="flex:1">
+                <label class="input-label">Zona 4</label>
+                <input class="input" id="ws-z4" placeholder="00:00">
+              </div>
+              <div class="input-group" style="flex:1">
+                <label class="input-label">Zona 5</label>
+                <input class="input" id="ws-z5" placeholder="00:00">
+              </div>
+            </div>
+            <div style="font-size:10px;color:var(--text-3);margin:10px 0 6px">Recuperación post-esfuerzo</div>
+            <div class="input-row">
+              <div class="input-group" style="flex:1">
+                <label class="input-label">Al terminar</label>
+                <input class="input" type="number" id="ws-fcpost0" placeholder="bpm">
+              </div>
+              <div class="input-group" style="flex:1">
+                <label class="input-label">1 min después</label>
+                <input class="input" type="number" id="ws-fcpost1" placeholder="bpm">
+              </div>
+              <div class="input-group" style="flex:1">
+                <label class="input-label">2 min después</label>
+                <input class="input" type="number" id="ws-fcpost2" placeholder="bpm">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:10px;margin-top:20px">
+          <button class="btn btn-secondary" style="flex:1" id="ws-skip-btn" onclick="Workout.saveFinalSession(true, ${doneSets}, ${totalSets})">Omitir</button>
+          <button class="btn btn-primary" style="flex:1" id="ws-save-btn" onclick="Workout.saveFinalSession(false, ${doneSets}, ${totalSets})">Guardar sesión</button>
+        </div>
+      </div>`;
+  }
+
+  function toggleAdvancedStats() {
+    const block = document.getElementById('ws-advanced-block');
+    const arrow = document.getElementById('ws-advanced-arrow');
+    if (!block) return;
+    const showing = block.style.display !== 'none';
+    block.style.display = showing ? 'none' : 'block';
+    if (arrow) arrow.textContent = showing ? '▸' : '▾';
+    Sounds.click();
+  }
+
+  async function saveFinalSession(skip, doneSets, totalSets) {
+    const btn = document.getElementById(skip ? 'ws-skip-btn' : 'ws-save-btn');
+    const otherBtn = document.getElementById(skip ? 'ws-save-btn' : 'ws-skip-btn');
+    if (btn?.disabled) return; // evita doble click / doble guardado
+    if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Guardando...'; }
+    if (otherBtn) otherBtn.disabled = true;
+
+    const val = id => document.getElementById(id)?.value || '';
+    const stats = skip ? {} : {
+      kcalAct: val('ws-kcalact'), kcalTot: val('ws-kcaltot'),
+      fcAvg: val('ws-fcavg'), fcPeak: val('ws-fcpeak'), fcMin: val('ws-fcmin'),
+      effort: val('ws-effort'), weight: val('ws-weight'),
+      zone1: val('ws-z1'), zone2: val('ws-z2'), zone3: val('ws-z3'), zone4: val('ws-z4'), zone5: val('ws-z5'),
+      fcPost0: val('ws-fcpost0'), fcPost1: val('ws-fcpost1'), fcPost2: val('ws-fcpost2'),
+    };
+
     const durationMin = state.startedAt ? Math.round((Date.now() - state.startedAt) / 60000) : 0;
     const volume = state.exercises.reduce((sum, ex) =>
       sum + ex.sets.reduce((s, set) => {
@@ -778,6 +922,12 @@ const Workout = (() => {
       duration: durationMin,
       volume: Math.round(volume),
       notes: state.planName,
+      kcalAct: stats.kcalAct || '', kcalTot: stats.kcalTot || '',
+      fcAvg: stats.fcAvg || '', fcPeak: stats.fcPeak || '', fcMin: stats.fcMin || '',
+      effort: stats.effort || '', weight: stats.weight || '',
+      zone1: stats.zone1 || '', zone2: stats.zone2 || '', zone3: stats.zone3 || '',
+      zone4: stats.zone4 || '', zone5: stats.zone5 || '',
+      fcPost0: stats.fcPost0 || '', fcPost1: stats.fcPost1 || '', fcPost2: stats.fcPost2 || '',
       exercises: state.exercises.map(ex => ({
         name: ex.name, group: ex.group,
         sets: ex.sets.filter(s => s.done).map(s => ({
@@ -786,7 +936,6 @@ const Workout = (() => {
       })).filter(ex => ex.sets.length > 0),
     };
 
-    Toast.show('Guardando sesión en tu Sheet...', 'info', 2000);
     try {
       const result = await API.saveSession(payload);
       API.clearCache();
@@ -795,14 +944,18 @@ const Workout = (() => {
 
       if (result.queued) {
         Sounds.click(); Haptics.medium();
-        Toast.warning('Sin conexión — guardado localmente. Se sincronizará solo.');
         _showSummary(payload, doneSets, totalSets, true);
+        Toast.warning('Sin conexión — guardado localmente. Se sincronizará solo.');
       } else {
         Sounds.sessionDone(); Haptics.done();
-        await RecordCelebration.checkStrength(payload);
+        // Resumen INMEDIATO — la celebración de récord (si aplica) se
+        // dispara encima sin bloquear ni retrasar la pantalla de resumen.
         _showSummary(payload, doneSets, totalSets, false);
+        RecordCelebration.checkStrength(payload);
       }
     } catch(err) {
+      if (btn) { btn.disabled = false; btn.innerHTML = skip ? 'Omitir' : 'Guardar sesión'; }
+      if (otherBtn) otherBtn.disabled = false;
       Sounds.error();
       Toast.error('Error al guardar. Revisa la conexión con el backend.');
       console.error(err);
@@ -827,6 +980,16 @@ const Workout = (() => {
             <div class="metric-label">Volumen total</div>
             <div class="metric-value" style="color:var(--purple-light)">${Utils.formatNum(payload.volume)}<span class="metric-unit">kg</span></div>
           </div>
+          ${payload.kcalAct ? `
+          <div class="metric-card">
+            <div class="metric-label">Calorías activas</div>
+            <div class="metric-value" style="color:var(--warning)">${payload.kcalAct}<span class="metric-unit">kcal</span></div>
+          </div>` : ''}
+          ${payload.fcAvg ? `
+          <div class="metric-card">
+            <div class="metric-label">FC promedio</div>
+            <div class="metric-value" style="color:var(--danger)">${payload.fcAvg}<span class="metric-unit">bpm</span></div>
+          </div>` : ''}
         </div>
 
         <div style="display:flex;gap:10px">
@@ -839,7 +1002,7 @@ const Workout = (() => {
   return {
     init, selectDay, backToPicker, startSession, toggleCollapse, updateSet, changeUnit, setKind, refreshKgHint, toggleSetDone, addSet,
     removeExercise, addExercise, confirmAddExercise, startRest, addRestTime,
-    skipRest, customRest, finishSession, discardSession, cleanup, onRouteChange,
+    skipRest, customRest, finishSession, saveFinalSession, toggleAdvancedStats, discardSession, cleanup, onRouteChange,
     hasActiveSession: () => !!(state && state.started && !state.finished),
   };
 })();
