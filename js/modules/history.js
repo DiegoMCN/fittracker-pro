@@ -29,6 +29,7 @@ const History = (() => {
       date: c.date, type: 'Cardio', duration: c.duration, fcAvg: c.fcAvg, fcPeak: c.fcPeak,
       calories: null, effort: null, volume: null, notes: c.notes, _kind: 'cardio',
       distance: c.distance, cadAvg: c.cadAvg, cadPeak: c.cadPeak, rec2min: c.rec2min,
+      coachNote: c.coachNote || '',
     }));
     const all = [...fromSessions, ...fromCardio];
     all.sort((a,b) => (b.date || '').localeCompare(a.date || ''));
@@ -170,6 +171,12 @@ const History = (() => {
           </div>` : ''}
 
           ${s.notes ? `<div style="margin-top:12px;font-size:12px;color:var(--text-2);background:var(--bg-input);padding:10px 12px;border-radius:8px;line-height:1.5">${s.notes}</div>` : ''}
+
+          ${s.coachNote ? `
+          <div style="margin-top:12px;display:flex;gap:10px;align-items:flex-start;background:var(--accent-glow);border:1px solid var(--border-accent);border-radius:8px;padding:10px 12px">
+            <span style="font-size:16px;flex-shrink:0">🤖</span>
+            <div style="font-size:12px;color:var(--text-1);line-height:1.5">${s.coachNote}</div>
+          </div>` : ''}
 
           ${s.rowNum ? `
           <button class="btn btn-secondary btn-sm" style="width:100%;margin-top:12px" onclick="History.openEdit(${s.rowNum})">

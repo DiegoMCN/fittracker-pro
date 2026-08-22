@@ -121,7 +121,9 @@ function _renderDashboard(container, data, doneDayNames, records, allSessions, l
         <span class="metric-unit">bpm FC prom</span>
       </div>
       <div class="metric-delta flat">${lastSes.type || '—'} · ${Utils.formatDateShort(lastSes.date)}</div>
-      <div style="font-size:11px;color:var(--text-3);margin-top:6px">${Utils.formatDuration(lastSes.duration)} · ${lastSes.calories || 0} kcal · esfuerzo ${lastSes.effort || '—'}/10</div>
+      <div style="font-size:11px;color:var(--text-3);margin-top:6px">
+        ${Utils.formatDuration(lastSes.duration)}${lastSes.calories !== null && lastSes.calories !== undefined ? ` · ${lastSes.calories} kcal` : ''}${lastSes.effort !== null && lastSes.effort !== undefined ? ` · esfuerzo ${lastSes.effort}/10` : ''}
+      </div>
     </div>
 
     <!-- Calorías semana -->
