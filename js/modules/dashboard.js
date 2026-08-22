@@ -17,10 +17,11 @@ async function initDashboard(container) {
 
   // Se piden sin caché — recién guardaste una sesión y necesitas ver
   // el dato fresco, no uno de hace 5 minutos.
-  const [data, sesRes, recordsRes] = await Promise.all([
+  const [data, sesRes, recordsRes, metricsRes] = await Promise.all([
     API.getDashboard(),
     API.getSessions(30),
     API.getPersonalRecords(),
+    API.getMetrics(),
   ]);
 
   // Sesiones reales de esta semana (Lun-Dom), para marcar los días
@@ -33,11 +34,16 @@ async function initDashboard(container) {
   const weekSessions = (sesRes.sessions || []).filter(s => s.date >= mondayStr);
   const doneDayNames = new Set(weekSessions.map(s => s.day));
 
+  // Última medición de METRICAS_CLAVE — para los objetivos de sprint,
+  // dominadas, cadencia y dead hang (antes eran valores fijos de ejemplo).
+  const metricsHistory = metricsRes.history || [];
+  const latestMetrics = metricsHistory.length ? metricsHistory[metricsHistory.length - 1] : null;
+
   Store.set({ dashboard: data });
-  _renderDashboard(container, data, doneDayNames, recordsRes, sesRes.sessions || []);
+  _renderDashboard(container, data, doneDayNames, recordsRes, sesRes.sessions || [], latestMetrics);
 }
 
-function _renderDashboard(container, data, doneDayNames, records, allSessions) {
+function _renderDashboard(container, data, doneDayNames, records, allSessions, latestMetrics) {
   const today     = new Date().getDay();
   const nextSes   = CONFIG.WEEK_PLAN[today] || CONFIG.WEEK_PLAN[(today + 1) % 7];
   const goals     = CONFIG.GOALS;
@@ -65,6 +71,19 @@ function _renderDashboard(container, data, doneDayNames, records, allSessions) {
       <button class="btn btn-secondary btn-icon btn-lg" onclick="Router.navigate('plan')" title="Ver plan">📅</button>
     </div>
   </div>
+
+  <!-- Consejo del Coach IA -->
+  ${lastSes.coachNote ? `
+  <div class="card card-accent section" style="display:flex;gap:14px;align-items:flex-start">
+    <div style="width:36px;height:36px;border-radius:10px;background:var(--accent-glow);
+      display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">🤖</div>
+    <div>
+      <div style="font-size:11px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">
+        Consejo sobre tu última sesión
+      </div>
+      <div style="font-size:13px;color:var(--text-1);line-height:1.5">${lastSes.coachNote}</div>
+    </div>
+  </div>` : ''}
 
   <!-- KPI Cards -->
   <div class="grid-4 section">
@@ -137,7 +156,7 @@ function _renderDashboard(container, data, doneDayNames, records, allSessions) {
             ? (records.fcRecovery?.value ?? rec.delta ?? null)
             : key === 'plank'
               ? (records.plankMax?.value || null)
-              : _getCurrentGoalValue(key);
+              : _getCurrentGoalValue(key, latestMetrics);
           const baseline = CONFIG.BASELINE[_baselineKey(key)] || g.target * 0.5;
           const pct = key === 'hrRecovery'
             ? Utils.progress(current ?? -5, -5, -20)
@@ -426,16 +445,18 @@ function _renderFCChart(allSessions) {
 }
 
 // Helpers
-function _getCurrentGoalValue(key) {
-  const map = {
-    sprintSpeed: 12,
-    pullUps: 0,
-    hrRecovery: -14,
-    cadence: 117,
-    plank: 50,
-    deadHang: 30,
+function _getCurrentGoalValue(key, latestMetrics) {
+  const fieldMap = {
+    sprintSpeed: 'sprintSpeed',
+    pullUps: 'pullUps',
+    cadence: 'cadAvg',
+    deadHang: 'deadHang',
   };
-  return map[key] ?? 0;
+  const field = fieldMap[key];
+  if (field && latestMetrics && latestMetrics[field] !== null && latestMetrics[field] !== undefined) {
+    return latestMetrics[field];
+  }
+  return null; // sin datos todavía — se muestra "—" en vez de un número inventado
 }
 
 function _baselineKey(key) {
