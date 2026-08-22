@@ -55,6 +55,10 @@ const Metrics = (() => {
           </div>
         </div>` : ''}
 
+        <div style="display:flex;justify-content:flex-end;margin-bottom:16px">
+          <button class="btn btn-primary btn-sm" onclick="Metrics.openCapture()">+ Registrar métricas clave</button>
+        </div>
+
         <!-- KPIs -->
         <div class="grid-4" style="margin-bottom:24px">
           <div class="metric-card">
@@ -77,6 +81,50 @@ const Metrics = (() => {
             <div class="metric-value" style="color:var(--cyan)">${_sessions.length + _cardio.length}</div>
             <div class="metric-delta flat">${_sessions.length} fuerza · ${_cardio.length} cardio</div>
           </div>
+        </div>
+
+        <!-- Métricas corporales (velocidad, dominadas, cadencia, dead hang) -->
+        <div class="card" style="margin-bottom:24px">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Métricas corporales</div>
+              <div class="card-subtitle">${_metricsHistory.length ? `Última: ${Utils.formatDate(_metricsHistory[_metricsHistory.length-1].date)}` : 'Sin registros todavía'}</div>
+            </div>
+          </div>
+          ${_metricsHistory.length === 0 ? `
+            <div style="text-align:center;padding:30px 20px;color:var(--text-3)">
+              <div style="font-size:32px;margin-bottom:10px">📈</div>
+              <div style="font-size:12px">Registra velocidad de sprint, dominadas, cadencia y dead hang aquí para ver tu evolución.</div>
+              <button class="btn btn-primary" style="margin-top:14px" onclick="Metrics.openCapture()">+ Registrar primera medición</button>
+            </div>` : `
+            <div class="grid-4" style="gap:10px;margin-bottom:16px">
+              ${[
+                { key:'sprintSpeed', label:'Velocidad sprint', unit:'km/h', color:'var(--accent)' },
+                { key:'pullUps', label:'Dominadas', unit:'reps', color:'var(--danger)' },
+                { key:'cadAvg', label:'Cadencia', unit:'spm', color:'var(--purple-light)' },
+                { key:'deadHang', label:'Dead hang', unit:'seg', color:'var(--warning)' },
+              ].map(f => {
+                const latest = _metricsHistory[_metricsHistory.length-1][f.key];
+                return `<div style="background:var(--bg-input);border-radius:10px;padding:12px">
+                  <div style="font-size:10px;color:var(--text-3);margin-bottom:4px">${f.label}</div>
+                  <div style="font-size:18px;font-weight:700;color:${f.color}">${latest ?? '—'}<span style="font-size:10px;color:var(--text-3)"> ${f.unit}</span></div>
+                </div>`;
+              }).join('')}
+            </div>
+            <div style="display:flex;flex-direction:column">
+              ${_metricsHistory.slice().reverse().slice(0, 8).map((h, i, arr) => `
+                <div style="display:flex;align-items:center;gap:14px;padding:8px 0;${i < arr.length-1 ? 'border-bottom:1px solid var(--border)' : ''}">
+                  <div style="font-size:11px;color:var(--text-3);min-width:70px">${Utils.formatDateShort(h.date)}</div>
+                  <div style="flex:1;display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--text-2)">
+                    ${h.weight ? `<span>⚖️ ${h.weight} kg</span>` : ''}
+                    ${h.sprintSpeed ? `<span>⚡ ${h.sprintSpeed} km/h</span>` : ''}
+                    ${h.pullUps ? `<span>💪 ${h.pullUps} dominadas</span>` : ''}
+                    ${h.cadAvg ? `<span>🦵 ${h.cadAvg} spm</span>` : ''}
+                    ${h.deadHang ? `<span>🕐 ${h.deadHang}s hang</span>` : ''}
+                    ${h.plankMax ? `<span>📏 ${h.plankMax}s plancha</span>` : ''}
+                  </div>
+                </div>`).join('')}
+            </div>`}
         </div>
 
         <!-- Gráficas -->
@@ -333,7 +381,106 @@ const Metrics = (() => {
     return `${d.getFullYear()}-W${week}`;
   }
 
-  return { init };
+  // ── REGISTRAR MÉTRICAS CLAVE ──────────────────────────────────────────
+  function openCapture() {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal" style="max-width:440px">
+        <div class="modal-header">
+          <div class="modal-title">📈 Registrar métricas clave</div>
+          <button class="btn btn-ghost btn-icon" onclick="this.closest('.modal-overlay').remove()">✕</button>
+        </div>
+        <div class="modal-body" style="display:flex;flex-direction:column;gap:12px">
+          <p style="font-size:11px;color:var(--text-3)">Todo es opcional — llena solo lo que tengas medido hoy.</p>
+          <div class="input-row">
+            <div class="input-group" style="flex:1">
+              <label class="input-label">Peso corporal (kg)</label>
+              <input class="input" type="number" step="0.1" id="mc-weight">
+            </div>
+            <div class="input-group" style="flex:1">
+              <label class="input-label">Dominadas (reps)</label>
+              <input class="input" type="number" id="mc-pullups">
+            </div>
+          </div>
+          <div class="input-row">
+            <div class="input-group" style="flex:1">
+              <label class="input-label">Velocidad sprint (km/h)</label>
+              <input class="input" type="number" step="0.1" id="mc-sprint">
+            </div>
+            <div class="input-group" style="flex:1">
+              <label class="input-label">Cadencia promedio (spm)</label>
+              <input class="input" type="number" id="mc-cadence">
+            </div>
+          </div>
+          <div class="input-row">
+            <div class="input-group" style="flex:1">
+              <label class="input-label">Dead hang (seg)</label>
+              <input class="input" type="number" id="mc-deadhang">
+            </div>
+            <div class="input-group" style="flex:1">
+              <label class="input-label">Plancha máxima (seg)</label>
+              <input class="input" type="number" id="mc-plank">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancelar</button>
+          <button class="btn btn-primary" id="mc-save-btn" onclick="Metrics.saveCapture()">Guardar en Sheet</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+  }
+
+  let _savingCapture = false;
+
+  async function saveCapture() {
+    if (_savingCapture) return; // evita doble click / doble guardado
+    _savingCapture = true;
+    const btn = document.getElementById('mc-save-btn');
+    if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Guardando...'; }
+
+    const val = id => document.getElementById(id)?.value || '';
+    const payload = {
+      date: Utils.today(),
+      week: CONFIG.CURRENT_PHASE.currentWeek,
+      weight: val('mc-weight'),
+      pullUps: val('mc-pullups'),
+      sprintSpeed: val('mc-sprint'),
+      cadAvg: val('mc-cadence'),
+      deadHang: val('mc-deadhang'),
+      plankMax: val('mc-plank'),
+    };
+
+    try {
+      const result = await API.saveMetrics(payload);
+      API.clearCache();
+      document.querySelector('.modal-overlay')?.remove();
+      if (result.queued) {
+        Sounds.click(); Haptics.medium();
+        Toast.warning('Sin conexión — guardado localmente, se sincronizará solo');
+      } else {
+        Sounds.serieDone(); Haptics.success();
+        Toast.success('Métricas guardadas');
+      }
+      _metricsHistory.push({
+        date: payload.date, week: payload.week, weight: Number(payload.weight) || null,
+        pullUps: Number(payload.pullUps) || null, sprintSpeed: Number(payload.sprintSpeed) || null,
+        cadAvg: Number(payload.cadAvg) || null, deadHang: Number(payload.deadHang) || null,
+        plankMax: Number(payload.plankMax) || null,
+      });
+      render();
+    } catch(err) {
+      Sounds.error();
+      Toast.error('Error al guardar en el Sheet');
+      console.error(err);
+      if (btn) { btn.disabled = false; btn.innerHTML = 'Guardar en Sheet'; }
+    } finally {
+      _savingCapture = false;
+    }
+  }
+
+  return { init, openCapture, saveCapture };
 })();
 
 function initMetrics(container) { Metrics.init(container); }
