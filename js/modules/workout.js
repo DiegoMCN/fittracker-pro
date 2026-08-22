@@ -47,6 +47,9 @@ const Workout = (() => {
         name: ex.name,
         group: ex.group,
         notes: ex.notes || '',
+        photoUrl: ex.photoUrl || '',
+        videoUrl: ex.videoUrl || '',
+        instructions: ex.instructions || '',
         collapsed: false,
         sets: Array.from({ length: ex.sets }, () => ({
           repsTarget: `${ex.repsMin}-${ex.repsMax}`,
@@ -268,6 +271,22 @@ const Workout = (() => {
       </div>
 
       ${!ex.collapsed ? `
+        <div style="border-radius:10px;overflow:hidden;margin-bottom:12px;background:var(--bg-input)">
+          <div style="height:120px;position:relative;display:flex;align-items:center;justify-content:center;background:var(--bg-card)">
+            ${ex.photoUrl ? `
+              <img src="${ex.photoUrl}" style="width:100%;height:100%;object-fit:cover"
+                onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+              <div style="display:none;position:absolute;inset:0;align-items:center;justify-content:center;font-size:32px;opacity:0.4">🏋️</div>
+            ` : `<div style="font-size:32px;opacity:0.4">🏋️</div>`}
+            ${ex.videoUrl ? `
+              <a href="${ex.videoUrl}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="
+                position:absolute;bottom:8px;right:8px;background:var(--bg-overlay);backdrop-filter:blur(6px);
+                color:var(--accent);font-size:11px;font-weight:600;padding:5px 10px;border-radius:8px;
+                display:flex;align-items:center;gap:4px">▶ Ver técnica</a>` : ''}
+          </div>
+          ${ex.instructions ? `<div style="padding:8px 10px;font-size:11px;color:var(--text-2);line-height:1.4">${ex.instructions}</div>` : ''}
+        </div>
+
         ${ex.notes ? `<div style="font-size:11px;color:var(--text-3);background:var(--bg-input);border-radius:8px;padding:8px 10px;margin-bottom:12px;line-height:1.5">💡 ${ex.notes}</div>` : ''}
 
         ${ex.group !== 'Core' && ex.group !== 'Cardio' ? `
