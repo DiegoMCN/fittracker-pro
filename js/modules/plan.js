@@ -12,8 +12,11 @@ const Plan = (() => {
     const now = new Date();
     const monday = new Date(now);
     monday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
-    monday.setHours(0,0,0,0);
-    return monday.toISOString().split('T')[0];
+    // Componentes locales, no toISOString() (evita el desfase de zona horaria)
+    const y = monday.getFullYear();
+    const m = String(monday.getMonth() + 1).padStart(2, '0');
+    const d = String(monday.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
   }
 
   function _isDayDone(day) {

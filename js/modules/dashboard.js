@@ -29,8 +29,8 @@ async function initDashboard(container) {
   // ahora se verifica contra lo que de verdad está guardado en el Sheet.
   const monday = new Date();
   monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
-  monday.setHours(0,0,0,0);
-  const mondayStr = monday.toISOString().split('T')[0];
+  // Componentes locales, no toISOString() (evita el desfase de zona horaria)
+  const mondayStr = `${monday.getFullYear()}-${String(monday.getMonth()+1).padStart(2,'0')}-${String(monday.getDate()).padStart(2,'0')}`;
   const weekSessions = (sesRes.sessions || []).filter(s => s.date >= mondayStr);
   const doneDayNames = new Set(weekSessions.map(s => s.day));
 
@@ -72,16 +72,16 @@ function _renderDashboard(container, data, doneDayNames, records, allSessions, l
     </div>
   </div>
 
-  <!-- Consejo del Coach IA -->
-  ${lastSes.coachNote ? `
+  <!-- Consejo del Coach IA — análisis holístico, no solo la última sesión -->
+  ${data.dashboardInsight ? `
   <div class="card card-accent section" style="display:flex;gap:14px;align-items:flex-start">
     <div style="width:36px;height:36px;border-radius:10px;background:var(--accent-glow);
       display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">🤖</div>
     <div>
       <div style="font-size:11px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">
-        Consejo sobre tu última sesión
+        Tu coach personal
       </div>
-      <div style="font-size:13px;color:var(--text-1);line-height:1.5">${lastSes.coachNote}</div>
+      <div style="font-size:13px;color:var(--text-1);line-height:1.5">${data.dashboardInsight}</div>
     </div>
   </div>` : ''}
 

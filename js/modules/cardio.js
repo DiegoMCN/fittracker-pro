@@ -135,11 +135,21 @@ const Cardio = (() => {
     Sounds.sessionDone(); Haptics.success();
     state.started = true;
     state.startedAt = Date.now();
+    // Hora real a la que debe terminar la fase actual — igual que el
+    // timer de descanso de Fuerza, para sobrevivir a la pantalla bloqueada.
+    state.phaseEndAt = Date.now() + state.protocol.phases[0].duration * 1000;
     WakeLock.request();
     Sounds.hitPhase(state.protocol.phases[0].effort);
     if (tickInterval) clearInterval(tickInterval);
     tickInterval = setInterval(_tick, 1000);
+    document.addEventListener('visibilitychange', _onCardioVisibilityChange);
     _renderActive();
+  }
+
+  // Si el navegador suspendió el setInterval (pantalla bloqueada), esto
+  // se dispara apenas vuelve a estar visible y recalcula de inmediato.
+  function _onCardioVisibilityChange() {
+    if (document.visibilityState === 'visible' && state && state.started && !state.paused && !state.finished) _tick();
   }
 
   // ── LOOP PRINCIPAL ────────────────────────────────────────────────────
@@ -147,37 +157,45 @@ const Cardio = (() => {
     if (!state || !state.started || state.finished || state.paused) return;
 
     const phaseBefore = state.phaseIdx;
-    state.phaseRemaining--;
-
-    if (state.phaseRemaining === 3) Sounds.restWarning();
-
-    if (state.phaseRemaining <= 0) {
-      const isLast = state.phaseIdx >= state.protocol.phases.length - 1;
-      if (isLast) {
-        _completeProtocol();
-        return;
-      }
-      state.phaseIdx++;
-      const nextPhase = state.protocol.phases[state.phaseIdx];
-      state.phaseRemaining = nextPhase.duration;
-      Sounds.hitPhase(nextPhase.effort);
-      Haptics.medium();
-      if (Router.current() === 'cardio') Toast.success(`→ ${nextPhase.label}`, 2000);
-    }
+    _advancePhases();
+    if (!state || state.finished) return; // _advancePhases pudo haber completado el protocolo
 
     const phaseChanged = state.phaseIdx !== phaseBefore;
 
     if (Router.current() === 'cardio') {
-      // Si cambió de fase, repinta todo (color, etiqueta, timeline).
-      // Si sigue en la misma fase, solo actualiza el número — más fluido.
       if (phaseChanged) _renderActive();
       else _updateActiveUI();
     }
     _renderFloatingBar();
   }
 
+  // Consume el tiempo real transcurrido desde phaseEndAt, avanzando
+  // cuantas fases haga falta — así si la pantalla estuvo bloqueada
+  // varios minutos, se pone al día de una vez en vez de quedarse
+  // "congelado" en la fase de cuando se bloqueó.
+  function _advancePhases() {
+    while (true) {
+      const remaining = Math.ceil((state.phaseEndAt - Date.now()) / 1000);
+      if (remaining > 0) {
+        if (remaining === 3 && state.phaseRemaining > 3) Sounds.restWarning();
+        state.phaseRemaining = remaining;
+        return;
+      }
+      const isLast = state.phaseIdx >= state.protocol.phases.length - 1;
+      if (isLast) { _completeProtocol(); return; }
+      state.phaseIdx++;
+      const nextPhase = state.protocol.phases[state.phaseIdx];
+      state.phaseEndAt += nextPhase.duration * 1000;
+      state.phaseRemaining = nextPhase.duration;
+      Sounds.hitPhase(nextPhase.effort);
+      Haptics.medium();
+      if (Router.current() === 'cardio') Toast.success(`→ ${nextPhase.label}`, 2000);
+    }
+  }
+
   function _completeProtocol() {
     clearInterval(tickInterval);
+    document.removeEventListener('visibilitychange', _onCardioVisibilityChange);
     state.finished = true;
     Sounds.sessionDone(); Haptics.done();
     WakeLock.release();
@@ -288,20 +306,27 @@ const Cardio = (() => {
   function togglePause() {
     state.paused = !state.paused;
     Sounds.click();
-    if (state.paused) { Toast.warning('Pausado'); WakeLock.release(); }
-    else { Toast.success('Reanudado'); WakeLock.request(); }
+    if (state.paused) {
+      Toast.warning('Pausado'); WakeLock.release();
+    } else {
+      // Al reanudar, recalcula la hora de fin con el tiempo que quedaba
+      // congelado — no sigue contando desde donde se pausó en reloj real.
+      state.phaseEndAt = Date.now() + state.phaseRemaining * 1000;
+      Toast.success('Reanudado'); WakeLock.request();
+    }
     _renderActive();
   }
 
   function skipPhase() {
     Sounds.click();
-    state.phaseRemaining = 1; // se resuelve en el próximo tick
+    state.phaseEndAt = Date.now(); // se resuelve en el próximo tick
     Toast.show('Saltando fase...', 'info', 1200);
   }
 
   function discardSession() {
     if (!confirm('¿Cancelar el protocolo sin guardar?')) return;
     clearInterval(tickInterval);
+    document.removeEventListener('visibilitychange', _onCardioVisibilityChange);
     WakeLock.release();
     state = null;
     const bar = document.getElementById('floating-session-bar');
@@ -370,6 +395,10 @@ const Cardio = (() => {
             </div>
             <div class="input-row">
               <div class="input-group" style="flex:1">
+                <label class="input-label">FC al terminar</label>
+                <input class="input" type="number" id="cs-fcpost0" placeholder="bpm">
+              </div>
+              <div class="input-group" style="flex:1">
                 <label class="input-label">FC post 1 min</label>
                 <input class="input" type="number" id="cs-fcpost1" placeholder="bpm">
               </div>
@@ -433,7 +462,7 @@ const Cardio = (() => {
     const val = id => document.getElementById(id)?.value || '';
     _saveCardioSession({
       fcAvg: val('cs-fcavg'), fcPeak: val('cs-fcpeak'),
-      fcPost1: val('cs-fcpost1'), fcPost2: val('cs-fcpost2'),
+      fcPost0: val('cs-fcpost0'), fcPost1: val('cs-fcpost1'), fcPost2: val('cs-fcpost2'),
       cadAvg: val('cs-cadavg'), cadPeak: val('cs-cadpeak'),
       velMax: val('cs-velmax'), distance: val('cs-distance'),
       notes: val('cs-notes'),
@@ -442,7 +471,12 @@ const Cardio = (() => {
 
   async function _saveCardioSession(stats) {
     const duration = Math.round((Date.now() - state.startedAt) / 60000);
-    const rec2min = (stats.fcPost1 && stats.fcPost2) ? Math.round(stats.fcPost2 - stats.fcPost1) : '';
+    // Preferimos la ventana completa 0→2min (igual que fuerza); si no
+    // capturaste "FC al terminar" cae a 1→2min como antes.
+    const rec2min = (stats.fcPost0 && stats.fcPost2)
+      ? Math.round(stats.fcPost2 - stats.fcPost0)
+      : (stats.fcPost1 && stats.fcPost2) ? Math.round(stats.fcPost2 - stats.fcPost1) : '';
+
 
     const payload = {
       date: Utils.today(),
@@ -460,25 +494,69 @@ const Cardio = (() => {
       notes: stats.notes || '',
     };
 
-    Toast.show('Guardando en tu Sheet...', 'info', 1800);
     try {
       const result = await API.saveCardio(payload);
       API.clearCache();
+
       if (result.queued) {
         Sounds.click(); Haptics.medium();
         Toast.warning('Sin conexión — guardado localmente. Se sincronizará solo.');
+        _showCardioSummary(payload, true);
       } else {
-        Sounds.serieDone(); Haptics.success();
-        Toast.success('Sesión de cardio guardada 🏃');
-        await RecordCelebration.checkCardio(stats);
+        Sounds.sessionDone(); Haptics.done();
+        _showCardioSummary(payload, false);
+        RecordCelebration.checkCardio(stats);
       }
     } catch(err) {
       Sounds.error();
       Toast.error('Error al guardar. Revisa la conexión.');
       console.error(err);
+      state = null;
+      Router.navigate('dashboard');
+      return;
     }
     state = null;
-    Router.navigate('dashboard');
+  }
+
+  function _showCardioSummary(payload, queued) {
+    const container = document.getElementById('page-content');
+    if (!container) return;
+
+    container.innerHTML = `
+      <div style="max-width:480px;margin:60px auto;text-align:center" class="animate-bounce-in">
+        <div style="font-size:64px;margin-bottom:16px">${queued ? '📥' : '🏁'}</div>
+        <h2 style="font-size:22px;font-weight:800;margin-bottom:6px">${queued ? 'Guardado localmente' : '¡Cardio completado!'}</h2>
+        <p style="color:var(--text-3);font-size:13px;margin-bottom:${queued ? '8px' : '28px'}">${payload.type} · ${Utils.formatDuration(payload.duration)}</p>
+        ${queued ? `<p style="color:var(--warning);font-size:11px;margin-bottom:28px">⏳ Se sincronizará con tu Sheet automáticamente cuando vuelva la conexión</p>` : ''}
+
+        <div class="grid-2" style="margin-bottom:28px">
+          ${payload.distance ? `
+          <div class="metric-card">
+            <div class="metric-label">Distancia</div>
+            <div class="metric-value" style="color:var(--info)">${payload.distance}<span class="metric-unit">km</span></div>
+          </div>` : ''}
+          ${payload.fcAvg ? `
+          <div class="metric-card">
+            <div class="metric-label">FC promedio</div>
+            <div class="metric-value" style="color:var(--danger)">${payload.fcAvg}<span class="metric-unit">bpm</span></div>
+          </div>` : ''}
+          ${(payload.rec2min !== '' && payload.rec2min !== undefined) ? `
+          <div class="metric-card">
+            <div class="metric-label">Recuperación 2min</div>
+            <div class="metric-value accent">${payload.rec2min}<span class="metric-unit">bpm</span></div>
+          </div>` : ''}
+          ${payload.cadAvg ? `
+          <div class="metric-card">
+            <div class="metric-label">Cadencia</div>
+            <div class="metric-value" style="color:var(--purple-light)">${payload.cadAvg}<span class="metric-unit">spm</span></div>
+          </div>` : ''}
+        </div>
+
+        <div style="display:flex;gap:10px">
+          <button class="btn btn-secondary" style="flex:1" onclick="Router.navigate('history')">Ver bitácora</button>
+          <button class="btn btn-primary" style="flex:1" onclick="Router.navigate('dashboard')">Ir al Dashboard</button>
+        </div>
+      </div>`;
   }
 
   return {

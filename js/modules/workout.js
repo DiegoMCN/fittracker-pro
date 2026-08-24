@@ -420,32 +420,58 @@ const Workout = (() => {
 
   function startRest(seconds) {
     Sounds.restStart(); Haptics.light();
-    state.rest = { running: true, remaining: seconds, total: seconds };
+    // Se guarda la hora REAL a la que debe terminar, no solo un contador.
+    // Así, si el navegador suspende el timer (pantalla bloqueada), en
+    // cuanto se reactiva se recalcula el tiempo real transcurrido en vez
+    // de seguir contando desde donde se quedó "congelado".
+    const endAt = Date.now() + seconds * 1000;
+    state.rest = { running: true, remaining: seconds, total: seconds, endAt, warned: false };
     _renderRestWidget();
     if (restInterval) clearInterval(restInterval);
-    restInterval = setInterval(() => {
-      state.rest.remaining--;
-      if (state.rest.remaining === 5) Sounds.restWarning();
-      if (state.rest.remaining <= 0) {
-        clearInterval(restInterval);
-        state.rest.running = false;
-        Sounds.restDone(); Haptics.success();
-        if (Router.current() === 'workout') Toast.success('Descanso terminado — ¡siguiente serie!');
-        else Toast.success('⏱ Descanso terminado');
-      }
-      if (Router.current() === 'workout') _renderRestWidget();
-    }, 1000);
+    restInterval = setInterval(_tickRest, 1000);
+    document.addEventListener('visibilitychange', _onRestVisibilityChange);
+  }
+
+  function _tickRest() {
+    if (!state || !state.rest.running) return;
+    const remaining = Math.max(0, Math.ceil((state.rest.endAt - Date.now()) / 1000));
+    state.rest.remaining = remaining;
+
+    if (remaining <= 5 && remaining > 0 && !state.rest.warned) {
+      state.rest.warned = true;
+      Sounds.restWarning();
+    }
+
+    if (remaining <= 0) {
+      clearInterval(restInterval);
+      document.removeEventListener('visibilitychange', _onRestVisibilityChange);
+      state.rest.running = false;
+      Sounds.restDone(); Haptics.success();
+      if (Router.current() === 'workout') Toast.success('Descanso terminado — ¡siguiente serie!');
+      else Toast.success('⏱ Descanso terminado');
+    }
+
+    if (Router.current() === 'workout') _renderRestWidget();
+  }
+
+  // Si la pantalla se bloqueó y el navegador pausó el setInterval, este
+  // evento se dispara apenas vuelve a estar visible — recalcula de una
+  // vez en lugar de esperar hasta el siguiente tick natural.
+  function _onRestVisibilityChange() {
+    if (document.visibilityState === 'visible') _tickRest();
   }
 
   function addRestTime(seconds) {
     state.rest.remaining += seconds;
     state.rest.total += seconds;
+    state.rest.endAt += seconds * 1000;
     Sounds.click();
     _renderRestWidget();
   }
 
   function skipRest() {
     clearInterval(restInterval);
+    document.removeEventListener('visibilitychange', _onRestVisibilityChange);
     state.rest.running = false;
     Sounds.click();
     _renderRestWidget();
