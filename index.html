@@ -90,14 +90,14 @@
     <div class="sidebar-section">
       <div style="background:var(--bg-card);border:1px solid var(--border-card);border-radius:12px;padding:14px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-          <span style="font-size:11px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:.08em">Fase 1</span>
-          <span style="font-size:10px;color:var(--text-4)">Sem 3 / 4</span>
+          <span style="font-size:11px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:.08em" id="sidebar-phase-number">Fase 1</span>
+          <span style="font-size:10px;color:var(--text-4)" id="sidebar-phase-week">Sem — / —</span>
         </div>
-        <div style="font-size:12px;color:var(--text-2);font-weight:500;margin-bottom:8px">Reconstrucción</div>
+        <div style="font-size:12px;color:var(--text-2);font-weight:500;margin-bottom:8px" id="sidebar-phase-name">—</div>
         <div class="progress-bar">
-          <div class="progress-fill" style="width:75%"></div>
+          <div class="progress-fill" id="sidebar-phase-progress" style="width:0%"></div>
         </div>
-        <div style="font-size:10px;color:var(--text-4);margin-top:6px">3 semanas completadas</div>
+        <div style="font-size:10px;color:var(--text-4);margin-top:6px" id="sidebar-phase-detail">—</div>
       </div>
     </div>
 
@@ -277,6 +277,30 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
       .catch(err => console.warn('[SW] Error al registrar:', err));
   });
 }
+
+// ── TARJETA DE FASE (sidebar) — antes estaba fija en el HTML, nunca
+//    se actualizaba con la semana real ──────────────────────────────────
+function _updateSidebarPhase() {
+  const phase = CONFIG.CURRENT_PHASE;
+  const week = phase.currentWeek;
+  const totalWeeks = phase.endWeek - phase.startWeek + 1;
+  const weekInPhase = Math.min(week - phase.startWeek + 1, totalWeeks);
+  const pct = Math.round((weekInPhase / totalWeeks) * 100);
+  const completedWeeks = Math.max(0, weekInPhase - 1);
+
+  const elNum   = document.getElementById('sidebar-phase-number');
+  const elWeek  = document.getElementById('sidebar-phase-week');
+  const elName  = document.getElementById('sidebar-phase-name');
+  const elProg  = document.getElementById('sidebar-phase-progress');
+  const elDet   = document.getElementById('sidebar-phase-detail');
+
+  if (elNum)  elNum.textContent  = `Fase ${phase.number}`;
+  if (elWeek) elWeek.textContent = `Sem ${weekInPhase} / ${totalWeeks}`;
+  if (elName) elName.textContent = phase.name.replace(/^Fase \d+\s*—\s*/, '');
+  if (elProg) elProg.style.width = `${Math.min(100, pct)}%`;
+  if (elDet)  elDet.textContent  = `${completedWeeks} semana${completedWeeks === 1 ? '' : 's'} completada${completedWeeks === 1 ? '' : 's'}`;
+}
+_updateSidebarPhase();
 
 // ── INIT ──────────────────────────────────────────────────────────────────
 // Soporta accesos directos del ícono de la app (?page=workout, ?page=cardio)
