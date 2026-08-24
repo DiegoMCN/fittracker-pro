@@ -103,7 +103,12 @@ const Profile = (() => {
                   <div style="font-size:11px;color:var(--text-3)">Masa muscular</div>
                   <div style="font-size:20px;font-weight:700;color:var(--accent)">${latest.muscleMass ?? '—'}<span style="font-size:12px"> kg</span></div>
                 </div>
-              </div>` : `
+              </div>
+              ${latest.aiAnalysis ? `
+              <div style="margin-top:14px;display:flex;gap:10px;align-items:flex-start;background:var(--accent-glow);border:1px solid var(--border-accent);border-radius:8px;padding:10px 12px">
+                <span style="font-size:16px;flex-shrink:0">🤖</span>
+                <div style="font-size:12px;color:var(--text-1);line-height:1.5">${latest.aiAnalysis}</div>
+              </div>` : ''}` : `
               <div style="text-align:center;padding:20px;color:var(--text-3);font-size:12px">
                 Registra tu primera medición de la báscula inteligente
               </div>`}
@@ -378,7 +383,7 @@ const Profile = (() => {
         leanBodyMass: payload.leanBodyMass, waterPct: payload.waterPct,
         skeletalMusclePct: payload.skeletalMusclePct, boneMass: payload.boneMass,
         proteinPct: payload.proteinPct, bmr: payload.bmr, muscleMass: payload.muscleMass,
-        notes: payload.notes,
+        notes: payload.notes, aiAnalysis: result.aiAnalysis || '',
       });
       render();
     } catch(err) {
