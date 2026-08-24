@@ -42,6 +42,10 @@
         <span class="nav-icon">📊</span>
         <span>Dashboard</span>
       </div>
+      <div class="nav-item" data-page="coach" onclick="Router.navigate('coach')">
+        <span class="nav-icon">🤖</span>
+        <span>Coach IA</span>
+      </div>
       <div class="nav-item" data-page="workout" onclick="Router.navigate('workout')">
         <span class="nav-icon">💪</span>
         <span>Sesión Activa</span>
@@ -192,6 +196,7 @@
 <script src="js/modules/metrics.js"></script>
 <script src="js/modules/profile.js"></script>
 <script src="js/modules/import.js"></script>
+<script src="js/modules/coach.js"></script>
 
 <script>
 // ── KEYBOARD SHORTCUTS ────────────────────────────────────────────────────
@@ -253,6 +258,7 @@ function showQuickLog() {
 
 // ── ROUTER SETUP ──────────────────────────────────────────────────────────
 Router.register('dashboard', (container) => initDashboard(container));
+Router.register('coach',     (container) => initCoach(container));
 Router.register('workout',   (container) => initWorkout(container));
 Router.register('cardio',    (container) => initCardio(container));
 Router.register('plan',      (container) => initPlan(container));
