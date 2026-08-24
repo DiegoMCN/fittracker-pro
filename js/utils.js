@@ -105,7 +105,14 @@ const Utils = {
     return ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'][dayNum];
   },
   today() {
-    return new Date().toISOString().split('T')[0];
+    // OJO: nunca usar toISOString() aquí — convierte a UTC y puede
+    // regresar el día equivocado según tu zona horaria. Esto usa los
+    // componentes de fecha LOCALES del navegador.
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
   },
   todayDayNum() { return new Date().getDay(); },
 
@@ -302,6 +309,7 @@ const Router = (() => {
       // Topbar title
       const titles = {
         dashboard: { title: 'Dashboard', sub: 'Tu progreso en tiempo real' },
+        coach:     { title: 'Coach IA', sub: 'Tu evaluación diaria personalizada' },
         workout:   { title: 'Sesión Activa', sub: 'Modo entrenamiento' },
         cardio:    { title: 'Cardio / HIT', sub: 'Sprint & zona cardíaca' },
         plan:      { title: 'Plan Semanal', sub: 'Semana 3 · Fase 1' },

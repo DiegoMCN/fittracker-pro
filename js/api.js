@@ -171,6 +171,7 @@ const API = (() => {
         sessionVolume: { value: 0, date: null },
         plankMax: { value: 0, date: null },
       },
+      getCoachHistory: { history: [] },
     };
 
     return mocks[action] || { data: [] };
@@ -212,6 +213,9 @@ const API = (() => {
 
     getPersonalRecords: () =>
       _fetch({ action: 'getPersonalRecords' }),
+
+    getCoachHistory: (limit = 30) =>
+      _fetch({ action: 'getCoachHistory', limit }),
 
     saveSession: (data) =>
       _fetch({ action: 'saveSession', method: 'POST', ...data }, { useCache: false }),
