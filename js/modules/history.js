@@ -28,8 +28,9 @@ const History = (() => {
     const fromCardio = _cardio.map(c => ({
       date: c.date, type: 'Cardio', duration: c.duration, fcAvg: c.fcAvg, fcPeak: c.fcPeak,
       calories: null, effort: null, volume: null, notes: c.notes, _kind: 'cardio',
-      distance: c.distance, cadAvg: c.cadAvg, cadPeak: c.cadPeak, rec2min: c.rec2min,
-      coachNote: c.coachNote || '',
+      distance: c.distance, cadAvg: c.cadAvg, cadPeak: c.cadPeak, cadPeakVal: c.cadPeak,
+      velMax: c.velMax, fcPost1: c.fcPost1, fcPost2: c.fcPost2, rec2min: c.rec2min,
+      coachNote: c.coachNote || '', rowNum: c.rowNum, protocol: c.protocol,
     }));
     const all = [...fromSessions, ...fromCardio];
     all.sort((a,b) => (b.date || '').localeCompare(a.date || ''));
@@ -122,7 +123,7 @@ const History = (() => {
           display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">${typeIcon}</div>
         <div style="flex:1;min-width:0">
           <div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
-            ${Utils.truncate(s.notes, 40) || s.type}
+            ${s.notes ? Utils.truncate(s.notes, 40) : (s.type || '—')}
           </div>
           <div style="font-size:11px;color:var(--text-3);margin-top:2px">
             ${Utils.formatDuration(s.duration)} ${s.fcAvg ? `· ${s.fcAvg} bpm prom` : ''} ${s.effort ? `· esfuerzo ${s.effort}/10` : ''}
@@ -179,7 +180,7 @@ const History = (() => {
           </div>` : ''}
 
           ${s.rowNum ? `
-          <button class="btn btn-secondary btn-sm" style="width:100%;margin-top:12px" onclick="History.openEdit(${s.rowNum})">
+          <button class="btn btn-secondary btn-sm" style="width:100%;margin-top:12px" onclick="History.openEdit(${s.rowNum}, '${s._kind}')">
             ✏️ Editar / completar datos del reloj
           </button>` : ''}
         </div>` : ''}
@@ -190,7 +191,9 @@ const History = (() => {
   function toggleExpand(id) { _expandedId = _expandedId === id ? null : id; Sounds.click(); render(); }
 
   // ── EDITAR SESIÓN EXISTENTE ────────────────────────────────────────────
-  function openEdit(rowNum) {
+  function openEdit(rowNum, kind) {
+    if (kind === 'cardio') { openCardioEdit(rowNum); return; }
+
     const s = _sessions.find(x => x.rowNum === rowNum);
     if (!s) { Toast.error('No se encontró la sesión'); return; }
     Sounds.click();
@@ -309,7 +312,125 @@ const History = (() => {
     }
   }
 
-  return { init, setFilter, toggleExpand, openEdit, saveEdit };
+  // ── EDITAR CARDIO EXISTENTE ────────────────────────────────────────────
+  function openCardioEdit(rowNum) {
+    const s = _cardio.find(x => x.rowNum === rowNum);
+    if (!s) { Toast.error('No se encontró la sesión'); return; }
+    Sounds.click();
+
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal" style="max-width:480px">
+        <div class="modal-header">
+          <div class="modal-title">✏️ Completar datos del reloj</div>
+          <button class="btn btn-ghost btn-icon" onclick="this.closest('.modal-overlay').remove()">✕</button>
+        </div>
+        <div class="modal-body" style="display:flex;flex-direction:column;gap:12px">
+          <p style="font-size:11px;color:var(--text-3)">${Utils.formatDate(s.date)} · ${s.protocol || 'Cardio'}</p>
+          <div class="input-row">
+            <div class="input-group" style="flex:1">
+              <label class="input-label">Duración (min)</label>
+              <input class="input" type="number" id="ce-duration" value="${s.duration || ''}">
+            </div>
+            <div class="input-group" style="flex:1">
+              <label class="input-label">Distancia (km)</label>
+              <input class="input" type="number" step="0.01" id="ce-distance" value="${s.distance || ''}">
+            </div>
+          </div>
+          <div class="input-row">
+            <div class="input-group" style="flex:1">
+              <label class="input-label">FC promedio</label>
+              <input class="input" type="number" id="ce-fcavg" value="${s.fcAvg || ''}">
+            </div>
+            <div class="input-group" style="flex:1">
+              <label class="input-label">FC pico</label>
+              <input class="input" type="number" id="ce-fcpeak" value="${s.fcPeak || ''}">
+            </div>
+          </div>
+          <div class="input-row">
+            <div class="input-group" style="flex:1">
+              <label class="input-label">Cadencia prom.</label>
+              <input class="input" type="number" id="ce-cadavg" value="${s.cadAvg || ''}">
+            </div>
+            <div class="input-group" style="flex:1">
+              <label class="input-label">Cadencia pico</label>
+              <input class="input" type="number" id="ce-cadpeak" value="${s.cadPeakVal || ''}">
+            </div>
+            <div class="input-group" style="flex:1">
+              <label class="input-label">Vel. máxima (km/h)</label>
+              <input class="input" type="number" step="0.1" id="ce-velmax" value="${s.velMax || ''}">
+            </div>
+          </div>
+          <div style="font-size:10px;color:var(--text-3);margin-top:4px">Recuperación post-esfuerzo</div>
+          <div class="input-row">
+            <div class="input-group" style="flex:1">
+              <label class="input-label">Al terminar</label>
+              <input class="input" type="number" id="ce-fcpost0" placeholder="opcional">
+            </div>
+            <div class="input-group" style="flex:1">
+              <label class="input-label">1 min</label>
+              <input class="input" type="number" id="ce-fcpost1" value="${s.fcPost1 || ''}">
+            </div>
+            <div class="input-group" style="flex:1">
+              <label class="input-label">2 min</label>
+              <input class="input" type="number" id="ce-fcpost2" value="${s.fcPost2 || ''}">
+            </div>
+          </div>
+          <div class="input-group">
+            <label class="input-label">Notas</label>
+            <input class="input" id="ce-notes" value="${(s.notes || '').replace(/"/g, '&quot;')}">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancelar</button>
+          <button class="btn btn-primary" id="ce-save-btn" onclick="History.saveCardioEdit(${rowNum})">Guardar cambios</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+  }
+
+  let _savingCardioEdit = false;
+
+  async function saveCardioEdit(rowNum) {
+    if (_savingCardioEdit) return; // evita doble click / doble guardado
+    _savingCardioEdit = true;
+    const btn = document.getElementById('ce-save-btn');
+    if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Guardando...'; }
+
+    const val = id => document.getElementById(id)?.value || '';
+    const payload = {
+      rowNum,
+      duration: val('ce-duration'), distance: val('ce-distance'),
+      fcAvg: val('ce-fcavg'), fcPeak: val('ce-fcpeak'),
+      cadAvg: val('ce-cadavg'), cadPeak: val('ce-cadpeak'), velMax: val('ce-velmax'),
+      fcPost0: val('ce-fcpost0'), fcPost1: val('ce-fcpost1'), fcPost2: val('ce-fcpost2'),
+      notes: val('ce-notes'),
+    };
+
+    try {
+      const result = await API.updateCardio(payload);
+      API.clearCache();
+      document.querySelector('.modal-overlay')?.remove();
+      if (result.queued) {
+        Sounds.click(); Haptics.medium();
+        Toast.warning('Sin conexión — los cambios se sincronizarán cuando vuelva la conexión');
+      } else {
+        Sounds.serieDone(); Haptics.success();
+        Toast.success('Cardio actualizado');
+      }
+      init(document.getElementById('page-content'));
+    } catch(err) {
+      Sounds.error();
+      Toast.error('Error al guardar los cambios');
+      console.error(err);
+      if (btn) { btn.disabled = false; btn.innerHTML = 'Guardar cambios'; }
+    } finally {
+      _savingCardioEdit = false;
+    }
+  }
+
+  return { init, setFilter, toggleExpand, openEdit, saveEdit, openCardioEdit, saveCardioEdit };
 })();
 
 function initHistory(container) { History.init(container); }

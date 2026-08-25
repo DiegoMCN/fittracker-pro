@@ -61,10 +61,26 @@ const Workout = (() => {
   }
 
   // ── INIT (llamado cada vez que se navega a esta página) ──────────────
+  let _pendingQuickStartDay = null;
+
   async function init(container) {
     // Si ya hay una sesión iniciada en curso → resumir directo, no mostrar picker
     if (state && state.started && !state.finished) {
       _renderSession();
+      return;
+    }
+
+    // Si viene de "continuar con fuerza" después del HIT — salta el
+    // picker por completo y arranca directo en ese día.
+    if (_pendingQuickStartDay !== null) {
+      const day = _pendingQuickStartDay;
+      _pendingQuickStartDay = null;
+      container.innerHTML = `<div style="max-width:640px;margin:0 auto">
+        <div class="skeleton" style="height:320px;border-radius:16px"></div>
+      </div>`;
+      await _loadPlan();
+      selectDay(day);
+      startSession();
       return;
     }
 
@@ -1044,10 +1060,20 @@ const Workout = (() => {
       </div>`;
   }
 
+  // Llamado desde Cardio al terminar un HIT que tiene ejercicios de
+  // fuerza asociados ese día — solo marca la bandera y navega; el
+  // arranque real lo maneja init() para evitar condiciones de carrera
+  // con el picker normal.
+  function quickStartDay(day) {
+    _pendingQuickStartDay = day;
+    Router.navigate('workout');
+  }
+
   return {
     init, selectDay, backToPicker, startSession, toggleCollapse, updateSet, changeUnit, setKind, refreshKgHint, toggleSetDone, addSet,
     removeExercise, addExercise, confirmAddExercise, startRest, addRestTime,
     skipRest, customRest, finishSession, saveFinalSession, toggleAdvancedStats, discardSession, cleanup, onRouteChange,
+    quickStartDay,
     hasActiveSession: () => !!(state && state.started && !state.finished),
   };
 })();

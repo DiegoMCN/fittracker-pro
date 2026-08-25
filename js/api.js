@@ -237,6 +237,12 @@ const API = (() => {
 
     updateSession: (data) =>
       _fetch({ action: 'updateSession', method: 'POST', ...data }, { useCache: false }),
+
+    updateCardio: (data) =>
+      _fetch({ action: 'updateCardio', method: 'POST', ...data }, { useCache: false }),
+
+    refreshDashboardInsight: () =>
+      _fetch({ action: 'refreshDashboardInsight', method: 'POST' }, { useCache: false }),
   };
 
 })();

@@ -41,8 +41,10 @@ const Profile = (() => {
     const container = document.getElementById('page-content');
     if (!container) return;
 
-    const latest = _history[_history.length - 1] || null;
-    const prev   = _history.length > 1 ? _history[_history.length - 2] : null;
+    // getBodyComposition() ya regresa más reciente primero (igual que
+    // el resto de la app) — antes esto asumía orden ascendente al revés.
+    const latest = _history[0] || null;
+    const prev   = _history.length > 1 ? _history[1] : null;
 
     container.innerHTML = `
       <div style="max-width:900px;margin:0 auto">
@@ -145,6 +147,20 @@ const Profile = (() => {
             </div>`}
         </div>
 
+        <!-- Gráfica de tendencia — peso y grasa corporal en el tiempo -->
+        ${_history.length >= 2 ? `
+        <div class="card" style="margin-bottom:24px">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Tendencia</div>
+              <div class="card-subtitle">Peso y grasa corporal · últimas ${Math.min(_history.length, 10)} mediciones</div>
+            </div>
+          </div>
+          <div style="position:relative;height:200px;width:100%;overflow:hidden">
+            <canvas id="body-trend-chart"></canvas>
+          </div>
+        </div>` : ''}
+
         <!-- Historial -->
         ${_history.length > 0 ? `
         <div class="card">
@@ -153,7 +169,7 @@ const Profile = (() => {
             <div class="card-subtitle">${_history.length} registro${_history.length !== 1 ? 's' : ''}</div>
           </div>
           <div style="display:flex;flex-direction:column">
-            ${_history.slice().reverse().map((h, i) => `
+            ${_history.map((h, i) => `
               <div style="display:flex;align-items:center;gap:14px;padding:10px 0;${i < _history.length-1 ? 'border-bottom:1px solid var(--border)' : ''}">
                 <div style="font-size:11px;color:var(--text-3);min-width:70px">${Utils.formatDateShort(h.date)}</div>
                 <div style="flex:1;display:flex;gap:16px;flex-wrap:wrap;font-size:11px;color:var(--text-2)">
@@ -166,6 +182,8 @@ const Profile = (() => {
           </div>
         </div>` : ''}
       </div>`;
+
+    setTimeout(_renderTrendChart, 100);
   }
 
   // ── EDITAR DATOS BÁSICOS ──────────────────────────────────────────────
@@ -376,7 +394,9 @@ const Profile = (() => {
         Sounds.serieDone(); Haptics.success();
         Toast.success('Medición guardada');
       }
-      _history.push({
+      // Se agrega al INICIO — el arreglo se mantiene más reciente
+      // primero, igual que como llega del backend.
+      _history.unshift({
         date: payload.date, weight: payload.weight, bmi: payload.bmi,
         visceralFat: payload.visceralFat, bodyFatPct: payload.bodyFatPct,
         subcutaneousFatPct: payload.subcutaneousFatPct, metabolicAge: payload.metabolicAge,
@@ -394,6 +414,79 @@ const Profile = (() => {
     } finally {
       _savingComposition = false;
     }
+  }
+
+  // ── GRÁFICA DE TENDENCIA (peso + grasa corporal) ──────────────────────
+  function _renderTrendChart() {
+    const canvas = document.getElementById('body-trend-chart');
+    if (!canvas || !window.Chart) return;
+
+    const existing = Chart.getChart(canvas);
+    if (existing) existing.destroy();
+
+    // _history viene más-reciente-primero — para la gráfica se necesita
+    // orden cronológico (viejo → nuevo), y solo las últimas 10.
+    const chronological = _history.slice(0, 10).slice().reverse();
+    const labels = chronological.map(h => Utils.formatDateShort(h.date));
+    const weights = chronological.map(h => h.weight);
+    const fats = chronological.map(h => h.bodyFatPct);
+
+    const parent = canvas.parentElement;
+    const h = (parent && parent.offsetHeight > 0) ? parent.offsetHeight : 200;
+    const w = (parent && parent.offsetWidth  > 0) ? parent.offsetWidth  : 400;
+    canvas.width = w; canvas.height = h;
+
+    new Chart(canvas, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          {
+            label: 'Peso (kg)', data: weights, yAxisID: 'y',
+            borderColor: '#3B82F6', backgroundColor: 'rgba(59,130,246,0.08)',
+            tension: 0.4, fill: true, pointRadius: 4, borderWidth: 2,
+            pointBackgroundColor: '#3B82F6', pointBorderColor: 'transparent',
+            spanGaps: true,
+          },
+          {
+            label: 'Grasa corporal (%)', data: fats, yAxisID: 'y1',
+            borderColor: '#EF4444', backgroundColor: 'transparent',
+            tension: 0.4, fill: false, pointRadius: 4, borderWidth: 2,
+            pointBackgroundColor: '#EF4444', pointBorderColor: 'transparent',
+            borderDash: [4, 3], spanGaps: true,
+          },
+        ]
+      },
+      options: {
+        responsive: false,
+        maintainAspectRatio: false,
+        animation: { duration: 700, easing: 'easeOutQuart' },
+        layout: { padding: { top: 4, bottom: 4 } },
+        plugins: {
+          legend: { display: true, labels: { color: '#B4B2CC', font: { size: 10, family: 'Poppins' }, boxWidth: 10 } },
+          tooltip: {
+            backgroundColor: '#13131F', borderColor: 'rgba(255,255,255,0.08)', borderWidth: 1,
+            titleColor: '#B4B2CC', bodyColor: '#FFFFFF',
+          }
+        },
+        scales: {
+          x: {
+            ticks: { color: '#6E6D8A', font: { size: 9, family: 'Poppins' }, maxRotation: 0, maxTicksLimit: 8 },
+            grid: { color: 'rgba(255,255,255,0.04)' }, border: { display: false },
+          },
+          y: {
+            type: 'linear', position: 'left',
+            ticks: { color: '#3B82F6', font: { size: 10, family: 'Poppins' }, callback: v => v + 'kg' },
+            grid: { color: 'rgba(255,255,255,0.04)' }, border: { display: false },
+          },
+          y1: {
+            type: 'linear', position: 'right',
+            ticks: { color: '#EF4444', font: { size: 10, family: 'Poppins' }, callback: v => v + '%' },
+            grid: { display: false }, border: { display: false },
+          },
+        }
+      }
+    });
   }
 
   return { init, editBasics, saveBasics, openComposition, saveComposition };

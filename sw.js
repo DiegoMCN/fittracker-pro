@@ -4,7 +4,7 @@
 //    o el navegador seguirá sirviendo archivos viejos desde caché.
 // ═══════════════════════════════════════════
 
-const CACHE_VERSION = 'fittracker-v5';
+const CACHE_VERSION = 'fittracker-v3';
 
 const APP_SHELL = [
   './',
@@ -24,6 +24,7 @@ const APP_SHELL = [
   './js/modules/metrics.js',
   './js/modules/profile.js',
   './js/modules/import.js',
+  './js/modules/coach.js',
   './manifest.json',
   './assets/icons/icon-192.png',
   './assets/icons/icon-512.png',

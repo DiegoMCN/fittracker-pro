@@ -494,6 +494,10 @@ const Cardio = (() => {
       notes: stats.notes || '',
     };
 
+    // Se captura antes de limpiar state — se usa para ofrecer continuar
+    // con la parte de fuerza si ese día tiene ejercicios asociados.
+    const protocolDay = state?.protocol?.day;
+
     try {
       const result = await API.saveCardio(payload);
       API.clearCache();
@@ -501,10 +505,10 @@ const Cardio = (() => {
       if (result.queued) {
         Sounds.click(); Haptics.medium();
         Toast.warning('Sin conexión — guardado localmente. Se sincronizará solo.');
-        _showCardioSummary(payload, true);
+        _showCardioSummary(payload, true, protocolDay);
       } else {
         Sounds.sessionDone(); Haptics.done();
-        _showCardioSummary(payload, false);
+        _showCardioSummary(payload, false, protocolDay);
         RecordCelebration.checkCardio(stats);
       }
     } catch(err) {
@@ -518,7 +522,7 @@ const Cardio = (() => {
     state = null;
   }
 
-  function _showCardioSummary(payload, queued) {
+  function _showCardioSummary(payload, queued, protocolDay) {
     const container = document.getElementById('page-content');
     if (!container) return;
 
@@ -551,6 +555,11 @@ const Cardio = (() => {
             <div class="metric-value" style="color:var(--purple-light)">${payload.cadAvg}<span class="metric-unit">spm</span></div>
           </div>` : ''}
         </div>
+
+        ${(protocolDay != null && CONFIG.PLAN_EXERCISES?.[protocolDay]?.length > 0) ? `
+        <button class="btn btn-primary btn-lg animate-pulse-glow" style="width:100%;margin-bottom:12px" onclick="Workout.quickStartDay(${protocolDay})">
+          💪 Continuar con la parte de fuerza →
+        </button>` : ''}
 
         <div style="display:flex;gap:10px">
           <button class="btn btn-secondary" style="flex:1" onclick="Router.navigate('history')">Ver bitácora</button>

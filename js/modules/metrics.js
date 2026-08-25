@@ -88,7 +88,7 @@ const Metrics = (() => {
           <div class="card-header">
             <div>
               <div class="card-title">Métricas corporales</div>
-              <div class="card-subtitle">${_metricsHistory.length ? `Última: ${Utils.formatDate(_metricsHistory[_metricsHistory.length-1].date)}` : 'Sin registros todavía'}</div>
+              <div class="card-subtitle">${_metricsHistory.length ? `Última: ${Utils.formatDate(_metricsHistory[0].date)}` : 'Sin registros todavía'}</div>
             </div>
           </div>
           ${_metricsHistory.length === 0 ? `
@@ -99,20 +99,30 @@ const Metrics = (() => {
             </div>` : `
             <div class="grid-4" style="gap:10px;margin-bottom:16px">
               ${[
-                { key:'sprintSpeed', label:'Velocidad sprint', unit:'km/h', color:'var(--accent)' },
-                { key:'pullUps', label:'Dominadas', unit:'reps', color:'var(--danger)' },
-                { key:'cadAvg', label:'Cadencia', unit:'spm', color:'var(--purple-light)' },
-                { key:'deadHang', label:'Dead hang', unit:'seg', color:'var(--warning)' },
+                { key:'sprintSpeed', label:'Velocidad sprint', unit:'km/h', color:'var(--accent)', higherIsBetter:true },
+                { key:'pullUps', label:'Dominadas', unit:'reps', color:'var(--danger)', higherIsBetter:true },
+                { key:'cadAvg', label:'Cadencia', unit:'spm', color:'var(--purple-light)', higherIsBetter:true },
+                { key:'deadHang', label:'Dead hang', unit:'seg', color:'var(--warning)', higherIsBetter:true },
               ].map(f => {
-                const latest = _metricsHistory[_metricsHistory.length-1][f.key];
+                // _metricsHistory ya viene más-reciente-primero (index 0 = último)
+                const latest = _metricsHistory[0][f.key];
+                const prevEntry = _metricsHistory.slice(1).find(h => h[f.key] !== null && h[f.key] !== undefined);
+                const prevVal = prevEntry ? prevEntry[f.key] : null;
+                const delta = (latest !== null && latest !== undefined && prevVal !== null)
+                  ? Math.round((latest - prevVal) * 10) / 10 : null;
+                const isGood = delta !== null && (f.higherIsBetter ? delta > 0 : delta < 0);
+                const isBad  = delta !== null && (f.higherIsBetter ? delta < 0 : delta > 0);
                 return `<div style="background:var(--bg-input);border-radius:10px;padding:12px">
                   <div style="font-size:10px;color:var(--text-3);margin-bottom:4px">${f.label}</div>
                   <div style="font-size:18px;font-weight:700;color:${f.color}">${latest ?? '—'}<span style="font-size:10px;color:var(--text-3)"> ${f.unit}</span></div>
+                  ${delta !== null
+                    ? `<div style="font-size:10px;font-weight:600;margin-top:3px;color:${isGood ? 'var(--success)' : isBad ? 'var(--danger)' : 'var(--text-4)'}">${delta >= 0 ? '↑ +' : '↓ '}${Math.abs(delta)} vs anterior</div>`
+                    : `<div style="font-size:10px;color:var(--text-4);margin-top:3px">${latest !== null && latest !== undefined ? 'primer registro' : 'sin dato'}</div>`}
                 </div>`;
               }).join('')}
             </div>
             <div style="display:flex;flex-direction:column">
-              ${_metricsHistory.slice().reverse().slice(0, 8).map((h, i, arr) => `
+              ${_metricsHistory.slice(0, 8).map((h, i, arr) => `
                 <div style="display:flex;align-items:center;gap:14px;padding:8px 0;${i < arr.length-1 ? 'border-bottom:1px solid var(--border)' : ''}">
                   <div style="font-size:11px;color:var(--text-3);min-width:70px">${Utils.formatDateShort(h.date)}</div>
                   <div style="flex:1;display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--text-2)">
@@ -463,7 +473,9 @@ const Metrics = (() => {
         Sounds.serieDone(); Haptics.success();
         Toast.success('Métricas guardadas');
       }
-      _metricsHistory.push({
+      // Se agrega al INICIO — el arreglo se mantiene más reciente
+      // primero, igual que llega del backend.
+      _metricsHistory.unshift({
         date: payload.date, week: payload.week, weight: Number(payload.weight) || null,
         pullUps: Number(payload.pullUps) || null, sprintSpeed: Number(payload.sprintSpeed) || null,
         cadAvg: Number(payload.cadAvg) || null, deadHang: Number(payload.deadHang) || null,

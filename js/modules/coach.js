@@ -15,7 +15,10 @@ const Coach = (() => {
       </div>`;
 
     const res = await API.getCoachHistory(30);
-    _history = (res.history || []).slice().reverse(); // más reciente primero
+    // getCoachHistory() ya regresa más reciente primero — el reverse()
+    // extra que había aquí invertía el orden dos veces, causando que
+    // "hoy" nunca coincidiera con el primer elemento.
+    _history = res.history || [];
     _usingMock = API.isMock();
     render();
   }

@@ -236,12 +236,22 @@ const Import = (() => {
     return ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'][d.getDay()];
   }
 
+  // Semana del programa correspondiente a la FECHA de la fila, no a hoy —
+  // si importas sesiones viejas, cada una debe caer en su semana real.
+  function _weekForDate(dateStr) {
+    const start = new Date(CONFIG.PROGRAM_START_DATE + 'T00:00:00');
+    const d = new Date(dateStr + 'T00:00:00');
+    if (isNaN(d.getTime())) return CONFIG.CURRENT_PHASE.currentWeek;
+    const diffDays = Math.floor((d - start) / 86400000);
+    return Math.max(1, Math.floor(diffDays / 7) + 1);
+  }
+
   function _buildStrengthPayload(r) {
     return {
       date: r['Fecha'],
       day: _dayNameFromDate(r['Fecha']),
       type: 'Fuerza',
-      week: CONFIG.CURRENT_PHASE.currentWeek,
+      week: _weekForDate(r['Fecha']),
       phase: CONFIG.CURRENT_PHASE.name,
       duration: r['Duracion_min'] || '',
       kcalAct: r['Kcal_Activas'] || '',
@@ -270,7 +280,7 @@ const Import = (() => {
 
     return {
       date: r['Fecha'],
-      week: CONFIG.CURRENT_PHASE.currentWeek,
+      week: _weekForDate(r['Fecha']),
       phase: CONFIG.CURRENT_PHASE.name,
       type: r['Nombre'] || 'Cardio',
       protocol: r['Nombre'] || '',

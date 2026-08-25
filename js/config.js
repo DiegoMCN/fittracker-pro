@@ -173,7 +173,14 @@ const CONFIG = {
     hrAvgStrength: 140,
     cadenceAvg: 109,
     pullUpsAssist: 80,
-    plankMax: 45
+    plankMax: 45,
+    // Antes faltaban estos 3 — sin ellos, la barra de progreso caía a
+    // un punto de partida inventado (mitad de la meta) en vez del
+    // arranque real del programa, haciendo que el progreso se viera
+    // plano incluso cuando sí había datos.
+    speed: 12,      // velocidad máxima registrada al inicio (km/h)
+    pullUps: 0,     // cero dominadas limpias sin asistencia al inicio
+    deadHang: 0,    // nunca medido antes de este programa
   }
 };
 
