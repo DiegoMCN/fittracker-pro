@@ -407,6 +407,31 @@ const Cardio = (() => {
                 <input class="input" type="number" id="cs-fcpost2" placeholder="bpm">
               </div>
             </div>
+            <div style="font-size:10px;color:var(--text-3);margin-top:4px">Tiempo en cada zona (mm:ss) — pantalla "Heart Rate" del reloj</div>
+            <div class="input-row">
+              <div class="input-group" style="flex:1">
+                <label class="input-label">Zona 1</label>
+                <input class="input" id="cs-z1" placeholder="45:35">
+              </div>
+              <div class="input-group" style="flex:1">
+                <label class="input-label">Zona 2</label>
+                <input class="input" id="cs-z2" placeholder="01:36">
+              </div>
+              <div class="input-group" style="flex:1">
+                <label class="input-label">Zona 3</label>
+                <input class="input" id="cs-z3" placeholder="00:15">
+              </div>
+            </div>
+            <div class="input-row">
+              <div class="input-group" style="flex:1">
+                <label class="input-label">Zona 4</label>
+                <input class="input" id="cs-z4" placeholder="00:00">
+              </div>
+              <div class="input-group" style="flex:1">
+                <label class="input-label">Zona 5</label>
+                <input class="input" id="cs-z5" placeholder="00:00">
+              </div>
+            </div>
             <div class="input-row">
               <div class="input-group" style="flex:1">
                 <label class="input-label">Cadencia prom.</label>
@@ -463,6 +488,7 @@ const Cardio = (() => {
     _saveCardioSession({
       fcAvg: val('cs-fcavg'), fcPeak: val('cs-fcpeak'),
       fcPost0: val('cs-fcpost0'), fcPost1: val('cs-fcpost1'), fcPost2: val('cs-fcpost2'),
+      zone1: val('cs-z1'), zone2: val('cs-z2'), zone3: val('cs-z3'), zone4: val('cs-z4'), zone5: val('cs-z5'),
       cadAvg: val('cs-cadavg'), cadPeak: val('cs-cadpeak'),
       velMax: val('cs-velmax'), distance: val('cs-distance'),
       notes: val('cs-notes'),
@@ -489,6 +515,8 @@ const Cardio = (() => {
       fcAvg: stats.fcAvg || '', fcPeak: stats.fcPeak || '',
       fcPost1: stats.fcPost1 || '', fcPost2: stats.fcPost2 || '',
       rec2min,
+      zone1: stats.zone1 || '', zone2: stats.zone2 || '', zone3: stats.zone3 || '',
+      zone4: stats.zone4 || '', zone5: stats.zone5 || '',
       cadAvg: stats.cadAvg || '', cadPeak: stats.cadPeak || '',
       velMax: stats.velMax || '',
       notes: stats.notes || '',

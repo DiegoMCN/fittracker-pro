@@ -30,6 +30,7 @@ const History = (() => {
       calories: null, effort: null, volume: null, notes: c.notes, _kind: 'cardio',
       distance: c.distance, cadAvg: c.cadAvg, cadPeak: c.cadPeak, cadPeakVal: c.cadPeak,
       velMax: c.velMax, fcPost1: c.fcPost1, fcPost2: c.fcPost2, rec2min: c.rec2min,
+      zone1: c.zone1, zone2: c.zone2, zone3: c.zone3, zone4: c.zone4, zone5: c.zone5,
       coachNote: c.coachNote || '', rowNum: c.rowNum, protocol: c.protocol,
     }));
     const all = [...fromSessions, ...fromCardio];
@@ -377,6 +378,16 @@ const History = (() => {
               <input class="input" type="number" id="ce-fcpost2" value="${s.fcPost2 || ''}">
             </div>
           </div>
+          <div style="font-size:10px;color:var(--text-3);margin-top:4px">Tiempo en cada zona (mm:ss)</div>
+          <div class="input-row">
+            <div class="input-group" style="flex:1"><label class="input-label">Zona 1</label><input class="input" id="ce-z1" value="${s.zone1 || ''}"></div>
+            <div class="input-group" style="flex:1"><label class="input-label">Zona 2</label><input class="input" id="ce-z2" value="${s.zone2 || ''}"></div>
+            <div class="input-group" style="flex:1"><label class="input-label">Zona 3</label><input class="input" id="ce-z3" value="${s.zone3 || ''}"></div>
+          </div>
+          <div class="input-row">
+            <div class="input-group" style="flex:1"><label class="input-label">Zona 4</label><input class="input" id="ce-z4" value="${s.zone4 || ''}"></div>
+            <div class="input-group" style="flex:1"><label class="input-label">Zona 5</label><input class="input" id="ce-z5" value="${s.zone5 || ''}"></div>
+          </div>
           <div class="input-group">
             <label class="input-label">Notas</label>
             <input class="input" id="ce-notes" value="${(s.notes || '').replace(/"/g, '&quot;')}">
@@ -405,6 +416,7 @@ const History = (() => {
       fcAvg: val('ce-fcavg'), fcPeak: val('ce-fcpeak'),
       cadAvg: val('ce-cadavg'), cadPeak: val('ce-cadpeak'), velMax: val('ce-velmax'),
       fcPost0: val('ce-fcpost0'), fcPost1: val('ce-fcpost1'), fcPost2: val('ce-fcpost2'),
+      zone1: val('ce-z1'), zone2: val('ce-z2'), zone3: val('ce-z3'), zone4: val('ce-z4'), zone5: val('ce-z5'),
       notes: val('ce-notes'),
     };
 
