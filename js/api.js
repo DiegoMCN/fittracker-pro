@@ -217,32 +217,37 @@ const API = (() => {
     getCoachHistory: (limit = 30) =>
       _fetch({ action: 'getCoachHistory', limit }),
 
+    // retries: 0 en TODAS las escrituras — a diferencia de una lectura,
+    // reintentar un POST significa ejecutar el guardado (y la llamada a
+    // Gemini) por segunda vez. Si el guardado ya llegó al servidor pero
+    // la respuesta tardó (Gemini puede tomar varios segundos), un
+    // reintento automático duplicaría la fila en el Sheet.
     saveSession: (data) =>
-      _fetch({ action: 'saveSession', method: 'POST', ...data }, { useCache: false }),
+      _fetch({ action: 'saveSession', method: 'POST', ...data }, { useCache: false, retries: 0 }),
 
     saveCardio: (data) =>
-      _fetch({ action: 'saveCardio', method: 'POST', ...data }, { useCache: false }),
+      _fetch({ action: 'saveCardio', method: 'POST', ...data }, { useCache: false, retries: 0 }),
 
     saveMetrics: (data) =>
-      _fetch({ action: 'saveMetrics', method: 'POST', ...data }, { useCache: false }),
+      _fetch({ action: 'saveMetrics', method: 'POST', ...data }, { useCache: false, retries: 0 }),
 
     saveExercise: (data) =>
-      _fetch({ action: 'saveExercise', method: 'POST', ...data }, { useCache: false }),
+      _fetch({ action: 'saveExercise', method: 'POST', ...data }, { useCache: false, retries: 0 }),
 
     saveProfile: (data) =>
-      _fetch({ action: 'saveProfile', method: 'POST', ...data }, { useCache: false }),
+      _fetch({ action: 'saveProfile', method: 'POST', ...data }, { useCache: false, retries: 0 }),
 
     saveBodyComposition: (data) =>
-      _fetch({ action: 'saveBodyComposition', method: 'POST', ...data }, { useCache: false }),
+      _fetch({ action: 'saveBodyComposition', method: 'POST', ...data }, { useCache: false, retries: 0 }),
 
     updateSession: (data) =>
-      _fetch({ action: 'updateSession', method: 'POST', ...data }, { useCache: false }),
+      _fetch({ action: 'updateSession', method: 'POST', ...data }, { useCache: false, retries: 0 }),
 
     updateCardio: (data) =>
-      _fetch({ action: 'updateCardio', method: 'POST', ...data }, { useCache: false }),
+      _fetch({ action: 'updateCardio', method: 'POST', ...data }, { useCache: false, retries: 0 }),
 
     refreshDashboardInsight: () =>
-      _fetch({ action: 'refreshDashboardInsight', method: 'POST' }, { useCache: false }),
+      _fetch({ action: 'refreshDashboardInsight', method: 'POST' }, { useCache: false, retries: 0 }),
   };
 
 })();
