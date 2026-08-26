@@ -51,6 +51,7 @@ const Sounds = (() => {
       [523,659,784,1047].forEach((f,i) => _beep(f, 0.2, 'sine', 0.35, i * 0.1));
     },
     click()         { _beep(440, 0.05, 'square', 0.1); },
+    metronomeTick(accent)  { _beep(accent ? 1200 : 900, 0.035, 'square', accent ? 0.22 : 0.14); },
     error()         { _beep(200, 0.3, 'sawtooth', 0.2); },
   };
 })();
@@ -83,6 +84,57 @@ const WakeLock = (() => {
 
 // ── UTILS ─────────────────────────────────────────────────────────────────
 const Utils = {
+  // El Coach IA regresa texto con formato Markdown simple (headers,
+  // **negritas**, listas, líneas ---). Esto lo convierte a HTML seguro
+  // para mostrarlo bien en vez de los símbolos literales.
+  renderMarkdown(text) {
+    if (!text) return '';
+    const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const inline = s => esc(s).replace(/\*\*(.+?)\*\*/g, '<strong style="color:var(--text-1)">$1</strong>');
+
+    const lines = text.split('\n');
+    const out = [];
+    let buf = [];
+    const flush = () => {
+      if (buf.length) {
+        const joined = buf.join(' ').trim();
+        if (joined) out.push(`<p style="margin:0 0 10px;line-height:1.65">${inline(joined)}</p>`);
+        buf = [];
+      }
+    };
+
+    lines.forEach(raw => {
+      const line = raw.trim();
+      if (!line) { flush(); return; }
+      let m;
+      if (/^-{3,}$/.test(line)) { flush(); out.push('<hr style="border:none;border-top:1px solid var(--border);margin:16px 0">'); return; }
+      if ((m = line.match(/^###\s+(.+)/))) { flush(); out.push(`<div style="font-size:13px;font-weight:700;color:var(--accent);margin:14px 0 6px">${inline(m[1])}</div>`); return; }
+      if ((m = line.match(/^##\s+(.+)/)))  { flush(); out.push(`<div style="font-size:14px;font-weight:700;color:var(--accent);margin:16px 0 8px">${inline(m[1])}</div>`); return; }
+      if ((m = line.match(/^#\s+(.+)/)))   { flush(); out.push(`<div style="font-size:15px;font-weight:800;color:var(--accent);margin:18px 0 10px">${inline(m[1])}</div>`); return; }
+      if ((m = line.match(/^(\d+)\.\s+(.+)/))) { flush(); out.push(`<div style="display:flex;gap:8px;margin:6px 0;line-height:1.55"><span style="color:var(--accent);font-weight:700;flex-shrink:0">${m[1]}.</span><span>${inline(m[2])}</span></div>`); return; }
+      if ((m = line.match(/^[-*•]\s+(.+)/))) { flush(); out.push(`<div style="display:flex;gap:8px;margin:6px 0;line-height:1.55"><span style="color:var(--accent);flex-shrink:0">•</span><span>${inline(m[1])}</span></div>`); return; }
+      buf.push(line);
+    });
+    flush();
+    return out.join('');
+  },
+
+  // Versión plana (sin símbolos de markdown) para previews cortos donde
+  // no vale la pena renderizar HTML — ej. la tarjeta truncada del Dashboard.
+  stripMarkdown(text) {
+    if (!text) return '';
+    return text
+      .replace(/^#{1,3}\s+/gm, '')
+      .replace(/^-{3,}$/gm, '')
+      .replace(/\*\*(.+?)\*\*/g, '$1')
+      .replace(/^[-*•]\s+/gm, '')
+      .replace(/^\d+\.\s+/gm, '')
+      .replace(/\n{2,}/g, ' ')
+      .replace(/\n/g, ' ')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+  },
+
   // Formato de fecha — robusto ante fechas mal formadas (ej. si el Sheet
   // devuelve un timestamp ISO completo en vez de solo YYYY-MM-DD).
   formatDate(dateStr) {
