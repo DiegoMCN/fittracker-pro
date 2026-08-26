@@ -36,8 +36,9 @@ async function initDashboard(container) {
 
   // Última medición de METRICAS_CLAVE — para los objetivos de sprint,
   // dominadas, cadencia y dead hang (antes eran valores fijos de ejemplo).
+  // metricsRes.history ya viene más-reciente-primero — [0] es lo último.
   const metricsHistory = metricsRes.history || [];
-  const latestMetrics = metricsHistory.length ? metricsHistory[metricsHistory.length - 1] : null;
+  const latestMetrics = metricsHistory.length ? metricsHistory[0] : null;
 
   Store.set({ dashboard: data });
   _renderDashboard(container, data, doneDayNames, recordsRes, sesRes.sessions || [], latestMetrics);
@@ -84,7 +85,7 @@ function _renderDashboard(container, data, doneDayNames, records, allSessions, l
         <button class="btn btn-ghost btn-icon" style="width:24px;height:24px;font-size:13px" id="coach-refresh-btn"
           onclick="event.stopPropagation(); refreshDashboardCoach()" title="Recargar consejo con los datos más recientes del Sheet">🔄</button>
       </div>
-      <div style="font-size:13px;color:var(--text-1);line-height:1.5;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical" id="coach-insight-text">${data.dashboardInsight ? Utils.truncate(data.dashboardInsight, 160) : 'Sin consejo generado todavía — se crea automáticamente al terminar tu primera sesión del día.'}</div>
+      <div style="font-size:13px;color:var(--text-1);line-height:1.5;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical" id="coach-insight-text">${data.dashboardInsight ? Utils.truncate(Utils.stripMarkdown(data.dashboardInsight), 160) : 'Sin consejo generado todavía — se crea automáticamente al terminar tu primera sesión del día.'}</div>
       ${data.dashboardInsight ? `<div style="font-size:11px;color:var(--accent);font-weight:600;margin-top:6px">Ver análisis completo →</div>` : ''}
     </div>
   </div>
@@ -169,6 +170,10 @@ function _renderDashboard(container, data, doneDayNames, records, allSessions, l
             ? Utils.progress(current ?? -5, -5, -20)
             : hasData ? Utils.progress(current, baseline, g.target) : 0;
           const color = _goalColor(key);
+          // Con un rango grande (ej. 12→20 km/h) un avance real chico se
+          // ve como 3-5% — casi invisible. Se pone un piso mínimo visible
+          // para que se note que SÍ hay progreso, no que la barra está rota.
+          const displayPct = (hasData || key === 'hrRecovery') ? Math.max(pct, pct > 0 ? 4 : 0) : 100;
           return `
           <div>
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
@@ -184,7 +189,7 @@ function _renderDashboard(container, data, doneDayNames, records, allSessions, l
               </button>`}
             </div>
             <div class="progress-bar">
-              <div style="height:100%;border-radius:9999px;background:${hasData || key==='hrRecovery' ? color : 'var(--text-4)'};opacity:${hasData || key==='hrRecovery' ? 1 : 0.25};width:${hasData || key==='hrRecovery' ? pct : 100}%;transition:width 1s cubic-bezier(0.4,0,0.2,1);box-shadow:${hasData || key==='hrRecovery' ? `0 0 8px ${color}66` : 'none'}"></div>
+              <div style="height:100%;border-radius:9999px;background:${hasData || key==='hrRecovery' ? color : 'var(--text-4)'};opacity:${hasData || key==='hrRecovery' ? 1 : 0.25};width:${hasData || key==='hrRecovery' ? displayPct : 100}%;transition:width 1s cubic-bezier(0.4,0,0.2,1);box-shadow:${hasData || key==='hrRecovery' ? `0 0 8px ${color}66` : 'none'}"></div>
             </div>
           </div>`;
         }).join('')}
@@ -506,7 +511,7 @@ async function refreshDashboardCoach() {
     const res = await API.refreshDashboardInsight();
     API.clearCache();
     if (res.insight && textEl) {
-      textEl.textContent = Utils.truncate(res.insight, 160);
+      textEl.textContent = Utils.truncate(Utils.stripMarkdown(res.insight), 160);
       Sounds.serieDone(); Haptics.success();
       Toast.success('Consejo actualizado');
     } else {

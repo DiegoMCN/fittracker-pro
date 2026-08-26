@@ -6,9 +6,23 @@ const Cardio = (() => {
 
   let state = null;
   let tickInterval = null;
+  let metronomeInterval = null;
 
   const EFFORT_COLOR = { easy: 'var(--z2)', moderate: 'var(--z3)', max: 'var(--z5)', z2: 'var(--z2)' };
   const EFFORT_LABEL = { easy: 'Suave', moderate: 'Moderado', max: 'MÁXIMO', z2: 'Zona 2' };
+
+  // Ritmo sugerido del metrónomo — arranca cerca de tu cadencia base
+  // real y sube progresivamente semana a semana hacia la meta del
+  // programa (170 spm), sin pasarse. Es un algoritmo simple a propósito:
+  // rampa lineal acotada, fácil de ajustar si el ritmo se siente mal.
+  function _suggestedCadenceBpm() {
+    const base = CONFIG.BASELINE?.cadenceAvg || 109;
+    const target = CONFIG.GOALS?.cadence?.target || 170;
+    const week = CONFIG.CURRENT_PHASE?.currentWeek || 1;
+    const weeklyIncrement = 4; // spm que se le pide subir por semana
+    const suggested = base + (week - 1) * weeklyIncrement;
+    return Math.round(Math.min(suggested, target));
+  }
 
   function _freshState(protocolKey) {
     const protocol = CONFIG.HIT_PROTOCOLS[protocolKey];
@@ -23,6 +37,7 @@ const Cardio = (() => {
       paused: false,
       // Datos manuales que Diego captura post-sesión (desde su Apple Watch)
       manualStats: { fcAvg:'', fcPeak:'', fcPost1:'', fcPost2:'', cadAvg:'', cadPeak:'', velMax:'', distance:'' },
+      metronome: { active: false, bpm: _suggestedCadenceBpm() },
     };
   }
 
@@ -195,6 +210,7 @@ const Cardio = (() => {
 
   function _completeProtocol() {
     clearInterval(tickInterval);
+    _stopMetronome();
     document.removeEventListener('visibilitychange', _onCardioVisibilityChange);
     state.finished = true;
     Sounds.sessionDone(); Haptics.done();
@@ -272,6 +288,19 @@ const Cardio = (() => {
           `).join('')}
         </div>
 
+        <!-- Metrónomo de cadencia — ritmo sugerido según tu progreso -->
+        <div class="card ${state.metronome.active ? 'card-accent' : ''}" style="margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;gap:12px">
+          <div style="text-align:left">
+            <div style="font-size:10px;color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:.05em">🥁 Metrónomo de cadencia</div>
+            <div style="font-size:20px;font-weight:800;color:${state.metronome.active ? 'var(--accent)' : 'var(--text-1)'}">${state.metronome.bpm}<span style="font-size:11px;color:var(--text-3);font-weight:500"> spm</span></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <button class="btn btn-secondary btn-icon" onclick="Cardio.adjustMetronome(-5)">−</button>
+            <button class="btn btn-secondary btn-icon" onclick="Cardio.adjustMetronome(5)">+</button>
+            <button class="btn ${state.metronome.active ? 'btn-primary' : 'btn-secondary'}" onclick="Cardio.toggleMetronome()">${state.metronome.active ? '⏸ Pausar' : '▶ Activar'}</button>
+          </div>
+        </div>
+
         <div style="display:flex;gap:10px">
           <button class="btn btn-secondary" style="flex:1" onclick="Cardio.togglePause()">${state.paused ? '▶ Reanudar' : '⏸ Pausar'}</button>
           <button class="btn btn-ghost" style="flex:1" onclick="Cardio.skipPhase()">Saltar fase →</button>
@@ -308,13 +337,48 @@ const Cardio = (() => {
     Sounds.click();
     if (state.paused) {
       Toast.warning('Pausado'); WakeLock.release();
+      if (state.metronome.active) _stopMetronome(); // se pausa junto con la sesión
     } else {
       // Al reanudar, recalcula la hora de fin con el tiempo que quedaba
       // congelado — no sigue contando desde donde se pausó en reloj real.
       state.phaseEndAt = Date.now() + state.phaseRemaining * 1000;
       Toast.success('Reanudado'); WakeLock.request();
+      if (state.metronome.active) _startMetronomeTicking();
     }
     _renderActive();
+  }
+
+  // ── METRÓNOMO DE CADENCIA ─────────────────────────────────────────────
+  function toggleMetronome() {
+    state.metronome.active = !state.metronome.active;
+    Sounds.click();
+    if (state.metronome.active) _startMetronomeTicking();
+    else _stopMetronome();
+    _renderActive();
+  }
+
+  function adjustMetronome(delta) {
+    state.metronome.bpm = Math.max(60, Math.min(220, state.metronome.bpm + delta));
+    Sounds.click();
+    if (state.metronome.active) _startMetronomeTicking(); // reinicia con el nuevo ritmo
+    _renderActive();
+  }
+
+  function _startMetronomeTicking() {
+    if (metronomeInterval) clearInterval(metronomeInterval);
+    const intervalMs = 60000 / state.metronome.bpm;
+    let beat = 0;
+    // Acento cada 4 pasos, como un metrónomo musical — ayuda a sentir
+    // el patrón en vez de un clic monótono todo el rato.
+    metronomeInterval = setInterval(() => {
+      Sounds.metronomeTick(beat % 4 === 0);
+      beat++;
+    }, intervalMs);
+  }
+
+  function _stopMetronome() {
+    clearInterval(metronomeInterval);
+    metronomeInterval = null;
   }
 
   function skipPhase() {
@@ -326,6 +390,7 @@ const Cardio = (() => {
   function discardSession() {
     if (!confirm('¿Cancelar el protocolo sin guardar?')) return;
     clearInterval(tickInterval);
+    _stopMetronome();
     document.removeEventListener('visibilitychange', _onCardioVisibilityChange);
     WakeLock.release();
     state = null;
@@ -599,6 +664,7 @@ const Cardio = (() => {
   return {
     init, selectProtocol, backToPicker, startProtocol, togglePause, skipPhase,
     discardSession, onRouteChange, hasActiveSession, skipStats, saveStats,
+    toggleMetronome, adjustMetronome,
   };
 })();
 

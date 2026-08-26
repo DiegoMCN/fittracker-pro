@@ -567,18 +567,22 @@ const Workout = (() => {
     try {
       const res = await API.getStrengthHistory(name);
       const rows = res.history || [];
-      // Agrupa por fecha, toma el peso máximo de esa sesión, convertido siempre a kg
+      // Agrupa por fecha, toma la serie de MAYOR peso de esa sesión
+      // (convertido siempre a kg) y guarda también las reps de esa serie —
+      // así se puede mostrar "última vez: 8 reps @ 25kg", no solo el peso.
       const byDate = {};
       rows.forEach(r => {
         const raw = parseFloat(r.kg) || 0;
         if (raw <= 0) return;
         const kg = r.unit === 'lbs' ? Utils.lbsToKg(raw) : raw;
-        if (!byDate[r.date] || kg > byDate[r.date]) byDate[r.date] = kg;
+        if (!byDate[r.date] || kg > byDate[r.date].kg) {
+          byDate[r.date] = { kg, reps: r.repsReal || r.reps || null };
+        }
       });
       const values = Object.entries(byDate)
         .sort((a, b) => a[0].localeCompare(b[0]))
         .slice(-6)
-        .map(([date, kg]) => ({ date, kg }));
+        .map(([date, v]) => ({ date, kg: v.kg, reps: v.reps }));
       _historyCache[name] = { loading: false, values };
     } catch(e) {
       _historyCache[name] = { loading: false, values: [] };
@@ -588,6 +592,41 @@ const Workout = (() => {
     document.querySelectorAll(`[data-hist-name]`).forEach(el => {
       if (el.getAttribute('data-hist-name') === name) el.innerHTML = _sparkHTML(name);
     });
+
+    // Prellena el peso de las series que todavía están vacías con lo
+    // que usaste la última vez — así ves de un vistazo si vas a subir,
+    // mantener, o bajar, en vez de escribir a ciegas.
+    _prefillFromHistory(name);
+  }
+
+  function _prefillFromHistory(name) {
+    const entry = _historyCache[name];
+    if (!entry || !entry.values || entry.values.length === 0) return;
+    const last = entry.values[entry.values.length - 1];
+    if (!last.kg) return;
+
+    state.exercises.forEach((ex, exIdx) => {
+      if (ex.name !== name) return;
+      ex.sets.forEach((set, sIdx) => {
+        if (set.unit === 'PC' || set.unit === 'seg') return; // no aplica peso
+        if (set.kg) return; // ya tiene algo escrito (por el usuario o ya prellenado) — no lo pisa
+        // last.kg SIEMPRE viene ya normalizado a kg reales (la conversión
+        // pasó al armar el historial) — aquí solo se convierte de salida
+        // si la serie actual está en lbs, nunca al revés.
+        const converted = set.unit === 'lbs' ? Utils.kgToLbs(last.kg) : last.kg;
+        set.kg = Utils.formatNum(converted, 1);
+
+        // Actualiza el input directamente si ya está en pantalla, sin
+        // re-renderizar todo (evita perder el foco si el usuario está
+        // escribiendo en otro campo al mismo tiempo).
+        const input = document.getElementById(`kg-input-${exIdx}-${sIdx}`);
+        if (input && !input.value) {
+          input.value = set.kg;
+          input.style.color = 'var(--text-3)'; // gris — indica "sugerido", no confirmado
+          input.addEventListener('input', () => { input.style.color = ''; }, { once: true });
+        }
+      });
+    });
   }
 
   function _sparkHTML(name) {
@@ -596,7 +635,7 @@ const Workout = (() => {
       return `<div style="font-size:10px;color:var(--text-4)">Cargando historial...</div>`;
     }
     if (!entry.values || entry.values.length === 0) {
-      return `<div style="font-size:10px;color:var(--text-4)">Sin sesiones previas registradas</div>`;
+      return `<div style="font-size:10px;color:var(--text-4)">Sin sesiones previas registradas para este ejercicio</div>`;
     }
 
     const vals = entry.values;
@@ -624,9 +663,9 @@ const Workout = (() => {
           ${coords.map(c => `<circle cx="${c.x}" cy="${c.y}" r="2.2" fill="var(--accent)"/>`).join('')}
         </svg>
         <div>
-          <div style="font-size:13px;font-weight:700;color:var(--accent)">${Utils.formatNum(last.kg, 1)} kg</div>
+          <div style="font-size:13px;font-weight:700;color:var(--accent)">${last.reps ? `${last.reps} reps @ ` : ''}${Utils.formatNum(last.kg, 1)} kg</div>
           ${delta !== null
-            ? `<div style="font-size:10px;color:${delta >= 0 ? 'var(--success)' : 'var(--text-3)'}">${delta >= 0 ? '+' : ''}${Utils.formatNum(delta, 1)} kg vs anterior</div>`
+            ? `<div style="font-size:10px;color:${delta >= 0 ? 'var(--success)' : 'var(--text-3)'}">${delta >= 0 ? '+' : ''}${Utils.formatNum(delta, 1)} kg vs anterior · ${Utils.formatDateShort(last.date)}</div>`
             : `<div style="font-size:10px;color:var(--text-4)">${Utils.formatDateShort(last.date)}</div>`}
         </div>
       </div>`;

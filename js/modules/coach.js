@@ -51,7 +51,7 @@ const Coach = (() => {
                 Consejo de hoy · ${Utils.formatDate(Utils.today())}
               </div>
               ${today
-                ? `<div style="font-size:14px;color:var(--text-1);line-height:1.6">${today.note}</div>`
+                ? `<div style="font-size:14px;color:var(--text-1)">${Utils.renderMarkdown(today.note)}</div>`
                 : `<div style="font-size:13px;color:var(--text-3);line-height:1.6">
                     Todavía no hay consejo para hoy — se genera automáticamente en cuanto termines
                     tu primera sesión del día (fuerza o cardio). Analiza tu historial completo:
@@ -86,7 +86,7 @@ const Coach = (() => {
               <div style="font-size:10px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px">
                 ${Utils.formatDate(h.date)}
               </div>
-              <div style="font-size:13px;color:var(--text-2);line-height:1.6">${h.note}</div>
+              <div style="font-size:13px;color:var(--text-2)">${Utils.renderMarkdown(h.note)}</div>
             </div>`).join('')}
         </div>` : (today ? '' : `
         <div style="text-align:center;padding:40px 20px;color:var(--text-3)">
