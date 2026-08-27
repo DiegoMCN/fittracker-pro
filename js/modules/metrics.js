@@ -121,6 +121,10 @@ const Metrics = (() => {
                 </div>`;
               }).join('')}
             </div>
+            ${_metricsHistory.length >= 2 ? `
+            <div style="position:relative;height:180px;width:100%;overflow:hidden;margin-bottom:16px">
+              <canvas id="perf-trend-chart"></canvas>
+            </div>` : ''}
             <div style="display:flex;flex-direction:column">
               ${_metricsHistory.slice(0, 8).map((h, i, arr) => `
                 <div style="display:flex;align-items:center;gap:14px;padding:8px 0;${i < arr.length-1 ? 'border-bottom:1px solid var(--border)' : ''}">
@@ -264,6 +268,7 @@ const Metrics = (() => {
     _chartCadence();
     _chartVolume();
     _chartRecovery();
+    _chartPerformanceTrend();
   }
 
   function _chartFCStrength() {
@@ -371,6 +376,69 @@ const Metrics = (() => {
         scales: {
           x: { ...AXIS_STYLE, ticks: { ...AXIS_STYLE.ticks, maxRotation: 0 } },
           y: { ...AXIS_STYLE, ticks: { ...AXIS_STYLE.ticks, callback: v => v + ' bpm' } },
+        }
+      }
+    });
+  }
+
+  // Tendencia de velocidad/dominadas/cadencia/dead hang — complementa la
+  // gráfica de composición corporal de Perfil, mismo patrón robusto.
+  function _chartPerformanceTrend() {
+    const canvas = _setupCanvas('perf-trend-chart');
+    if (!canvas) return;
+    // _metricsHistory viene más-reciente-primero — para la gráfica se
+    // necesita orden cronológico.
+    const chronological = _metricsHistory.slice(0, 10).slice().reverse();
+    if (chronological.length < 2) { _emptyState(canvas); return; }
+
+    const labels = chronological.map(h => Utils.formatDateShort(h.date));
+
+    new Chart(canvas, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          {
+            label: 'Velocidad sprint (km/h)', data: chronological.map(h => h.sprintSpeed), yAxisID: 'yLeft',
+            borderColor: '#00FF87', backgroundColor: 'rgba(0,255,135,0.06)', fill: true,
+            tension: 0.4, pointRadius: 4, borderWidth: 2, pointBackgroundColor: '#00FF87',
+            pointBorderColor: 'transparent', spanGaps: true,
+          },
+          {
+            label: 'Cadencia (spm)', data: chronological.map(h => h.cadAvg), yAxisID: 'yRight',
+            borderColor: '#7C3AED', backgroundColor: 'transparent',
+            tension: 0.4, pointRadius: 4, borderWidth: 2, pointBackgroundColor: '#7C3AED',
+            pointBorderColor: 'transparent', borderDash: [4,3], spanGaps: true,
+          },
+          {
+            label: 'Dominadas', data: chronological.map(h => h.pullUps), yAxisID: 'yLeft',
+            borderColor: '#EF4444', backgroundColor: 'transparent',
+            tension: 0.4, pointRadius: 4, borderWidth: 2, pointBackgroundColor: '#EF4444',
+            pointBorderColor: 'transparent', borderDash: [2,2], spanGaps: true,
+          },
+        ]
+      },
+      options: {
+        ...CHART_BASE,
+        plugins: {
+          legend: { display: true, labels: { color: '#B4B2CC', font: { size: 10, family: 'Poppins' }, boxWidth: 10 } },
+          tooltip: { backgroundColor: '#13131F', borderColor: 'rgba(255,255,255,0.08)', borderWidth: 1, titleColor: '#B4B2CC', bodyColor: '#FFFFFF' }
+        },
+        scales: {
+          x: {
+            ticks: { color: '#6E6D8A', font: { size: 9, family: 'Poppins' }, maxRotation: 0, maxTicksLimit: 8 },
+            grid: { color: 'rgba(255,255,255,0.04)' }, border: { display: false },
+          },
+          yLeft: {
+            type: 'linear', position: 'left',
+            ticks: { color: '#6E6D8A', font: { size: 9, family: 'Poppins' } },
+            grid: { color: 'rgba(255,255,255,0.04)' }, border: { display: false },
+          },
+          yRight: {
+            type: 'linear', position: 'right',
+            ticks: { color: '#7C3AED', font: { size: 9, family: 'Poppins' } },
+            grid: { display: false }, border: { display: false },
+          },
         }
       }
     });

@@ -17,11 +17,12 @@ async function initDashboard(container) {
 
   // Se piden sin caché — recién guardaste una sesión y necesitas ver
   // el dato fresco, no uno de hace 5 minutos.
-  const [data, sesRes, recordsRes, metricsRes] = await Promise.all([
+  const [data, sesRes, recordsRes, metricsRes, cardioRes] = await Promise.all([
     API.getDashboard(),
     API.getSessions(30),
     API.getPersonalRecords(),
     API.getMetrics(),
+    API.getCardio(30),
   ]);
 
   // Sesiones reales de esta semana (Lun-Dom), para marcar los días
@@ -41,10 +42,10 @@ async function initDashboard(container) {
   const latestMetrics = metricsHistory.length ? metricsHistory[0] : null;
 
   Store.set({ dashboard: data });
-  _renderDashboard(container, data, doneDayNames, recordsRes, sesRes.sessions || [], latestMetrics);
+  _renderDashboard(container, data, doneDayNames, recordsRes, sesRes.sessions || [], latestMetrics, cardioRes.sessions || []);
 }
 
-function _renderDashboard(container, data, doneDayNames, records, allSessions, latestMetrics) {
+function _renderDashboard(container, data, doneDayNames, records, allSessions, latestMetrics, allCardio) {
   const today     = new Date().getDay();
   const nextSes   = CONFIG.WEEK_PLAN[today] || CONFIG.WEEK_PLAN[(today + 1) % 7];
   const goals     = CONFIG.GOALS;
@@ -236,6 +237,53 @@ function _renderDashboard(container, data, doneDayNames, records, allSessions, l
     </div>
   </div>
 
+  <!-- Roadmap de las 12 semanas del programa -->
+  <div class="card section">
+    <div class="card-header">
+      <div>
+        <div class="card-title">🗺️ Roadmap del programa</div>
+        <div class="card-subtitle">${CONFIG.PROGRAM_WEEKS} semanas · vas en la ${CONFIG.CURRENT_PHASE.currentWeek}</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:4px;margin-bottom:14px">
+      ${Array.from({length: CONFIG.PROGRAM_WEEKS}, (_, i) => i + 1).map(week => {
+        const phase = CONFIG.PROGRAM_PHASES.find(p => week >= p.startWeek && week <= p.endWeek);
+        const isPast = week < CONFIG.CURRENT_PHASE.currentWeek;
+        const isCurrent = week === CONFIG.CURRENT_PHASE.currentWeek;
+        const pending = phase?.pending;
+        return `
+        <div style="flex:1;text-align:center" title="${pending ? 'Fase por definir' : (phase?.name || '')}">
+          <div style="height:8px;border-radius:4px;margin-bottom:5px;
+            background:${pending ? 'transparent' : isCurrent ? 'var(--accent)' : isPast ? 'var(--accent)' : 'var(--bg-input)'};
+            opacity:${pending ? 1 : isCurrent ? 1 : isPast ? 0.55 : 0.3};
+            border:${pending ? '1px dashed var(--border)' : 'none'};
+            ${isCurrent ? 'box-shadow:0 0 10px var(--accent);animation:pulse-glow 2s infinite;' : ''}"></div>
+          <div style="font-size:9px;color:${isCurrent ? 'var(--accent)' : 'var(--text-4)'};font-weight:${isCurrent ? '700' : '500'}">${week}</div>
+        </div>`;
+      }).join('')}
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      ${CONFIG.PROGRAM_PHASES.map(phase => `
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;
+          background:${phase.pending ? 'transparent' : 'var(--bg-input)'};
+          border:${phase.pending ? '1px dashed var(--border)' : 'none'}">
+          <div style="width:28px;height:28px;border-radius:8px;flex-shrink:0;display:flex;align-items:center;justify-content:center;
+            background:${phase.pending ? 'transparent' : 'var(--accent-glow)'};
+            border:${phase.pending ? '1px dashed var(--text-4)' : 'none'};
+            font-size:12px;font-weight:700;color:${phase.pending ? 'var(--text-4)' : 'var(--accent)'}">${phase.number ?? '?'}</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:12px;font-weight:600;color:${phase.pending ? 'var(--text-3)' : 'var(--text-1)'}">
+              ${phase.pending ? 'Por definir' : `Fase ${phase.number} — ${phase.name}`}
+              <span style="font-weight:400;color:var(--text-4)"> · Sem ${phase.startWeek}-${phase.endWeek}</span>
+            </div>
+            ${phase.focus ? `<div style="font-size:10px;color:var(--text-3)">${phase.focus}</div>` : ''}
+          </div>
+          ${(CONFIG.CURRENT_PHASE.currentWeek >= phase.startWeek && CONFIG.CURRENT_PHASE.currentWeek <= phase.endWeek) ? `
+          <span style="font-size:9px;background:var(--accent);color:var(--bg-primary);padding:3px 8px;border-radius:99px;font-weight:700;flex-shrink:0">AQUÍ</span>` : ''}
+        </div>`).join('')}
+    </div>
+  </div>
+
   <!-- Fila secundaria -->
   <div class="grid-2 section">
 
@@ -277,6 +325,42 @@ function _renderDashboard(container, data, doneDayNames, records, allSessions, l
     </div>
 
   </div>
+
+  <!-- Comparativa semanal — esta semana vs. la pasada -->
+  ${(() => {
+    const wc = _weeklyComparison(allSessions, allCardio);
+    const rows = [
+      { label: 'Sesiones', unit: '', this: wc.thisWeek.sessions, last: wc.lastWeek.sessions, higherIsBetter: true, icon: '📅' },
+      { label: 'Volumen movido', unit: 'kg', this: wc.thisWeek.volume, last: wc.lastWeek.volume, higherIsBetter: true, icon: '🏋️' },
+      { label: 'FC promedio', unit: 'bpm', this: wc.thisWeek.avgFC, last: wc.lastWeek.avgFC, higherIsBetter: false, icon: '❤️' },
+      { label: 'Esfuerzo promedio', unit: '/10', this: wc.thisWeek.avgEffort, last: wc.lastWeek.avgEffort, higherIsBetter: null, icon: '💦' },
+    ];
+    return `
+    <div class="card section">
+      <div class="card-header">
+        <div>
+          <div class="card-title">📈 Esta semana vs. la pasada</div>
+          <div class="card-subtitle">Comparativa automática, sin IA — cálculo directo de tus datos</div>
+        </div>
+      </div>
+      <div class="grid-4" style="gap:10px">
+        ${rows.map(r => {
+          const hasBoth = r.this !== null && r.this !== undefined && r.last !== null && r.last !== undefined;
+          const delta = hasBoth ? Math.round((r.this - r.last) * 10) / 10 : null;
+          const isGood = delta !== null && r.higherIsBetter !== null && (r.higherIsBetter ? delta > 0 : delta < 0);
+          const isBad  = delta !== null && r.higherIsBetter !== null && (r.higherIsBetter ? delta < 0 : delta > 0);
+          return `
+          <div style="background:var(--bg-input);border-radius:10px;padding:12px">
+            <div style="font-size:10px;color:var(--text-3);margin-bottom:4px">${r.icon} ${r.label}</div>
+            <div style="font-size:18px;font-weight:700;color:var(--text-1)">${r.this ?? '—'}<span style="font-size:10px;color:var(--text-3)"> ${r.unit}</span></div>
+            <div style="font-size:10px;color:var(--text-4);margin-top:2px">Pasada: ${r.last ?? '—'} ${r.unit}</div>
+            ${delta !== null ? `
+            <div style="font-size:10px;font-weight:600;margin-top:3px;color:${isGood ? 'var(--success)' : isBad ? 'var(--danger)' : 'var(--text-4)'}">${delta >= 0 ? '↑ +' : '↓ '}${Math.abs(delta)} vs. semana pasada</div>` : ''}
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+  })()}
 
   <!-- Quick Actions -->
   <div class="section">
@@ -461,6 +545,39 @@ function _renderFCChart(allSessions) {
 }
 
 // Helpers
+// Comparativa esta semana vs. la pasada — cálculo puro con datos que ya
+// tenemos en memoria, sin llamar a Gemini ni al Sheet de nuevo.
+function _weeklyComparison(allSessions, allCardio) {
+  const now = new Date();
+  const thisMonday = new Date(now);
+  thisMonday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+  thisMonday.setHours(0,0,0,0);
+  const lastMonday = new Date(thisMonday);
+  lastMonday.setDate(thisMonday.getDate() - 7);
+
+  const fmt = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  const thisMondayStr = fmt(thisMonday);
+  const lastMondayStr = fmt(lastMonday);
+
+  const all = [...(allSessions || []), ...(allCardio || [])];
+  const thisWeek = all.filter(s => s.date >= thisMondayStr);
+  const lastWeek = all.filter(s => s.date >= lastMondayStr && s.date < thisMondayStr);
+
+  const summarize = (rows) => {
+    const withFC = rows.filter(r => r.fcAvg);
+    const withVol = rows.filter(r => r.volume);
+    const withEffort = rows.filter(r => r.effort);
+    return {
+      sessions: rows.length,
+      volume: withVol.reduce((sum, r) => sum + (r.volume || 0), 0),
+      avgFC: withFC.length ? Math.round(withFC.reduce((s,r) => s + r.fcAvg, 0) / withFC.length) : null,
+      avgEffort: withEffort.length ? Math.round((withEffort.reduce((s,r) => s + r.effort, 0) / withEffort.length) * 10) / 10 : null,
+    };
+  };
+
+  return { thisWeek: summarize(thisWeek), lastWeek: summarize(lastWeek) };
+}
+
 function _getCurrentGoalValue(key, latestMetrics) {
   const fieldMap = {
     sprintSpeed: 'sprintSpeed',

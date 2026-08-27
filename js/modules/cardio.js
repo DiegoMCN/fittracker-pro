@@ -290,9 +290,12 @@ const Cardio = (() => {
 
         <!-- Metrónomo de cadencia — ritmo sugerido según tu progreso -->
         <div class="card ${state.metronome.active ? 'card-accent' : ''}" style="margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;gap:12px">
-          <div style="text-align:left">
-            <div style="font-size:10px;color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:.05em">🥁 Metrónomo de cadencia</div>
-            <div style="font-size:20px;font-weight:800;color:${state.metronome.active ? 'var(--accent)' : 'var(--text-1)'}">${state.metronome.bpm}<span style="font-size:11px;color:var(--text-3);font-weight:500"> spm</span></div>
+          <div style="display:flex;align-items:center;gap:12px">
+            <div id="metronome-beat-dot" style="width:16px;height:16px;border-radius:50%;background:var(--accent);flex-shrink:0;opacity:${state.metronome.active ? 1 : 0.25}"></div>
+            <div style="text-align:left">
+              <div style="font-size:10px;color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:.05em">🥁 Metrónomo de cadencia</div>
+              <div style="font-size:20px;font-weight:800;color:${state.metronome.active ? 'var(--accent)' : 'var(--text-1)'}">${state.metronome.bpm}<span style="font-size:11px;color:var(--text-3);font-weight:500"> spm</span></div>
+            </div>
           </div>
           <div style="display:flex;align-items:center;gap:6px">
             <button class="btn btn-secondary btn-icon" onclick="Cardio.adjustMetronome(-5)">−</button>
@@ -371,9 +374,22 @@ const Cardio = (() => {
     // Acento cada 4 pasos, como un metrónomo musical — ayuda a sentir
     // el patrón en vez de un clic monótono todo el rato.
     metronomeInterval = setInterval(() => {
-      Sounds.metronomeTick(beat % 4 === 0);
+      const accent = beat % 4 === 0;
+      Sounds.metronomeTick(accent);
+      _pulseBeatDot(accent);
       beat++;
     }, intervalMs);
+  }
+
+  // Pulso visual sincronizado con cada beat — por si el sonido no se
+  // escucha bien (bocina del celular, ambiente ruidoso del gym, etc.),
+  // el punto se agranda y brilla igual en cada paso.
+  function _pulseBeatDot(accent) {
+    const dot = document.getElementById('metronome-beat-dot');
+    if (!dot) return;
+    dot.style.animation = 'none';
+    void dot.offsetWidth; // fuerza reflow para poder reiniciar la animación
+    dot.style.animation = accent ? 'metronomePulseAccent 0.18s ease-out' : 'metronomePulse 0.18s ease-out';
   }
 
   function _stopMetronome() {
