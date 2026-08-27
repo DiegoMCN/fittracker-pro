@@ -172,6 +172,9 @@ const API = (() => {
         plankMax: { value: 0, date: null },
       },
       getCoachHistory: { history: [] },
+      getMealLog: { log: [] },
+      getBrandChoices: { brands: [] },
+      getNutritionPlan: { meals: {}, equivalents: {}, brandGuides: {}, generalRecommendations: [] },
     };
 
     return mocks[action] || { data: [] };
@@ -217,6 +220,15 @@ const API = (() => {
     getCoachHistory: (limit = 30) =>
       _fetch({ action: 'getCoachHistory', limit }),
 
+    getMealLog: (limit = 30) =>
+      _fetch({ action: 'getMealLog', limit }),
+
+    getBrandChoices: () =>
+      _fetch({ action: 'getBrandChoices' }),
+
+    getNutritionPlan: () =>
+      _fetch({ action: 'getNutritionPlan' }),
+
     // retries: 0 en TODAS las escrituras — a diferencia de una lectura,
     // reintentar un POST significa ejecutar el guardado (y la llamada a
     // Gemini) por segunda vez. Si el guardado ya llegó al servidor pero
@@ -248,6 +260,18 @@ const API = (() => {
 
     refreshDashboardInsight: () =>
       _fetch({ action: 'refreshDashboardInsight', method: 'POST' }, { useCache: false, retries: 0 }),
+
+    saveMealLog: (data) =>
+      _fetch({ action: 'saveMealLog', method: 'POST', ...data }, { useCache: false, retries: 0 }),
+
+    // Sube la foto por separado — si el guardado del texto ya funcionó
+    // pero la foto falla (imagen pesada, conexión lenta), no se pierde
+    // el registro de la comida.
+    saveMealPhoto: (data) =>
+      _fetch({ action: 'saveMealPhoto', method: 'POST', ...data }, { useCache: false, retries: 0 }),
+
+    saveBrandChoice: (data) =>
+      _fetch({ action: 'saveBrandChoice', method: 'POST', ...data }, { useCache: false, retries: 0 }),
   };
 
 })();

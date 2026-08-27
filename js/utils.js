@@ -362,6 +362,7 @@ const Router = (() => {
       const titles = {
         dashboard: { title: 'Dashboard', sub: 'Tu progreso en tiempo real' },
         coach:     { title: 'Coach IA', sub: 'Tu evaluación diaria personalizada' },
+        nutricion: { title: 'Nutrición', sub: 'Tu plan, equivalentes y marcas' },
         workout:   { title: 'Sesión Activa', sub: 'Modo entrenamiento' },
         cardio:    { title: 'Cardio / HIT', sub: 'Sprint & zona cardíaca' },
         plan:      { title: 'Plan Semanal', sub: 'Semana 3 · Fase 1' },

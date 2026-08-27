@@ -56,6 +56,18 @@ const CONFIG = {
     }
   },
 
+  // Programa completo de 12 semanas — solo la Fase 1 está definida por
+  // ahora (Diego aún no decide las fases 2-4, posiblemente con su
+  // nutrióloga). Las semanas 5-12 se muestran como "por definir" en el
+  // roadmap en vez de inventarles un nombre — mejor honesto que falso.
+  PROGRAM_WEEKS: 12,
+  PROGRAM_PHASES: [
+    { number: 1, name: 'Reconstrucción', startWeek: 1, endWeek: 4, pending: false,
+      focus: 'Base de fuerza y técnica, recuperación cardiovascular' },
+    { number: null, name: 'Por definir', startWeek: 5, endWeek: 12, pending: true,
+      focus: '' },
+  ],
+
   // Objetivos
   GOALS: {
     sprintSpeed:  { current: 12,  target: 20,  unit: 'km/h',  label: 'Velocidad sprint' },
@@ -181,7 +193,18 @@ const CONFIG = {
     speed: 12,      // velocidad máxima registrada al inicio (km/h)
     pullUps: 0,     // cero dominadas limpias sin asistencia al inicio
     deadHang: 0,    // nunca medido antes de este programa
-  }
+  },
+
+  // Solo el metadato trivial se queda en código — el CONTENIDO del plan
+  // (comidas, equivalentes, guía de marcas, recomendaciones) vive en el
+  // Sheet (PLAN_COMIDAS, EQUIVALENTES, GUIA_MARCAS,
+  // RECOMENDACIONES_NUTRICION) para que Diego lo edite ahí directo
+  // cuando su nutrióloga le dé un plan nuevo, sin tocar código.
+  NUTRITION_META: {
+    nutritionist: 'Viany Ramírez',
+    planDate: '2026-06-17',
+    nextAppointment: '2026-07-18',
+  },
 };
 
 // Freeze para evitar mutaciones accidentales
