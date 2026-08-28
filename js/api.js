@@ -175,6 +175,8 @@ const API = (() => {
       getMealLog: { log: [] },
       getBrandChoices: { brands: [] },
       getNutritionPlan: { meals: {}, equivalents: {}, brandGuides: {}, generalRecommendations: [] },
+      getMeasurements: { history: [] },
+      getExerciseProgress: { exercises: [] },
     };
 
     return mocks[action] || { data: [] };
@@ -229,6 +231,12 @@ const API = (() => {
     getNutritionPlan: () =>
       _fetch({ action: 'getNutritionPlan' }),
 
+    getMeasurements: (limit = 30) =>
+      _fetch({ action: 'getMeasurements', limit }),
+
+    getExerciseProgress: () =>
+      _fetch({ action: 'getExerciseProgress' }),
+
     // retries: 0 en TODAS las escrituras — a diferencia de una lectura,
     // reintentar un POST significa ejecutar el guardado (y la llamada a
     // Gemini) por segunda vez. Si el guardado ya llegó al servidor pero
@@ -272,6 +280,9 @@ const API = (() => {
 
     saveBrandChoice: (data) =>
       _fetch({ action: 'saveBrandChoice', method: 'POST', ...data }, { useCache: false, retries: 0 }),
+
+    saveMeasurements: (data) =>
+      _fetch({ action: 'saveMeasurements', method: 'POST', ...data }, { useCache: false, retries: 0 }),
   };
 
 })();

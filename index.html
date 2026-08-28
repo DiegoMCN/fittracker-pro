@@ -72,6 +72,10 @@
         <span class="nav-icon">📚</span>
         <span>Bitácora</span>
       </div>
+      <div class="nav-item" data-page="calendario" onclick="Router.navigate('calendario')">
+        <span class="nav-icon">🗓️</span>
+        <span>Calendario</span>
+      </div>
       <div class="nav-item" data-page="metrics" onclick="Router.navigate('metrics')">
         <span class="nav-icon">📈</span>
         <span>Métricas</span>
@@ -202,6 +206,7 @@
 <script src="js/modules/import.js"></script>
 <script src="js/modules/coach.js"></script>
 <script src="js/modules/nutricion.js"></script>
+<script src="js/modules/calendario.js"></script>
 
 <script>
 // ── KEYBOARD SHORTCUTS ────────────────────────────────────────────────────
@@ -265,6 +270,7 @@ function showQuickLog() {
 Router.register('dashboard', (container) => initDashboard(container));
 Router.register('coach',     (container) => initCoach(container));
 Router.register('nutricion', (container) => initNutricion(container));
+Router.register('calendario', (container) => initCalendario(container));
 Router.register('workout',   (container) => initWorkout(container));
 Router.register('cardio',    (container) => initCardio(container));
 Router.register('plan',      (container) => initPlan(container));

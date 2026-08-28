@@ -8,6 +8,9 @@ const Metrics = (() => {
   let _cardio = [];
   let _metricsHistory = [];
   let _records = {};
+  let _exerciseProgress = [];
+  let _volumeByGroup = [];
+  let _exerciseFilter = 'Todos';
   let _usingMock = false;
 
   async function init(container) {
@@ -19,14 +22,16 @@ const Metrics = (() => {
         ${[1,2].map(() => `<div class="skeleton" style="height:280px;border-radius:16px"></div>`).join('')}
       </div>`;
 
-    const [sesRes, cardioRes, metricsRes] = await Promise.all([
-      API.getSessions(50), API.getCardio(50), API.getMetrics(),
+    const [sesRes, cardioRes, metricsRes, progressRes] = await Promise.all([
+      API.getSessions(50), API.getCardio(50), API.getMetrics(), API.getExerciseProgress(),
     ]);
 
     _sessions = (sesRes.sessions || []).slice().reverse(); // orden cronológico
     _cardio   = (cardioRes.sessions || []).slice().reverse();
     _metricsHistory = metricsRes.history || [];
     _records  = metricsRes.records || {};
+    _exerciseProgress = progressRes.exercises || [];
+    _volumeByGroup = progressRes.volumeByGroup || [];
     _usingMock = API.isMock();
 
     render();
@@ -195,12 +200,92 @@ const Metrics = (() => {
         </div>
 
         <!-- Récords por ejercicio -->
-        <div class="card">
+        <div class="card" style="margin-bottom:24px">
           <div class="card-header">
             <div class="card-title">🏆 Récords por ejercicio</div>
             <div class="card-subtitle">Mejor carga registrada</div>
           </div>
           ${_renderExerciseRecords()}
+        </div>
+
+        <!-- Distribución de volumen por grupo muscular — sí es un "parte del
+             todo" real, por eso aquí sí tiene sentido usar pastel/dona -->
+        ${_volumeByGroup.length > 0 ? `
+        <div class="card" style="margin-bottom:24px">
+          <div class="card-header">
+            <div>
+              <div class="card-title">🥧 Distribución de volumen</div>
+              <div class="card-subtitle">De qué grupo muscular viene tu volumen total movido</div>
+            </div>
+          </div>
+          <div style="position:relative;height:220px;width:100%;overflow:hidden">
+            <canvas id="volume-distribution-chart"></canvas>
+          </div>
+        </div>
+
+        <!-- Mapa muscular — SVG con cada músculo como figura independiente,
+             pintado con más intensidad según cuánto volumen ha recibido -->
+        <div class="card" style="margin-bottom:24px">
+          <div class="card-header">
+            <div>
+              <div class="card-title">🧍 Mapa muscular</div>
+              <div class="card-subtitle">Qué tanto has trabajado cada grupo — más verde, más volumen</div>
+            </div>
+          </div>
+          <div id="muscle-map-wrap" style="display:flex;justify-content:center;gap:24px;flex-wrap:wrap">
+            <div style="text-align:center">
+              ${_muscleMapSVG('front')}
+              <div style="font-size:10px;color:var(--text-3);margin-top:4px">Frente</div>
+            </div>
+            <div style="text-align:center">
+              ${_muscleMapSVG('back')}
+              <div style="font-size:10px;color:var(--text-3);margin-top:4px">Espalda</div>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:12px">
+            <span style="font-size:9px;color:var(--text-4)">Menos</span>
+            <div style="width:90px;height:6px;border-radius:3px;background:linear-gradient(90deg, rgba(0,255,135,0.15), rgba(0,255,135,0.9))"></div>
+            <span style="font-size:9px;color:var(--text-4)">Más</span>
+            <span style="font-size:9px;color:var(--text-4);margin-left:10px">· Gris = sin datos</span>
+          </div>
+        </div>` : ''}
+
+        <!-- Progresión por ejercicio — una gráfica de línea por cada uno,
+             filtrable por grupo para que no se sature la sección -->
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">📈 Progresión por ejercicio</div>
+              <div class="card-subtitle">Peso a través del tiempo, uno por ejercicio</div>
+            </div>
+          </div>
+          ${_exerciseProgress.length === 0 ? `
+            <div style="text-align:center;padding:20px;color:var(--text-3);font-size:12px">Todavía no hay suficiente historial por ejercicio</div>` : `
+            <div style="display:flex;gap:6px;margin-bottom:16px;overflow-x:auto;padding-bottom:4px">
+              ${_exerciseFilterGroups().map(g => `
+                <button class="btn ${_exerciseFilter === g ? 'btn-primary' : 'btn-secondary'} btn-sm" style="flex-shrink:0" onclick="Metrics.setExerciseFilter('${g.replace(/'/g,"\\'")}')">${g}</button>
+              `).join('')}
+            </div>
+            <div class="grid-2" style="gap:12px" id="exercise-charts-grid">
+              ${_filteredExercises().map((ex, i) => `
+                <div class="card" style="background:var(--bg-input);border-color:transparent">
+                  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+                    <div style="min-width:0">
+                      <div style="font-size:12px;font-weight:600;color:var(--text-1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${ex.name}</div>
+                      <div style="font-size:9px;color:var(--text-3)">${ex.sessions} sesiones</div>
+                    </div>
+                    <div style="text-align:right;flex-shrink:0">
+                      <div style="font-size:13px;font-weight:700;color:var(--text-1)">${ex.lastKg}<span style="font-size:9px;color:var(--text-3)">kg</span></div>
+                      <div style="font-size:9px;font-weight:600;color:${ex.changePct > 0 ? 'var(--success)' : ex.changePct < 0 ? 'var(--danger)' : 'var(--text-4)'}">${ex.changePct > 0 ? '+' : ''}${ex.changePct}%</div>
+                    </div>
+                  </div>
+                  <div style="position:relative;height:90px;width:100%;overflow:hidden">
+                    <canvas id="ex-mini-chart-${i}"></canvas>
+                  </div>
+                </div>`).join('')}
+            </div>
+            ${_filteredExercises().length === 0 ? `
+              <div style="text-align:center;padding:20px;color:var(--text-3);font-size:12px">Sin ejercicios en este filtro</div>` : ''}`}
         </div>
 
       </div>`;
@@ -263,12 +348,31 @@ const Metrics = (() => {
     border: { display: false },
   };
 
+  function _exerciseFilterGroups() {
+    const groups = new Set(_exerciseProgress.map(ex => ex.group).filter(Boolean));
+    return ['Todos', ...Array.from(groups).sort()];
+  }
+
+  function _filteredExercises() {
+    if (_exerciseFilter === 'Todos') return _exerciseProgress;
+    return _exerciseProgress.filter(ex => ex.group === _exerciseFilter);
+  }
+
+  function setExerciseFilter(group) {
+    _exerciseFilter = group;
+    Sounds.click();
+    render();
+  }
+
   function _renderCharts() {
     _chartFCStrength();
     _chartCadence();
     _chartVolume();
     _chartRecovery();
     _chartPerformanceTrend();
+    _chartVolumeDistribution();
+    _paintMuscleMap();
+    _filteredExercises().forEach((ex, i) => _chartExerciseMini(ex, i));
   }
 
   function _chartFCStrength() {
@@ -444,6 +548,187 @@ const Metrics = (() => {
     });
   }
 
+  // Dona — distribución de volumen total por grupo muscular. Es un
+  // "parte del todo" real (suma 100%), por eso aquí sí se presta un
+  // pastel/dona en vez de forzarlo donde no aporta.
+  function _chartVolumeDistribution() {
+    const canvas = _setupCanvas('volume-distribution-chart');
+    if (!canvas || _volumeByGroup.length === 0) return;
+
+    const palette = ['#00FF87','#7C3AED','#06B6D4','#F59E0B','#EF4444','#EC4899','#3B82F6','#10B981','#F97316'];
+    const top = _volumeByGroup.slice(0, 8);
+    const total = top.reduce((s, g) => s + g.volume, 0);
+
+    new Chart(canvas, {
+      type: 'doughnut',
+      data: {
+        labels: top.map(g => g.group),
+        datasets: [{
+          data: top.map(g => g.volume),
+          backgroundColor: palette,
+          borderColor: '#0A0A12',
+          borderWidth: 2,
+        }]
+      },
+      options: {
+        responsive: false, maintainAspectRatio: false,
+        animation: { duration: 700, easing: 'easeOutQuart' },
+        cutout: '62%',
+        plugins: {
+          legend: {
+            display: true, position: 'right',
+            labels: { color: '#B4B2CC', font: { size: 10, family: 'Poppins' }, boxWidth: 10, padding: 8 }
+          },
+          tooltip: {
+            backgroundColor: '#13131F', borderColor: 'rgba(255,255,255,0.08)', borderWidth: 1,
+            titleColor: '#B4B2CC', bodyColor: '#FFFFFF',
+            callbacks: {
+              label: (ctx) => {
+                const pct = total > 0 ? Math.round((ctx.parsed / total) * 100) : 0;
+                return ` ${ctx.label}: ${Math.round(ctx.parsed)} kg (${pct}%)`;
+              }
+            }
+          }
+        }
+      }
+    });
+  }
+
+  // Una gráfica de línea chica por ejercicio — usa los puntos que ya
+  // vienen de getExerciseProgress(), sin pedir historial aparte por
+  // cada ejercicio (evitaría 15-20 llamadas solo para pintar esto).
+  function _chartExerciseMini(ex, i) {
+    const canvas = _setupCanvas(`ex-mini-chart-${i}`);
+    if (!canvas || !ex.points || ex.points.length === 0) return;
+
+    const color = ex.changePct > 0 ? '#00FF87' : ex.changePct < 0 ? '#EF4444' : '#6E6D8A';
+
+    canvas.style.cursor = 'pointer';
+    canvas.onclick = () => Metrics.openExerciseDetail(ex.name);
+
+    new Chart(canvas, {
+      type: 'line',
+      data: {
+        labels: ex.points.map(p => Utils.formatDateShort(p.date)),
+        datasets: [{
+          data: ex.points.map(p => p.kg),
+          borderColor: color, backgroundColor: color + '15', fill: true,
+          tension: 0.4, pointRadius: ex.points.length > 1 ? 2 : 4, borderWidth: 2,
+          pointBackgroundColor: color, pointBorderColor: 'transparent',
+        }]
+      },
+      options: {
+        responsive: false, maintainAspectRatio: false,
+        animation: { duration: 500, easing: 'easeOutQuart' },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#13131F', borderColor: 'rgba(255,255,255,0.08)', borderWidth: 1,
+            titleColor: '#B4B2CC', bodyColor: '#FFFFFF',
+            callbacks: { label: (ctx) => `${ctx.parsed.y} kg` }
+          }
+        },
+        scales: {
+          x: { display: false },
+          y: { display: false },
+        }
+      }
+    });
+  }
+
+  // ── MAPA MUSCULAR SVG ──────────────────────────────────────────────
+  // Cada músculo es una figura SVG independiente con clase mm-<Grupo>,
+  // así se puede pintar y poner tooltip por grupo sin librerías extra.
+  // Las clases coinciden con los nombres de grupo del catálogo de
+  // ejercicios (Pecho, Espalda, Biceps...).
+  function _muscleMapSVG(view) {
+    const N = 'fill="rgba(255,255,255,0.045)"';  // partes neutras (cabeza, manos...)
+    const M = 'fill="rgba(255,255,255,0.07)"';   // músculos sin datos todavía
+
+    if (view === 'front') {
+      return `
+      <svg viewBox="0 0 120 185" width="130" height="200" style="overflow:visible">
+        <circle cx="60" cy="13" r="9" ${N}/>
+        <rect x="55" y="21" width="10" height="7" rx="3" ${N}/>
+        <ellipse cx="39" cy="37" rx="8.5" ry="6.5" class="mm-Hombro" ${M}/>
+        <ellipse cx="81" cy="37" rx="8.5" ry="6.5" class="mm-Hombro" ${M}/>
+        <rect x="45" y="33" width="14.5" height="13" rx="5" class="mm-Pecho" ${M}/>
+        <rect x="60.5" y="33" width="14.5" height="13" rx="5" class="mm-Pecho" ${M}/>
+        <ellipse cx="34" cy="57" rx="6" ry="10" class="mm-Biceps" ${M}/>
+        <ellipse cx="86" cy="57" rx="6" ry="10" class="mm-Biceps" ${M}/>
+        <ellipse cx="30" cy="79" rx="5" ry="10" ${N}/>
+        <ellipse cx="90" cy="79" rx="5" ry="10" ${N}/>
+        <rect x="48" y="48" width="24" height="30" rx="8" class="mm-Core" ${M}/>
+        <rect x="47" y="80" width="26" height="11" rx="5" ${N}/>
+        <ellipse cx="52" cy="112" rx="8" ry="20" class="mm-Cuadriceps" ${M}/>
+        <ellipse cx="68" cy="112" rx="8" ry="20" class="mm-Cuadriceps" ${M}/>
+        <ellipse cx="51" cy="152" rx="5.5" ry="16" ${N}/>
+        <ellipse cx="69" cy="152" rx="5.5" ry="16" ${N}/>
+        <ellipse cx="50" cy="174" rx="5" ry="3.5" ${N}/>
+        <ellipse cx="70" cy="174" rx="5" ry="3.5" ${N}/>
+      </svg>`;
+    }
+
+    return `
+      <svg viewBox="0 0 120 185" width="130" height="200" style="overflow:visible">
+        <circle cx="60" cy="13" r="9" ${N}/>
+        <rect x="55" y="21" width="10" height="7" rx="3" ${N}/>
+        <rect x="49" y="27" width="22" height="8" rx="4" class="mm-Espalda" ${M}/>
+        <ellipse cx="39" cy="37" rx="8.5" ry="6.5" class="mm-Hombro" ${M}/>
+        <ellipse cx="81" cy="37" rx="8.5" ry="6.5" class="mm-Hombro" ${M}/>
+        <rect x="45" y="36" width="14.5" height="26" rx="6" class="mm-Espalda" ${M}/>
+        <rect x="60.5" y="36" width="14.5" height="26" rx="6" class="mm-Espalda" ${M}/>
+        <ellipse cx="34" cy="57" rx="6" ry="10" class="mm-Triceps" ${M}/>
+        <ellipse cx="86" cy="57" rx="6" ry="10" class="mm-Triceps" ${M}/>
+        <ellipse cx="30" cy="79" rx="5" ry="10" ${N}/>
+        <ellipse cx="90" cy="79" rx="5" ry="10" ${N}/>
+        <rect x="51" y="64" width="18" height="13" rx="5" class="mm-Espalda" ${M}/>
+        <rect x="47" y="79" width="12.5" height="13" rx="6" ${N}/>
+        <rect x="60.5" y="79" width="12.5" height="13" rx="6" ${N}/>
+        <ellipse cx="52" cy="114" rx="8" ry="19" class="mm-Isquiotibiales" ${M}/>
+        <ellipse cx="68" cy="114" rx="8" ry="19" class="mm-Isquiotibiales" ${M}/>
+        <ellipse cx="51" cy="152" rx="6" ry="15" class="mm-Pantorrillas" ${M}/>
+        <ellipse cx="69" cy="152" rx="6" ry="15" class="mm-Pantorrillas" ${M}/>
+        <ellipse cx="50" cy="174" rx="5" ry="3.5" ${N}/>
+        <ellipse cx="70" cy="174" rx="5" ry="3.5" ${N}/>
+      </svg>`;
+  }
+
+  function _paintMuscleMap() {
+    const wrap = document.getElementById('muscle-map-wrap');
+    if (!wrap || _volumeByGroup.length === 0) return;
+
+    // Volumen por grupo → volumen por región del cuerpo. "Calistenia"
+    // no es un músculo — el trabajo de Diego ahí es jalón (dominadas,
+    // australianas), así que se reparte: espalda 50%, bíceps 30%,
+    // core 20%. Ajustable si cambia su enfoque de calistenia.
+    const vol = {};
+    _volumeByGroup.forEach(g => {
+      if (g.group === 'Calistenia') {
+        vol['Espalda'] = (vol['Espalda'] || 0) + g.volume * 0.5;
+        vol['Biceps']  = (vol['Biceps']  || 0) + g.volume * 0.3;
+        vol['Core']    = (vol['Core']    || 0) + g.volume * 0.2;
+      } else if (g.group !== 'Cardio' && g.group !== 'Otro') {
+        vol[g.group] = (vol[g.group] || 0) + g.volume;
+      }
+    });
+
+    const values = Object.values(vol);
+    if (values.length === 0) return;
+    const max = Math.max(...values);
+    const total = values.reduce((a, b) => a + b, 0);
+
+    Object.entries(vol).forEach(([group, v]) => {
+      const intensity = max > 0 ? v / max : 0;
+      const alpha = (0.15 + 0.75 * intensity).toFixed(2);
+      const pct = total > 0 ? Math.round((v / total) * 100) : 0;
+      wrap.querySelectorAll('.mm-' + group).forEach(el => {
+        el.setAttribute('fill', `rgba(0,255,135,${alpha})`);
+        el.innerHTML = `<title>${group}: ${Math.round(v)} kg (${pct}%)</title>`;
+      });
+    });
+  }
+
   function _emptyState(canvas) {
     const ctx = canvas.getContext('2d');
     ctx.font = '12px Poppins';
@@ -560,7 +845,80 @@ const Metrics = (() => {
     }
   }
 
-  return { init, openCapture, saveCapture };
+  // ── DETALLE DE PROGRESIÓN POR EJERCICIO ───────────────────────────────
+  async function openExerciseDetail(name) {
+    Sounds.click();
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal" style="max-width:520px">
+        <div class="modal-header">
+          <div class="modal-title">${name}</div>
+          <button class="btn btn-ghost btn-icon" onclick="this.closest('.modal-overlay').remove()">✕</button>
+        </div>
+        <div class="modal-body">
+          <div style="position:relative;height:220px;width:100%;overflow:hidden" id="ex-detail-chart-wrap">
+            <div class="skeleton" style="height:100%;border-radius:10px"></div>
+          </div>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+
+    try {
+      const res = await API.getStrengthHistory(name);
+      const rows = res.history || [];
+      const byDate = {};
+      rows.forEach(r => {
+        const raw = parseFloat(r.kg) || 0;
+        if (raw <= 0) return;
+        const kg = r.unit === 'lbs' ? Utils.lbsToKg(raw) : raw;
+        if (!byDate[r.date] || kg > byDate[r.date]) byDate[r.date] = kg;
+      });
+      const points = Object.entries(byDate).sort((a,b) => a[0].localeCompare(b[0]));
+
+      const wrap = document.getElementById('ex-detail-chart-wrap');
+      if (!wrap) return; // el usuario cerró el modal antes de que cargara
+
+      if (points.length === 0) {
+        wrap.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-3);font-size:12px">Sin historial de peso para este ejercicio</div>`;
+        return;
+      }
+
+      wrap.innerHTML = `<canvas id="ex-detail-chart"></canvas>`;
+      const canvas = document.getElementById('ex-detail-chart');
+      const w = wrap.offsetWidth || 460, h = wrap.offsetHeight || 220;
+      canvas.width = w; canvas.height = h;
+
+      new Chart(canvas, {
+        type: 'line',
+        data: {
+          labels: points.map(p => Utils.formatDateShort(p[0])),
+          datasets: [{
+            label: 'Peso (kg)', data: points.map(p => p[1]),
+            borderColor: '#00FF87', backgroundColor: 'rgba(0,255,135,0.08)', fill: true,
+            tension: 0.4, pointRadius: 4, borderWidth: 2, pointBackgroundColor: '#00FF87', pointBorderColor: 'transparent',
+          }]
+        },
+        options: {
+          responsive: false, maintainAspectRatio: false,
+          animation: { duration: 600, easing: 'easeOutQuart' },
+          plugins: {
+            legend: { display: false },
+            tooltip: { backgroundColor: '#13131F', borderColor: 'rgba(255,255,255,0.08)', borderWidth: 1, titleColor: '#B4B2CC', bodyColor: '#FFFFFF' }
+          },
+          scales: {
+            x: { ticks: { color: '#6E6D8A', font: { size: 9, family: 'Poppins' }, maxRotation: 0, maxTicksLimit: 8 }, grid: { color: 'rgba(255,255,255,0.04)' }, border: { display: false } },
+            y: { ticks: { color: '#6E6D8A', font: { size: 10, family: 'Poppins' }, callback: v => v + 'kg' }, grid: { color: 'rgba(255,255,255,0.04)' }, border: { display: false } },
+          }
+        }
+      });
+    } catch(e) {
+      const wrap = document.getElementById('ex-detail-chart-wrap');
+      if (wrap) wrap.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-3);font-size:12px">Error al cargar el historial</div>`;
+    }
+  }
+
+  return { init, openCapture, saveCapture, openExerciseDetail, setExerciseFilter };
 })();
 
 function initMetrics(container) { Metrics.init(container); }

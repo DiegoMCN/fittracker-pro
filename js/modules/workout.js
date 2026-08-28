@@ -51,6 +51,7 @@ const Workout = (() => {
         videoUrl: ex.videoUrl || '',
         instructions: ex.instructions || '',
         collapsed: false,
+        supersetGroup: null, // 'A', 'B'... si está ligado a otro ejercicio
         sets: Array.from({ length: ex.sets }, () => ({
           repsTarget: `${ex.repsMin}-${ex.repsMax}`,
           reps: '', kg: '', unit: ex.unit, kind: _defaultKind(ex.name), done: false,
@@ -261,15 +262,18 @@ const Workout = (() => {
     _hydrateHistories();
   }
 
+  const SUPERSET_COLORS = { A: '#7C3AED', B: '#06B6D4', C: '#F59E0B', D: '#EC4899', E: '#10B981' };
+
   function _exerciseCard(ex, exIdx, previewMode) {
     const tagMap = { 'Pecho':'chest','Espalda':'back','Biceps':'biceps','Triceps':'triceps','Hombro':'shoulder',
       'Cuadriceps':'legs','Isquiotibiales':'legs','Pantorrillas':'legs','Core':'core','Calistenia':'cali','Cardio':'cardio' };
     const tagCls = tagMap[ex.group] || 'core';
     const doneCount = ex.sets.filter(s => s.done).length;
     const allDone = doneCount === ex.sets.length && ex.sets.length > 0;
+    const ssColor = ex.supersetGroup ? SUPERSET_COLORS[ex.supersetGroup] : null;
 
     return `
-    <div class="card ${allDone ? 'card-accent' : ''}" data-ex-idx="${exIdx}" style="transition:all 0.3s">
+    <div class="card ${allDone ? 'card-accent' : ''}" data-ex-idx="${exIdx}" style="transition:all 0.3s;${ssColor ? `border-left:3px solid ${ssColor}` : ''}">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:${ex.collapsed ? '0' : '14px'}">
         <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;cursor:pointer" onclick="Workout.toggleCollapse(${exIdx})">
           <span style="font-size:16px;color:var(--text-3)">${ex.collapsed ? '▸' : '▾'}</span>
@@ -279,11 +283,15 @@ const Workout = (() => {
             </div>
             <div style="display:flex;align-items:center;gap:8px;margin-top:3px">
               <span class="tag tag-${tagCls}">${ex.group}</span>
+              ${ex.supersetGroup ? `<span style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:99px;background:${ssColor}22;color:${ssColor}">🔗 Superset ${ex.supersetGroup}</span>` : ''}
               <span style="font-size:11px;color:var(--text-3)">${previewMode ? ex.sets.length + ' series planeadas' : doneCount + '/' + ex.sets.length + ' series'}</span>
             </div>
           </div>
         </div>
-        <button class="btn btn-ghost btn-icon" onclick="Workout.removeExercise(${exIdx})" title="Eliminar ejercicio">🗑</button>
+        <div style="display:flex;gap:2px;flex-shrink:0">
+          <button class="btn btn-ghost btn-icon" onclick="Workout.toggleSupersetPicker(${exIdx})" title="${ex.supersetGroup ? 'Cambiar/quitar superset' : 'Ligar como superset'}" style="${ex.supersetGroup ? `color:${ssColor}` : ''}">🔗</button>
+          <button class="btn btn-ghost btn-icon" onclick="Workout.removeExercise(${exIdx})" title="Eliminar ejercicio">🗑</button>
+        </div>
       </div>
 
       ${!ex.collapsed ? `
@@ -697,6 +705,64 @@ const Workout = (() => {
     _rerender();
   }
 
+  // ── SUPERSETS (agrupación visual — no cambia cómo se registran los sets) ──
+  function toggleSupersetPicker(exIdx) {
+    const ex = state.exercises[exIdx];
+    Sounds.click();
+
+    // Ya está agrupado — ofrece desligar directo, sin abrir el picker
+    if (ex.supersetGroup) {
+      if (confirm(`"${ex.name}" está en Superset ${ex.supersetGroup}. ¿Quitarlo del grupo?`)) {
+        ex.supersetGroup = null;
+        _rerender();
+      }
+      return;
+    }
+
+    const others = state.exercises
+      .map((e, i) => ({ e, i }))
+      .filter(({ e, i }) => i !== exIdx && !e.supersetGroup);
+
+    if (others.length === 0) {
+      Toast.warning('No hay otro ejercicio libre para agrupar — agrega uno más o quita otro superset primero');
+      return;
+    }
+
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal" style="max-width:420px">
+        <div class="modal-header">
+          <div class="modal-title">🔗 Ligar "${ex.name}" con...</div>
+          <button class="btn btn-ghost btn-icon" onclick="this.closest('.modal-overlay').remove()">✕</button>
+        </div>
+        <div class="modal-body" style="display:flex;flex-direction:column;gap:8px">
+          <p style="font-size:11px;color:var(--text-3)">Se van a mostrar conectados como Superset — sigues registrando cada serie normal, solo queda claro que van seguidas.</p>
+          ${others.map(({ e, i }) => `
+            <div class="nutri-option-card" style="padding:12px" onclick="Workout.linkSuperset(${exIdx}, ${i})">
+              <div style="font-size:13px;font-weight:600;color:var(--text-1)">${e.name}</div>
+              <div style="font-size:10px;color:var(--text-3)">${e.group}</div>
+            </div>`).join('')}
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+  }
+
+  function linkSuperset(exIdxA, exIdxB) {
+    // Usa la primera letra libre (A, B, C...) que no esté ya en uso
+    const usedLetters = new Set(state.exercises.map(e => e.supersetGroup).filter(Boolean));
+    let letter = 'A';
+    for (const l of ['A','B','C','D','E']) { if (!usedLetters.has(l)) { letter = l; break; } }
+
+    state.exercises[exIdxA].supersetGroup = letter;
+    state.exercises[exIdxB].supersetGroup = letter;
+
+    document.querySelector('.modal-overlay')?.remove();
+    Sounds.serieDone(); Haptics.success();
+    Toast.success(`Superset ${letter} creado 🔗`);
+    _rerender();
+  }
+
   function removeExercise(exIdx) {
     if (!confirm(`¿Eliminar "${state.exercises[exIdx].name}" de la sesión?`)) return;
     state.exercises.splice(exIdx, 1);
@@ -763,7 +829,7 @@ const Workout = (() => {
     if (!name) { Sounds.error(); Toast.error('Escribe un nombre para el ejercicio'); return; }
 
     state.exercises.push({
-      id: Utils.uid(), name, group, notes: '', collapsed: false,
+      id: Utils.uid(), name, group, notes: '', collapsed: false, supersetGroup: null,
       sets: Array.from({ length: sets }, () => ({ repsTarget: reps, reps: '', kg: '', unit, kind: _defaultKind(name), done: false })),
     });
 
@@ -1029,7 +1095,7 @@ const Workout = (() => {
       zone4: stats.zone4 || '', zone5: stats.zone5 || '',
       fcPost0: stats.fcPost0 || '', fcPost1: stats.fcPost1 || '', fcPost2: stats.fcPost2 || '',
       exercises: state.exercises.map(ex => ({
-        name: ex.name, group: ex.group,
+        name: ex.name, group: ex.group, supersetGroup: ex.supersetGroup || '',
         sets: ex.sets.filter(s => s.done).map(s => ({
           repsReal: s.reps, kg: s.kg, unit: s.unit, kind: s.kind, repsObj: s.repsTarget
         }))
@@ -1112,7 +1178,7 @@ const Workout = (() => {
     init, selectDay, backToPicker, startSession, toggleCollapse, updateSet, changeUnit, setKind, refreshKgHint, toggleSetDone, addSet,
     removeExercise, addExercise, confirmAddExercise, startRest, addRestTime,
     skipRest, customRest, finishSession, saveFinalSession, toggleAdvancedStats, discardSession, cleanup, onRouteChange,
-    quickStartDay,
+    quickStartDay, toggleSupersetPicker, linkSuperset,
     hasActiveSession: () => !!(state && state.started && !state.finished),
   };
 })();

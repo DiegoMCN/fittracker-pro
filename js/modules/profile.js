@@ -6,6 +6,7 @@ const Profile = (() => {
 
   let _profile = null;
   let _history = [];
+  let _measurements = [];
   let _usingMock = false;
 
   const FIELDS = [
@@ -30,9 +31,10 @@ const Profile = (() => {
       </div>
       <div class="skeleton" style="height:300px;border-radius:16px"></div>`;
 
-    const [profRes, histRes] = await Promise.all([API.getProfile(), API.getBodyComposition(30)]);
+    const [profRes, histRes, measRes] = await Promise.all([API.getProfile(), API.getBodyComposition(30), API.getMeasurements(30)]);
     _profile = profRes.profile;
     _history = histRes.history || [];
+    _measurements = measRes.history || [];
     _usingMock = API.isMock();
     render();
   }
@@ -181,9 +183,59 @@ const Profile = (() => {
               </div>`).join('')}
           </div>
         </div>` : ''}
+
+        <!-- Medidas con cinta métrica -->
+        <div class="card" style="margin-top:20px">
+          <div class="card-header">
+            <div>
+              <div class="card-title">📏 Medidas corporales</div>
+              <div class="card-subtitle">${_measurements.length ? `Última: ${Utils.formatDate(_measurements[0].date)}` : 'Cinta métrica — cintura, pecho, brazos, piernas'}</div>
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="Profile.openMeasurements()">+ Nueva medida</button>
+          </div>
+          ${_measurements.length === 0 ? `
+            <div style="text-align:center;padding:30px 20px;color:var(--text-3)">
+              <div style="font-size:32px;margin-bottom:10px">📏</div>
+              <div style="font-size:12px">Registra tu primera medida para empezar a ver tu evolución</div>
+            </div>` : (() => {
+              const latest = _measurements[0];
+              const prev = _measurements.length > 1 ? _measurements[1] : null;
+              const fields = [
+                { key: 'cintura', label: 'Cintura' }, { key: 'pecho', label: 'Pecho' },
+                { key: 'cadera', label: 'Cadera' }, { key: 'brazoIzq', label: 'Brazo izq.' },
+                { key: 'brazoDer', label: 'Brazo der.' }, { key: 'musloIzq', label: 'Muslo izq.' },
+                { key: 'musloDer', label: 'Muslo der.' }, { key: 'pantorrilla', label: 'Pantorrilla' },
+              ];
+              // Ratio cintura/cadera — indicador de riesgo cardiovascular,
+              // gratis una vez que ya tienes ambos datos capturados.
+              const whr = (latest.cintura && latest.cadera) ? Math.round((latest.cintura / latest.cadera) * 100) / 100 : null;
+              return `
+              ${whr ? `
+              <div style="background:var(--bg-input);border-radius:10px;padding:10px 14px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between">
+                <div style="font-size:11px;color:var(--text-3)">Ratio cintura/cadera</div>
+                <div style="font-size:15px;font-weight:700;color:${whr <= 0.9 ? 'var(--success)' : whr <= 0.95 ? 'var(--warning)' : 'var(--danger)'}">${whr} <span style="font-size:10px;color:var(--text-4);font-weight:400">${whr <= 0.9 ? '(bajo riesgo)' : whr <= 0.95 ? '(riesgo moderado)' : '(riesgo elevado)'}</span></div>
+              </div>` : ''}
+              <div class="grid-4" style="gap:10px;margin-bottom:16px">
+                ${fields.filter(f => latest[f.key]).map(f => {
+                  const delta = (prev && prev[f.key]) ? Math.round((latest[f.key] - prev[f.key]) * 10) / 10 : null;
+                  return `
+                  <div style="background:var(--bg-input);border-radius:10px;padding:10px">
+                    <div style="font-size:9px;color:var(--text-3);margin-bottom:3px">${f.label}</div>
+                    <div style="font-size:15px;font-weight:700;color:var(--text-1)">${latest[f.key]}<span style="font-size:9px;color:var(--text-3)"> cm</span></div>
+                    ${delta !== null ? `<div style="font-size:9px;color:${delta < 0 ? 'var(--success)' : delta > 0 ? 'var(--text-3)' : 'var(--text-4)'}">${delta > 0 ? '+' : ''}${delta} cm</div>` : ''}
+                  </div>`;
+                }).join('')}
+              </div>
+              ${_measurements.length >= 2 ? `
+              <div style="position:relative;height:180px;width:100%;overflow:hidden;margin-bottom:6px">
+                <canvas id="measurements-chart"></canvas>
+              </div>` : ''}`;
+            })()}
+        </div>
       </div>`;
 
     setTimeout(_renderTrendChart, 100);
+    setTimeout(_renderMeasurementsChart, 100);
   }
 
   // ── EDITAR DATOS BÁSICOS ──────────────────────────────────────────────
@@ -489,7 +541,132 @@ const Profile = (() => {
     });
   }
 
-  return { init, editBasics, saveBasics, openComposition, saveComposition };
+  // ── GRÁFICA DE MEDIDAS (cintura, pecho, brazo, muslo) ─────────────────
+  function _renderMeasurementsChart() {
+    const canvas = document.getElementById('measurements-chart');
+    if (!canvas || !window.Chart) return;
+
+    const existing = Chart.getChart(canvas);
+    if (existing) existing.destroy();
+
+    const chronological = _measurements.slice(0, 10).slice().reverse();
+    const labels = chronological.map(h => Utils.formatDateShort(h.date));
+
+    const parent = canvas.parentElement;
+    const h = (parent && parent.offsetHeight > 0) ? parent.offsetHeight : 180;
+    const w = (parent && parent.offsetWidth  > 0) ? parent.offsetWidth  : 400;
+    canvas.width = w; canvas.height = h;
+
+    new Chart(canvas, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          { label: 'Cintura', data: chronological.map(m => m.cintura), borderColor: '#EF4444', backgroundColor: 'rgba(239,68,68,0.06)', fill: true, tension: 0.4, pointRadius: 4, borderWidth: 2, pointBackgroundColor: '#EF4444', pointBorderColor: 'transparent', spanGaps: true },
+          { label: 'Pecho', data: chronological.map(m => m.pecho), borderColor: '#3B82F6', backgroundColor: 'transparent', tension: 0.4, pointRadius: 4, borderWidth: 2, pointBackgroundColor: '#3B82F6', pointBorderColor: 'transparent', borderDash: [4,3], spanGaps: true },
+          { label: 'Brazo der.', data: chronological.map(m => m.brazoDer), borderColor: '#00FF87', backgroundColor: 'transparent', tension: 0.4, pointRadius: 4, borderWidth: 2, pointBackgroundColor: '#00FF87', pointBorderColor: 'transparent', borderDash: [2,2], spanGaps: true },
+        ]
+      },
+      options: {
+        responsive: false, maintainAspectRatio: false,
+        animation: { duration: 700, easing: 'easeOutQuart' },
+        layout: { padding: { top: 4, bottom: 4 } },
+        plugins: {
+          legend: { display: true, labels: { color: '#B4B2CC', font: { size: 10, family: 'Poppins' }, boxWidth: 10 } },
+          tooltip: { backgroundColor: '#13131F', borderColor: 'rgba(255,255,255,0.08)', borderWidth: 1, titleColor: '#B4B2CC', bodyColor: '#FFFFFF' }
+        },
+        scales: {
+          x: { ticks: { color: '#6E6D8A', font: { size: 9, family: 'Poppins' }, maxRotation: 0, maxTicksLimit: 8 }, grid: { color: 'rgba(255,255,255,0.04)' }, border: { display: false } },
+          y: { ticks: { color: '#6E6D8A', font: { size: 9, family: 'Poppins' }, callback: v => v + 'cm' }, grid: { color: 'rgba(255,255,255,0.04)' }, border: { display: false } },
+        }
+      }
+    });
+  }
+
+  // ── REGISTRAR MEDIDAS ──────────────────────────────────────────────
+  function openMeasurements() {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal" style="max-width:460px">
+        <div class="modal-header">
+          <div class="modal-title">📏 Nueva medida</div>
+          <button class="btn btn-ghost btn-icon" onclick="this.closest('.modal-overlay').remove()">✕</button>
+        </div>
+        <div class="modal-body" style="display:flex;flex-direction:column;gap:12px">
+          <p style="font-size:11px;color:var(--text-3)">Todo en centímetros. Llena solo lo que midas hoy — no es necesario todo cada vez.</p>
+          <div class="input-row">
+            <div class="input-group" style="flex:1"><label class="input-label">Cintura</label><input class="input" type="number" step="0.1" id="me-cintura"></div>
+            <div class="input-group" style="flex:1"><label class="input-label">Pecho</label><input class="input" type="number" step="0.1" id="me-pecho"></div>
+            <div class="input-group" style="flex:1"><label class="input-label">Cadera</label><input class="input" type="number" step="0.1" id="me-cadera"></div>
+          </div>
+          <div class="input-row">
+            <div class="input-group" style="flex:1"><label class="input-label">Brazo izq.</label><input class="input" type="number" step="0.1" id="me-brazoizq"></div>
+            <div class="input-group" style="flex:1"><label class="input-label">Brazo der.</label><input class="input" type="number" step="0.1" id="me-brazoder"></div>
+          </div>
+          <div class="input-row">
+            <div class="input-group" style="flex:1"><label class="input-label">Muslo izq.</label><input class="input" type="number" step="0.1" id="me-musloizq"></div>
+            <div class="input-group" style="flex:1"><label class="input-label">Muslo der.</label><input class="input" type="number" step="0.1" id="me-musloder"></div>
+            <div class="input-group" style="flex:1"><label class="input-label">Pantorrilla</label><input class="input" type="number" step="0.1" id="me-pantorrilla"></div>
+          </div>
+          <div class="input-group"><label class="input-label">Notas (opcional)</label><input class="input" id="me-notes"></div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancelar</button>
+          <button class="btn btn-primary" id="me-save-btn" onclick="Profile.saveMeasurements()">Guardar</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+  }
+
+  let _savingMeasurements = false;
+
+  async function saveMeasurements() {
+    if (_savingMeasurements) return;
+    _savingMeasurements = true;
+    const btn = document.getElementById('me-save-btn');
+    if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Guardando...'; }
+
+    const val = id => document.getElementById(id)?.value || '';
+    const payload = {
+      date: Utils.today(),
+      cintura: val('me-cintura'), pecho: val('me-pecho'), cadera: val('me-cadera'),
+      brazoIzq: val('me-brazoizq'), brazoDer: val('me-brazoder'),
+      musloIzq: val('me-musloizq'), musloDer: val('me-musloder'),
+      pantorrilla: val('me-pantorrilla'), notes: val('me-notes'),
+    };
+
+    try {
+      const result = await API.saveMeasurements(payload);
+      API.clearCache();
+      document.querySelector('.modal-overlay')?.remove();
+      if (result.queued) {
+        Sounds.click(); Haptics.medium();
+        Toast.warning('Sin conexión — se sincronizará solo');
+      } else {
+        Sounds.serieDone(); Haptics.success();
+        Toast.success('Medidas guardadas');
+      }
+      _measurements.unshift({
+        date: payload.date,
+        cintura: Number(payload.cintura) || null, pecho: Number(payload.pecho) || null,
+        cadera: Number(payload.cadera) || null, brazoIzq: Number(payload.brazoIzq) || null,
+        brazoDer: Number(payload.brazoDer) || null, musloIzq: Number(payload.musloIzq) || null,
+        musloDer: Number(payload.musloDer) || null, pantorrilla: Number(payload.pantorrilla) || null,
+        notes: payload.notes,
+      });
+      render();
+    } catch(err) {
+      Sounds.error();
+      Toast.error('Error al guardar');
+      console.error(err);
+      if (btn) { btn.disabled = false; btn.innerHTML = 'Guardar'; }
+    } finally {
+      _savingMeasurements = false;
+    }
+  }
+
+  return { init, editBasics, saveBasics, openComposition, saveComposition, openMeasurements, saveMeasurements };
 })();
 
 function initProfile(container) { Profile.init(container); }
