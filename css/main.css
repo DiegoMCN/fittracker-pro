@@ -103,6 +103,16 @@
 
 /* ── RESET ── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* Red de seguridad: un <canvas> de Chart.js recibe su ancho vía JS
+   (canvas.width). Si esa medición llegara a fallar y usar un valor de
+   respaldo mayor al disponible, esto evita que se salga del contorno
+   de su tarjeta en vez de solo ajustarse al contenedor. Mismo riesgo
+   aplica a <svg> con ancho fijo (ej. mapa muscular) — <img> ya está
+   cubierto más abajo.
+*/
+canvas, svg { max-width: 100%; }
+canvas { display: block; }
 html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
 body {
   font-family: 'Poppins', -apple-system, sans-serif;
@@ -242,6 +252,13 @@ ul, ol { list-style: none; }
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  /* Sin esto, un elemento flex nunca se encoge más chico que su
+     contenido — si CUALQUIER cosa en la página (texto, una fila sin
+     wrap) pide más ancho que la pantalla, ese ancho se propaga hasta
+     aquí y empuja todo el layout más ancho que el viewport, cortándose
+     contra el borde derecho en vez de ajustarse. Esta es la causa raíz
+     real de que el contenido se "saliera" en iPhone. */
+  min-width: 0;
 }
 
 /* Topbar */
@@ -265,6 +282,9 @@ ul, ol { list-style: none; }
   padding: var(--space-6);
   max-width: 1400px;
   width: 100%;
+  /* Mismo motivo que en .main-content — también es un elemento flex y
+     necesita permiso explícito para encogerse. */
+  min-width: 0;
 }
 
 /* ── CARDS ── */
@@ -274,6 +294,10 @@ ul, ol { list-style: none; }
   border-radius: var(--radius-lg);
   padding: var(--space-5);
   transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  /* Mismo motivo — .card vive dentro de grid-2/3/4 y filas flex por
+     toda la app; sin esto, su contenido puede negarse a encogerse y
+     ensanchar la fila/columna completa más allá de la pantalla. */
+  min-width: 0;
 }
 .card:hover { border-color: var(--border); }
 .card-accent {
@@ -297,8 +321,15 @@ ul, ol { list-style: none; }
 .card-header {
   display: flex; align-items: center; justify-content: space-between;
   margin-bottom: var(--space-5);
+  flex-wrap: wrap; gap: var(--space-2);
 }
-.card-title { font-weight: 600; font-size: 14px; color: var(--text-1); }
+/* El bloque de título (con o sin subtítulo envuelto en un div) debe
+   poder encogerse y partir texto largo — sin esto, un título largo +
+   un botón al lado (ej. "+ Marca") empuja el botón fuera de la
+   tarjeta o fuerza scroll horizontal en toda la página en iPhone. */
+.card-header > *:first-child { min-width: 0; flex: 1 1 auto; }
+.card-header > .btn { flex-shrink: 0; }
+.card-title { font-weight: 600; font-size: 14px; color: var(--text-1); overflow-wrap: break-word; }
 .card-subtitle { font-size: 12px; color: var(--text-3); }
 
 /* ── METRIC CARDS ── */
@@ -424,7 +455,16 @@ ul, ol { list-style: none; }
 }
 .input:focus { border-color: var(--border-accent); box-shadow: 0 0 0 3px var(--accent-glow); }
 .input::placeholder { color: var(--text-4); }
-.input-row { display: flex; gap: var(--space-3); align-items: flex-end; }
+.input-row {
+  display: flex; gap: var(--space-3); align-items: flex-end;
+  flex-wrap: wrap;
+}
+/* Cada campo pide al menos este ancho antes de forzar el salto de
+   línea — sin esto, 3+ campos en fila se comprimen a un ancho
+   inutilizable en pantallas de iPhone en vez de acomodarse en 2 filas.
+   Funciona incluso donde el JS ya puso `style="flex:1"` inline, porque
+   min-width es una propiedad distinta que esa regla no toca. */
+.input-row > .input-group { min-width: 100px; }
 
 /* ── TAGS / BADGES ── */
 .tag {
