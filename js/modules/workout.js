@@ -526,7 +526,22 @@ const Workout = (() => {
   // el input de peso y el toggle carga/asistencia). Los selects no
   // pierden nada al perder foco, así que esto es seguro.
   function changeUnit(exIdx, sIdx, newUnit) {
-    state.exercises[exIdx].sets[sIdx].unit = newUnit;
+    const set = state.exercises[exIdx].sets[sIdx];
+    const oldUnit = set.unit;
+
+    // BUG REAL: antes esto solo cambiaba la etiqueta de unidad sin
+    // tocar el número — si ya había un peso escrito (a mano o
+    // prellenado), se quedaba con el mismo número pero ahora leído en
+    // la otra unidad, dando un peso que ya no coincide con la máquina.
+    // Solo aplica entre kg↔lbs — 'PC' (peso corporal) y 'seg' no son
+    // unidades de peso convertibles.
+    if (set.kg && oldUnit !== newUnit && (oldUnit === 'kg' || oldUnit === 'lbs') && (newUnit === 'kg' || newUnit === 'lbs')) {
+      const kgVal = oldUnit === 'lbs' ? Utils.lbsToKg(parseFloat(set.kg)) : parseFloat(set.kg);
+      const newVal = newUnit === 'lbs' ? Utils.kgToLbs(kgVal) : kgVal;
+      set.kg = Utils.formatNum(newVal, 1);
+    }
+
+    set.unit = newUnit;
     Sounds.click();
     _rerender();
   }

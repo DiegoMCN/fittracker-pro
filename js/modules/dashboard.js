@@ -74,20 +74,17 @@ function _renderDashboard(container, data, doneDayNames, records, allSessions, l
     </div>
   </div>
 
-  <!-- Consejo del Coach IA — resumen corto, el análisis completo vive en el módulo Coach IA -->
+  <!-- Consejo del Coach IA — resumen corto de solo lectura, se genera
+       únicamente con el botón del módulo Coach IA -->
   <div class="card card-accent section" style="display:flex;gap:14px;align-items:flex-start;cursor:pointer" id="coach-insight-card" onclick="Router.navigate('coach')">
     <div style="width:36px;height:36px;border-radius:10px;background:var(--accent-glow);
       display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">🤖</div>
     <div style="flex:1;min-width:0">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
-        <div style="font-size:11px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:.05em">
-          Tu coach personal
-        </div>
-        <button class="btn btn-ghost btn-icon" style="width:24px;height:24px;font-size:13px" id="coach-refresh-btn"
-          onclick="event.stopPropagation(); refreshDashboardCoach()" title="Recargar consejo con los datos más recientes del Sheet">🔄</button>
+      <div style="font-size:11px;font-weight:600;color:var(--accent);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">
+        Tu coach personal
       </div>
-      <div style="font-size:13px;color:var(--text-1);line-height:1.5;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical" id="coach-insight-text">${data.dashboardInsight ? Utils.truncate(Utils.stripMarkdown(data.dashboardInsight), 160) : 'Sin consejo generado todavía — se crea automáticamente al terminar tu primera sesión del día.'}</div>
-      ${data.dashboardInsight ? `<div style="font-size:11px;color:var(--accent);font-weight:600;margin-top:6px">Ver análisis completo →</div>` : ''}
+      <div style="font-size:13px;color:var(--text-1);line-height:1.5;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical" id="coach-insight-text">${data.dashboardInsight ? Utils.truncate(Utils.stripMarkdown(data.dashboardInsight), 160) : 'Sin consejo generado todavía — ve al módulo Coach IA y genera el de hoy.'}</div>
+      <div style="font-size:11px;color:var(--accent);font-weight:600;margin-top:6px">${data.dashboardInsight ? 'Ver análisis completo →' : 'Ir a generar consejo →'}</div>
     </div>
   </div>
 
@@ -457,10 +454,14 @@ function _renderFCChart(allSessions) {
   const labels = recent.map(s => Utils.formatDateShort(s.date));
   const values = recent.map(s => s.fcAvg);
 
-  // Forzar dimensiones antes de que Chart.js las lea
+  // Forzar dimensiones antes de que Chart.js las lea. Nunca debe pasar
+  // del ancho real de la pantalla — si la medición del contenedor
+  // falla y cae al valor por defecto, ese valor puede ser más ancho
+  // que un iPhone y rompe la página con scroll horizontal.
   const parent = canvas.parentElement;
   const h = (parent && parent.offsetHeight > 0) ? parent.offsetHeight : 160;
-  const w = (parent && parent.offsetWidth  > 0) ? parent.offsetWidth  : 400;
+  const wRaw = (parent && parent.offsetWidth  > 0) ? parent.offsetWidth  : 400;
+  const w = Math.min(wRaw, document.documentElement.clientWidth - 48);
   canvas.width  = w;
   canvas.height = h;
 
@@ -616,30 +617,4 @@ function _goalColor(key) {
 
 // Fuerza a Gemini a re-analizar todo tu historial ahora mismo — útil si
 // editaste datos directo en el Sheet y el consejo automático no se enteró.
-async function refreshDashboardCoach() {
-  const btn = document.getElementById('coach-refresh-btn');
-  const textEl = document.getElementById('coach-insight-text');
-  if (!btn || btn.disabled) return; // evita doble click mientras genera
-  btn.disabled = true;
-  btn.innerHTML = '<span class="animate-spin" style="display:inline-block">⏳</span>';
-  Sounds.click();
 
-  try {
-    const res = await API.refreshDashboardInsight();
-    API.clearCache();
-    if (res.insight && textEl) {
-      textEl.textContent = Utils.truncate(Utils.stripMarkdown(res.insight), 160);
-      Sounds.serieDone(); Haptics.success();
-      Toast.success('Consejo actualizado');
-    } else {
-      Toast.warning('No se pudo generar el consejo — revisa que tengas la API key configurada');
-    }
-  } catch(err) {
-    Sounds.error();
-    Toast.error('Error al recargar el consejo');
-    console.error(err);
-  } finally {
-    btn.disabled = false;
-    btn.innerHTML = '🔄';
-  }
-}
