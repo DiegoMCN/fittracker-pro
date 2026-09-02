@@ -581,7 +581,23 @@ const Workout = (() => {
   }
 
   // ── HISTORIAL POR EJERCICIO (mini-gráfica de progreso) ────────────────
-  const _historyCache = {}; // { [nombreEjercicio]: { loading, values: [{date, kg}] } }
+  const _historyCache = {}; // { [nombreEjercicio]: { loading, values: [{date, value, metric, reps}], progressNote } }
+  let _catalogPromise = null;
+
+  // El catálogo (EJERCICIOS) trae la nota de progreso ya calculada por
+  // el backend después de tu última sesión — más rica que un simple
+  // delta (considera reps objetivo y asistencia invertida). Se carga
+  // una sola vez y se cachea para toda la sesión activa.
+  function _ensureCatalogLoaded() {
+    if (!_catalogPromise) {
+      _catalogPromise = API.getExercises().then(res => {
+        const map = {};
+        (res.exercises || []).forEach(e => { if (e.Nombre) map[e.Nombre] = e; });
+        return map;
+      }).catch(() => ({}));
+    }
+    return _catalogPromise;
+  }
 
   async function _ensureHistoryLoaded(name) {
     if (_historyCache[name]) return; // ya cargado o cargando
@@ -630,9 +646,13 @@ const Workout = (() => {
         .sort((a, b) => a[0].localeCompare(b[0]))
         .slice(-6)
         .map(([, v]) => v);
-      _historyCache[name] = { loading: false, values };
+
+      const catalog = await _ensureCatalogLoaded();
+      const progressNote = catalog[name]?.Nota_Progreso || null;
+
+      _historyCache[name] = { loading: false, values, progressNote };
     } catch(e) {
-      _historyCache[name] = { loading: false, values: [] };
+      _historyCache[name] = { loading: false, values: [], progressNote: null };
     }
 
     // Actualiza cualquier tarjeta visible de este ejercicio, sin re-render completo
@@ -726,10 +746,13 @@ const Workout = (() => {
       ? `${last.reps ? `${last.reps} reps @ ` : ''}${Utils.formatNum(last.value, 1)} kg`
       : `${Utils.formatNum(last.value, 0)} ${unitLabel}`;
 
-    // Nota de progreso — 100% calculada de los datos, sin IA de por
-    // medio. Es lo primero que ves al abrir un ejercicio que ya habías
-    // hecho antes: te dice directo si vas subiendo, bajando, o parejo.
-    const progressNote = _progressNote(delta, unitLabel);
+    // Nota de progreso — prioriza la que ya calculó el backend después
+    // de tu última sesión (más rica, considera reps objetivo y
+    // asistencia invertida). Si no existe todavía, cae al delta simple
+    // calculado aquí mismo.
+    const progressNote = entry.progressNote
+      ? { color: 'var(--accent)', text: `💡 ${entry.progressNote}` }
+      : _progressNote(delta, unitLabel);
 
     return `
       ${progressNote ? `<div style="font-size:11px;font-weight:600;color:${progressNote.color};margin-bottom:8px">${progressNote.text}</div>` : ''}
