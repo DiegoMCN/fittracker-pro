@@ -581,23 +581,7 @@ const Workout = (() => {
   }
 
   // ── HISTORIAL POR EJERCICIO (mini-gráfica de progreso) ────────────────
-  const _historyCache = {}; // { [nombreEjercicio]: { loading, values: [{date, value, metric, reps}], progressNote } }
-  let _catalogPromise = null;
-
-  // El catálogo (EJERCICIOS) trae la nota de progreso ya calculada por
-  // el backend después de tu última sesión — más rica que un simple
-  // delta (considera reps objetivo y asistencia invertida). Se carga
-  // una sola vez y se cachea para toda la sesión activa.
-  function _ensureCatalogLoaded() {
-    if (!_catalogPromise) {
-      _catalogPromise = API.getExercises().then(res => {
-        const map = {};
-        (res.exercises || []).forEach(e => { if (e.Nombre) map[e.Nombre] = e; });
-        return map;
-      }).catch(() => ({}));
-    }
-    return _catalogPromise;
-  }
+  const _historyCache = {}; // { [nombreEjercicio]: { loading, values: [{date, value, metric, reps}] } }
 
   async function _ensureHistoryLoaded(name) {
     if (_historyCache[name]) return; // ya cargado o cargando
@@ -647,12 +631,9 @@ const Workout = (() => {
         .slice(-6)
         .map(([, v]) => v);
 
-      const catalog = await _ensureCatalogLoaded();
-      const progressNote = catalog[name]?.Nota_Progreso || null;
-
-      _historyCache[name] = { loading: false, values, progressNote };
+      _historyCache[name] = { loading: false, values };
     } catch(e) {
-      _historyCache[name] = { loading: false, values: [], progressNote: null };
+      _historyCache[name] = { loading: false, values: [] };
     }
 
     // Actualiza cualquier tarjeta visible de este ejercicio, sin re-render completo
@@ -746,16 +727,10 @@ const Workout = (() => {
       ? `${last.reps ? `${last.reps} reps @ ` : ''}${Utils.formatNum(last.value, 1)} kg`
       : `${Utils.formatNum(last.value, 0)} ${unitLabel}`;
 
-    // Nota de progreso — prioriza la que ya calculó el backend después
-    // de tu última sesión (más rica, considera reps objetivo y
-    // asistencia invertida). Si no existe todavía, cae al delta simple
-    // calculado aquí mismo.
-    const progressNote = entry.progressNote
-      ? { color: 'var(--accent)', text: `💡 ${entry.progressNote}` }
-      : _progressNote(delta, unitLabel);
-
+    // La nota de progreso ya no se calcula aquí — EJERCICIOS.Notas es
+    // la única fuente (se actualiza sola tras cada sesión, o desde el
+    // Coach), y ya se muestra arriba de esta tarjeta vía ex.notes.
     return `
-      ${progressNote ? `<div style="font-size:11px;font-weight:600;color:${progressNote.color};margin-bottom:8px">${progressNote.text}</div>` : ''}
       <div style="display:flex;align-items:center;gap:10px">
         <svg width="${w}" height="${h}" style="flex-shrink:0">
           <polyline points="${points}" fill="none" stroke="var(--accent)" stroke-width="2"
@@ -769,20 +744,6 @@ const Workout = (() => {
             : `<div style="font-size:10px;color:var(--text-4)">${Utils.formatDateShort(last.date)}</div>`}
         </div>
       </div>`;
-  }
-
-  // Genera la nota de progreso por ejercicio — sin IA, puro cálculo
-  // sobre el delta real. Tono casual, como lo diría el Temach en el
-  // gym, no un reporte.
-  function _progressNote(delta, unitLabel) {
-    if (delta === null) return null; // sin suficiente historial todavía
-    if (delta > 0) {
-      return { color: 'var(--success)', text: `🔥 Vas subiendo — +${Utils.formatNum(delta, delta % 1 === 0 ? 0 : 1)} ${unitLabel} desde tu última vez. Dale con todo.` };
-    }
-    if (delta < 0) {
-      return { color: 'var(--text-3)', text: `💪 Un poco abajo de la vez pasada — no pasa nada, hoy la recuperas.` };
-    }
-    return { color: 'var(--text-3)', text: `➡️ Mismo nivel que tu última vez — hoy es buen día para subirle tantito.` };
   }
 
   function _hydrateHistories() {
@@ -1211,6 +1172,13 @@ const Workout = (() => {
     try {
       const result = await API.saveSession(payload);
       API.clearCache();
+      // El plan quedó cacheado en planData (variable de módulo) desde
+      // que arrancó esta sesión — con eso solo, la próxima vez que
+      // Diego elija un día NUNCA se volvería a pedir el plan, aunque
+      // el backend acabe de actualizar las notas de progreso en el
+      // Sheet. Se limpia aquí para que _loadPlan() sí vuelva a
+      // buscarlo la próxima vez.
+      planData = null;
       state.finished = true;
       _fullCleanup();
 
