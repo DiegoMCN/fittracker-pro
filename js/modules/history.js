@@ -8,6 +8,7 @@ const History = (() => {
   let _cardio = [];
   let _filter = 'all'; // all | Fuerza | Cardio
   let _expandedId = null;
+  let _exerciseDetailCache = {}; // { [fecha]: { loading, exercises } }
   let _usingMock = false;
 
   async function init(container) {
@@ -118,7 +119,7 @@ const History = (() => {
     const typeIcon  = isCardio ? '🏃' : '💪';
 
     return `
-    <div class="card" style="cursor:pointer" onclick="History.toggleExpand('${cardId}')">
+    <div class="card" style="cursor:pointer" onclick="History.toggleExpand('${cardId}', '${s.date}', ${isCardio})">
       <div style="display:flex;align-items:center;gap:14px">
         <div style="width:40px;height:40px;border-radius:10px;background:${typeColor}22;
           display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">${typeIcon}</div>
@@ -149,6 +150,8 @@ const History = (() => {
             ${s.cadPeak ? `<div><div style="font-size:10px;color:var(--text-4)">Cadencia pico</div><div style="font-weight:700;font-size:14px">${s.cadPeak} spm</div></div>` : ''}
             ${s.rec2min !== undefined && s.rec2min !== null ? `<div><div style="font-size:10px;color:var(--text-4)">Recuperación 2min</div><div style="font-weight:700;font-size:14px;color:${s.rec2min < 0 ? 'var(--success)' : 'var(--danger)'}">${s.rec2min} bpm</div></div>` : ''}
           </div>
+
+          ${!isCardio ? _renderExerciseDetail(s.date) : ''}
 
           ${(s.zone1 || s.zone2 || s.zone3 || s.zone4 || s.zone5) ? `
           <div style="margin-top:12px">
@@ -188,8 +191,63 @@ const History = (() => {
     </div>`;
   }
 
+  const SUPERSET_COLORS = { A: '#7C3AED', B: '#06B6D4', C: '#F59E0B', D: '#EC4899', E: '#10B981' };
+
+  function _renderExerciseDetail(date) {
+    const cache = _exerciseDetailCache[date];
+    if (!cache || cache.loading) {
+      return `<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);font-size:11px;color:var(--text-4)">Cargando ejercicios...</div>`;
+    }
+    if (cache.exercises.length === 0) {
+      return `<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);font-size:11px;color:var(--text-4)">Sin detalle de ejercicios para esta sesión (puede ser un Log rápido).</div>`;
+    }
+
+    return `
+      <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+        <div style="font-size:10px;color:var(--text-4);margin-bottom:10px;text-transform:uppercase;letter-spacing:.05em">Ejercicios de la sesión</div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          ${cache.exercises.map(ex => {
+            const ssColor = ex.supersetGroup ? SUPERSET_COLORS[ex.supersetGroup] : null;
+            return `
+            <div style="background:var(--bg-input);border-radius:10px;padding:10px 12px;${ssColor ? `border-left:3px solid ${ssColor}` : ''}">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+                <span style="font-size:12px;font-weight:600;color:var(--text-1)">${ex.name}</span>
+                ${ex.supersetGroup ? `<span style="font-size:9px;font-weight:700;padding:2px 7px;border-radius:99px;background:${ssColor}22;color:${ssColor}">🔗 ${ex.supersetGroup}</span>` : ''}
+              </div>
+              <div style="display:flex;flex-wrap:wrap;gap:6px">
+                ${ex.sets.map(s => {
+                  const label = s.unit === 'seg' ? `${s.reps || 0}seg`
+                    : s.unit === 'PC' ? `${s.reps || 0} reps`
+                    : `${s.reps || 0}×${Utils.formatNum(s.kg, 1)}${s.unit || 'kg'}`;
+                  const isAssist = s.kind === 'asistencia';
+                  return `<span style="font-size:11px;color:var(--text-2);background:var(--bg-card);padding:3px 8px;border-radius:6px">${isAssist ? '−' : ''}${label}</span>`;
+                }).join('')}
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>`;
+  }
+
   function setFilter(f) { _filter = f; Sounds.click(); render(); }
-  function toggleExpand(id) { _expandedId = _expandedId === id ? null : id; Sounds.click(); render(); }
+
+  function toggleExpand(id, date, isCardio) {
+    _expandedId = _expandedId === id ? null : id;
+    Sounds.click();
+    // Carga el detalle de ejercicios (reps/peso por ejercicio) la
+    // primera vez que se expande una sesión de fuerza — se cachea por
+    // fecha para no volver a pedirlo si se cierra y abre de nuevo.
+    if (_expandedId && !isCardio && date && !_exerciseDetailCache[date]) {
+      _exerciseDetailCache[date] = { loading: true, exercises: [] };
+      API.getSessionExercises(date).then(res => {
+        _exerciseDetailCache[date] = { loading: false, exercises: res.exercises || [] };
+        if (_expandedId === id) render(); // solo re-renderiza si sigue abierta
+      }).catch(() => {
+        _exerciseDetailCache[date] = { loading: false, exercises: [] };
+      });
+    }
+    render();
+  }
 
   // ── EDITAR SESIÓN EXISTENTE ────────────────────────────────────────────
   function openEdit(rowNum, kind) {

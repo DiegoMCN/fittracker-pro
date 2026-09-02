@@ -8,6 +8,7 @@ const Coach = (() => {
   let _sessions = [];
   let _usingMock = false;
   let _generating = false;
+  let _chartConfig = null; // { type: 'weight'|'speed'|'fc', title, subtitle, labels, values, unit, exerciseName }
 
   async function init(container) {
     container.innerHTML = `
@@ -21,9 +22,90 @@ const Coach = (() => {
     // extra que había aquí invertía el orden dos veces, causando que
     // "hoy" nunca coincidiera con el primer elemento.
     _history = histRes.history || [];
-    _sessions = (sesRes.sessions || []).filter(s => s.fcAvg).slice().reverse(); // cronológico
+    _sessions = sesRes.sessions || [];
     _usingMock = API.isMock();
+
+    await _pickDynamicChart();
     render();
+  }
+
+  // La gráfica de apoyo cambia según lo que de verdad entrenaste hoy —
+  // no siempre FC. Si hoy hubo fuerza, ilustra el ejercicio principal
+  // del día (peso a través del tiempo); si fue cardio con velocidad,
+  // ilustra la velocidad; si no hay nada de hoy, cae de regreso a la
+  // tendencia general de FC. Así cada consejo trae una gráfica distinta
+  // y relevante a lo que realmente pasó.
+  async function _pickDynamicChart() {
+    const today = Utils.today();
+    try {
+      const exRes = await API.getSessionExercises(today);
+      const todayExercises = (exRes.exercises || []).filter(ex =>
+        ex.sets.some(s => (s.unit === 'kg' || s.unit === 'lbs') && s.kg > 0)
+      );
+
+      if (todayExercises.length > 0) {
+        // El "ejercicio principal" = el que tiene más series con peso hoy
+        const featured = todayExercises.reduce((best, ex) =>
+          ex.sets.length > best.sets.length ? ex : best, todayExercises[0]);
+
+        const histRes = await API.getStrengthHistory(featured.name);
+        const rows = histRes.history || [];
+        const byDate = {};
+        rows.forEach(r => {
+          const raw = parseFloat(r.kg) || 0;
+          if (raw <= 0) return;
+          const kg = r.unit === 'lbs' ? Utils.lbsToKg(raw) : raw;
+          if (!byDate[r.date] || kg > byDate[r.date]) byDate[r.date] = kg;
+        });
+        const points = Object.entries(byDate).sort((a,b) => a[0].localeCompare(b[0])).slice(-8);
+
+        if (points.length >= 2) {
+          _chartConfig = {
+            type: 'weight',
+            title: `📈 ${featured.name}`,
+            subtitle: 'Peso a través de tus últimas sesiones — el ejercicio principal de hoy',
+            labels: points.map(p => Utils.formatDateShort(p[0])),
+            values: points.map(p => p[1]),
+            unitSuffix: ' kg',
+          };
+          return;
+        }
+      }
+    } catch(e) { /* si falla, cae al plan B abajo */ }
+
+    // Plan B: cardio de hoy con velocidad — si no hubo fuerza hoy pero
+    // sí sprint/cardio con velocidad registrada
+    try {
+      const cardioRes = await API.getCardio(15);
+      const cardioSessions = (cardioRes.sessions || []).filter(c => c.velMax).slice().reverse();
+      if (cardioSessions.length >= 2) {
+        _chartConfig = {
+          type: 'speed',
+          title: '📈 Velocidad de sprint',
+          subtitle: 'Velocidad máxima en tus últimas sesiones de cardio',
+          labels: cardioSessions.map(c => Utils.formatDateShort(c.date)),
+          values: cardioSessions.map(c => c.velMax),
+          unitSuffix: ' km/h',
+        };
+        return;
+      }
+    } catch(e) { /* sigue al fallback final */ }
+
+    // Fallback final: tendencia de FC (la de siempre, cuando no hay
+    // nada más específico que ilustrar de hoy)
+    const withFC = _sessions.filter(s => s.fcAvg).slice().reverse();
+    if (withFC.length >= 2) {
+      _chartConfig = {
+        type: 'fc',
+        title: '📈 Tu tendencia reciente',
+        subtitle: 'FC promedio en tus últimas sesiones',
+        labels: withFC.map(s => Utils.formatDateShort(s.date)),
+        values: withFC.map(s => s.fcAvg),
+        unitSuffix: ' bpm',
+      };
+    } else {
+      _chartConfig = null;
+    }
   }
 
   function render() {
@@ -80,14 +162,15 @@ const Coach = (() => {
           </div>
         </div>
 
-        <!-- Gráfica de apoyo — FC en fuerza a través de tus últimas sesiones,
-             para ilustrar visualmente la tendencia que menciona el consejo -->
-        ${_sessions.length >= 2 ? `
+        <!-- Gráfica de apoyo — dinámica según lo que entrenaste hoy:
+             peso del ejercicio principal, velocidad de sprint, o FC
+             como respaldo general. Cambia con cada consejo. -->
+        ${_chartConfig ? `
         <div class="card" style="margin-bottom:24px">
           <div class="card-header">
             <div>
-              <div class="card-title">📈 Tu tendencia reciente</div>
-              <div class="card-subtitle">FC promedio en tus últimas sesiones — para ver de un vistazo lo que el consejo describe</div>
+              <div class="card-title">${_chartConfig.title}</div>
+              <div class="card-subtitle">${_chartConfig.subtitle}</div>
             </div>
           </div>
           <div style="position:relative;height:160px;width:100%;overflow:hidden">
@@ -121,7 +204,7 @@ const Coach = (() => {
 
   function _renderTrendChart() {
     const canvas = document.getElementById('coach-trend-chart');
-    if (!canvas || !window.Chart || _sessions.length < 2) return;
+    if (!canvas || !window.Chart || !_chartConfig) return;
 
     const existing = Chart.getChart(canvas);
     if (existing) existing.destroy();
@@ -133,14 +216,16 @@ const Coach = (() => {
     const w = Math.min(wRaw, document.documentElement.clientWidth - 48);
     canvas.width = w; canvas.height = h;
 
+    const color = _chartConfig.type === 'weight' ? '#00FF87' : _chartConfig.type === 'speed' ? '#7C3AED' : '#EF4444';
+
     new Chart(canvas, {
       type: 'line',
       data: {
-        labels: _sessions.map(s => Utils.formatDateShort(s.date)),
+        labels: _chartConfig.labels,
         datasets: [{
-          data: _sessions.map(s => s.fcAvg),
-          borderColor: '#00FF87', backgroundColor: 'rgba(0,255,135,0.08)', fill: true,
-          tension: 0.4, pointRadius: 4, borderWidth: 2, pointBackgroundColor: '#00FF87', pointBorderColor: 'transparent',
+          data: _chartConfig.values,
+          borderColor: color, backgroundColor: color + '15', fill: true,
+          tension: 0.4, pointRadius: 4, borderWidth: 2, pointBackgroundColor: color, pointBorderColor: 'transparent',
         }]
       },
       options: {
@@ -148,11 +233,14 @@ const Coach = (() => {
         animation: { duration: 600, easing: 'easeOutQuart' },
         plugins: {
           legend: { display: false },
-          tooltip: { backgroundColor: '#13131F', borderColor: 'rgba(255,255,255,0.08)', borderWidth: 1, titleColor: '#B4B2CC', bodyColor: '#FFFFFF' }
+          tooltip: {
+            backgroundColor: '#13131F', borderColor: 'rgba(255,255,255,0.08)', borderWidth: 1, titleColor: '#B4B2CC', bodyColor: '#FFFFFF',
+            callbacks: { label: (ctx) => `${ctx.parsed.y}${_chartConfig.unitSuffix}` }
+          }
         },
         scales: {
           x: { ticks: { color: '#6E6D8A', font: { size: 9, family: 'Poppins' }, maxRotation: 0 }, grid: { color: 'rgba(255,255,255,0.04)' }, border: { display: false } },
-          y: { ticks: { color: '#6E6D8A', font: { size: 9, family: 'Poppins' }, callback: v => v + ' bpm' }, grid: { color: 'rgba(255,255,255,0.04)' }, border: { display: false } },
+          y: { ticks: { color: '#6E6D8A', font: { size: 9, family: 'Poppins' }, callback: v => v + _chartConfig.unitSuffix }, grid: { color: 'rgba(255,255,255,0.04)' }, border: { display: false } },
         }
       }
     });

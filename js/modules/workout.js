@@ -342,7 +342,7 @@ const Workout = (() => {
         ${previewMode ? `
           <span style="font-size:12px;color:var(--text-3)">objetivo: ${set.repsTarget} ${isTime ? 'seg' : 'reps'}</span>
         ` : `
-          <input type="number" inputmode="numeric" placeholder="${isTime ? 'seg' : 'reps'}" value="${set.reps}"
+          <input type="number" inputmode="numeric" placeholder="${isTime ? 'seg' : 'reps'}" value="${set.reps}" id="reps-input-${exIdx}-${sIdx}"
             style="width:56px;background:var(--bg-card);border:1px solid var(--border);border-radius:6px;color:var(--text-1);
             font-size:13px;font-weight:600;padding:6px 4px;text-align:center"
             onchange="Workout.updateSet(${exIdx},${sIdx},'reps',this.value)">
@@ -590,22 +590,46 @@ const Workout = (() => {
     try {
       const res = await API.getStrengthHistory(name);
       const rows = res.history || [];
-      // Agrupa por fecha, toma la serie de MAYOR peso de esa sesión
-      // (convertido siempre a kg) y guarda también las reps de esa serie —
-      // así se puede mostrar "última vez: 8 reps @ 25kg", no solo el peso.
+      // La métrica que importa depende de cómo se entrenó ese día:
+      // - kg/lbs → progreso = más peso (convertido siempre a kg)
+      // - PC (peso corporal) → progreso = más repeticiones
+      // - seg (planchas, dead hang) → progreso = más segundos sostenidos
+      // Esto es clave para calistenia: antes se descartaba cualquier
+      // serie sin peso registrado, así que flexiones/plancha nunca
+      // mostraban gráfica de progreso. Si algún día agregas peso a un
+      // ejercicio que hasta ahora era PC (ej. flexiones con disco),
+      // esa sesión simplemente pasa a métrica 'weight' sola, sin romper
+      // el historial de reps de antes.
       const byDate = {};
       rows.forEach(r => {
-        const raw = parseFloat(r.kg) || 0;
-        if (raw <= 0) return;
-        const kg = r.unit === 'lbs' ? Utils.lbsToKg(raw) : raw;
-        if (!byDate[r.date] || kg > byDate[r.date].kg) {
-          byDate[r.date] = { kg, reps: r.repsReal || r.reps || null };
+        const repsReal = Number(r.repsReal) || 0;
+        if (repsReal <= 0) return; // sin serie completada real, se omite
+
+        let metric, value;
+        if (r.unit === 'seg') {
+          metric = 'seconds'; value = repsReal; // en 'seg' el campo de reps guarda los segundos
+        } else if (r.unit === 'PC') {
+          metric = 'reps'; value = repsReal;
+        } else {
+          const raw = parseFloat(r.kg) || 0;
+          if (raw <= 0) return; // se marcó kg/lbs pero sin peso escrito — se omite
+          metric = 'weight';
+          value = r.unit === 'lbs' ? Utils.lbsToKg(raw) : raw;
+        }
+
+        const existing = byDate[r.date];
+        // Si el mismo día hay métricas mixtas (raro — cambiaste de PC a
+        // peso agregado a media sesión), prioriza 'weight' porque
+        // implica progresión real hacia carga añadida.
+        if (!existing || (existing.metric === metric && value > existing.value) || (metric === 'weight' && existing.metric !== 'weight')) {
+          byDate[r.date] = { date: r.date, metric, value, reps: repsReal };
         }
       });
+
       const values = Object.entries(byDate)
         .sort((a, b) => a[0].localeCompare(b[0]))
         .slice(-6)
-        .map(([date, v]) => ({ date, kg: v.kg, reps: v.reps }));
+        .map(([, v]) => v);
       _historyCache[name] = { loading: false, values };
     } catch(e) {
       _historyCache[name] = { loading: false, values: [] };
@@ -626,17 +650,33 @@ const Workout = (() => {
     const entry = _historyCache[name];
     if (!entry || !entry.values || entry.values.length === 0) return;
     const last = entry.values[entry.values.length - 1];
-    if (!last.kg) return;
 
     state.exercises.forEach((ex, exIdx) => {
       if (ex.name !== name) return;
       ex.sets.forEach((set, sIdx) => {
-        if (set.unit === 'PC' || set.unit === 'seg') return; // no aplica peso
+        if (set.unit === 'PC' || set.unit === 'seg') {
+          // Calistenia/tiempo: lo que progresa es reps o segundos, no
+          // peso corporal (que no cambia). Solo sugiere si el histórico
+          // también era de ese tipo — si ya venías usando peso agregado,
+          // no tiene sentido sugerir un número de reps aquí.
+          if (last.metric !== 'reps' && last.metric !== 'seconds') return;
+          if (set.reps) return; // ya tiene algo escrito — no lo pisa
+          set.reps = String(last.value);
+          const input = document.getElementById(`reps-input-${exIdx}-${sIdx}`);
+          if (input && !input.value) {
+            input.value = set.reps;
+            input.style.color = 'var(--text-3)'; // gris — indica "sugerido", no confirmado
+            input.addEventListener('input', () => { input.style.color = ''; }, { once: true });
+          }
+          return;
+        }
+
+        // Peso agregado (kg/lbs) — comportamiento de siempre, pero solo
+        // si el histórico de verdad es de peso (no reps/segundos de
+        // cuando este ejercicio todavía era peso corporal).
+        if (last.metric !== 'weight') return;
         if (set.kg) return; // ya tiene algo escrito (por el usuario o ya prellenado) — no lo pisa
-        // last.kg SIEMPRE viene ya normalizado a kg reales (la conversión
-        // pasó al armar el historial) — aquí solo se convierte de salida
-        // si la serie actual está en lbs, nunca al revés.
-        const converted = set.unit === 'lbs' ? Utils.kgToLbs(last.kg) : last.kg;
+        const converted = set.unit === 'lbs' ? Utils.kgToLbs(last.value) : last.value;
         set.kg = Utils.formatNum(converted, 1);
 
         // Actualiza el input directamente si ya está en pantalla, sin
@@ -662,23 +702,37 @@ const Workout = (() => {
     }
 
     const vals = entry.values;
-    const kgs = vals.map(v => v.kg);
-    const max = Math.max(...kgs), min = Math.min(...kgs);
+    const nums = vals.map(v => v.value);
+    const max = Math.max(...nums), min = Math.min(...nums);
     const range = (max - min) || 1;
     const w = 110, h = 32, pad = 4;
 
     const coords = vals.map((v, i) => {
       const x = pad + (i / (vals.length - 1 || 1)) * (w - pad * 2);
-      const y = h - pad - ((v.kg - min) / range) * (h - pad * 2);
+      const y = h - pad - ((v.value - min) / range) * (h - pad * 2);
       return { x, y };
     });
     const points = coords.map(c => `${c.x},${c.y}`).join(' ');
 
     const last = vals[vals.length - 1];
     const prev = vals.length > 1 ? vals[vals.length - 2] : null;
-    const delta = prev !== null ? Math.round((last.kg - prev.kg) * 10) / 10 : null;
+    // Solo compara delta entre dos puntos de la MISMA métrica — si el
+    // ejercicio pasó de peso corporal a peso agregado, comparar
+    // "8 reps" contra "20kg" no tiene sentido.
+    const delta = (prev !== null && prev.metric === last.metric) ? Math.round((last.value - prev.value) * 10) / 10 : null;
+
+    const unitLabel = last.metric === 'weight' ? 'kg' : last.metric === 'seconds' ? 'seg' : 'reps';
+    const mainText = last.metric === 'weight'
+      ? `${last.reps ? `${last.reps} reps @ ` : ''}${Utils.formatNum(last.value, 1)} kg`
+      : `${Utils.formatNum(last.value, 0)} ${unitLabel}`;
+
+    // Nota de progreso — 100% calculada de los datos, sin IA de por
+    // medio. Es lo primero que ves al abrir un ejercicio que ya habías
+    // hecho antes: te dice directo si vas subiendo, bajando, o parejo.
+    const progressNote = _progressNote(delta, unitLabel);
 
     return `
+      ${progressNote ? `<div style="font-size:11px;font-weight:600;color:${progressNote.color};margin-bottom:8px">${progressNote.text}</div>` : ''}
       <div style="display:flex;align-items:center;gap:10px">
         <svg width="${w}" height="${h}" style="flex-shrink:0">
           <polyline points="${points}" fill="none" stroke="var(--accent)" stroke-width="2"
@@ -686,17 +740,31 @@ const Workout = (() => {
           ${coords.map(c => `<circle cx="${c.x}" cy="${c.y}" r="2.2" fill="var(--accent)"/>`).join('')}
         </svg>
         <div>
-          <div style="font-size:13px;font-weight:700;color:var(--accent)">${last.reps ? `${last.reps} reps @ ` : ''}${Utils.formatNum(last.kg, 1)} kg</div>
+          <div style="font-size:13px;font-weight:700;color:var(--accent)">${mainText}</div>
           ${delta !== null
-            ? `<div style="font-size:10px;color:${delta >= 0 ? 'var(--success)' : 'var(--text-3)'}">${delta >= 0 ? '+' : ''}${Utils.formatNum(delta, 1)} kg vs anterior · ${Utils.formatDateShort(last.date)}</div>`
+            ? `<div style="font-size:10px;color:${delta >= 0 ? 'var(--success)' : 'var(--text-3)'}">${delta >= 0 ? '+' : ''}${Utils.formatNum(delta, delta % 1 === 0 ? 0 : 1)} ${unitLabel} vs anterior · ${Utils.formatDateShort(last.date)}</div>`
             : `<div style="font-size:10px;color:var(--text-4)">${Utils.formatDateShort(last.date)}</div>`}
         </div>
       </div>`;
   }
 
+  // Genera la nota de progreso por ejercicio — sin IA, puro cálculo
+  // sobre el delta real. Tono casual, como lo diría el Temach en el
+  // gym, no un reporte.
+  function _progressNote(delta, unitLabel) {
+    if (delta === null) return null; // sin suficiente historial todavía
+    if (delta > 0) {
+      return { color: 'var(--success)', text: `🔥 Vas subiendo — +${Utils.formatNum(delta, delta % 1 === 0 ? 0 : 1)} ${unitLabel} desde tu última vez. Dale con todo.` };
+    }
+    if (delta < 0) {
+      return { color: 'var(--text-3)', text: `💪 Un poco abajo de la vez pasada — no pasa nada, hoy la recuperas.` };
+    }
+    return { color: 'var(--text-3)', text: `➡️ Mismo nivel que tu última vez — hoy es buen día para subirle tantito.` };
+  }
+
   function _hydrateHistories() {
     state.exercises.forEach(ex => {
-      if (ex.group === 'Core' || ex.group === 'Cardio') return; // seg/tiempo no aplica gráfica de peso
+      if (ex.group === 'Cardio') return; // el cardio se registra aparte, no aquí
       _ensureHistoryLoaded(ex.name);
     });
   }
