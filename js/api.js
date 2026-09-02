@@ -177,6 +177,7 @@ const API = (() => {
       getNutritionPlan: { meals: {}, equivalents: {}, brandGuides: {}, generalRecommendations: [] },
       getMeasurements: { history: [] },
       getExerciseProgress: { exercises: [] },
+      getSessionExercises: { exercises: [] },
     };
 
     return mocks[action] || { data: [] };
@@ -236,6 +237,9 @@ const API = (() => {
 
     getExerciseProgress: () =>
       _fetch({ action: 'getExerciseProgress' }),
+
+    getSessionExercises: (date) =>
+      _fetch({ action: 'getSessionExercises', date }),
 
     // retries: 0 en TODAS las escrituras — a diferencia de una lectura,
     // reintentar un POST significa ejecutar el guardado (y la llamada a
