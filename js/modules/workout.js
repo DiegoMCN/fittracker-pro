@@ -7,6 +7,7 @@ const Workout = (() => {
 
   let state = null;          // Sesión activa (persiste entre navegaciones)
   let planData = null;       // Cache del plan semanal (desde el Sheet)
+  let catalogData = null;    // Cache de EJERCICIOS — lectura DIRECTA, sin cruce con PLAN_SEMANAL
   let elapsedInterval = null;
   let restInterval = null;
 
@@ -19,6 +20,30 @@ const Workout = (() => {
       Toast.warning('Sin conexión al Sheet — usando plan de ejemplo local');
     }
     return planData;
+  }
+
+  // Lectura DIRECTA de EJERCICIOS — igual que hace el módulo de
+  // Ejercicios (API.getExercises(), sin ningún cruce). Las Notas ya no
+  // salen del join que hace getWeekPlan() con PLAN_SEMANAL — se buscan
+  // aquí, directo, por nombre.
+  async function _loadCatalog() {
+    if (catalogData) return catalogData;
+    try {
+      const res = await API.getExercises();
+      catalogData = {};
+      (res.exercises || []).forEach(e => {
+        if (e.Nombre) catalogData[_normalizeExName(e.Nombre)] = e;
+      });
+    } catch(e) {
+      catalogData = {};
+    }
+    return catalogData;
+  }
+
+  function _normalizeExName(s) {
+    return String(s || '')
+      .replace(/[\u00A0\s]+/g, ' ').trim().toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   }
 
   function _planForDay(day) {
@@ -46,7 +71,9 @@ const Workout = (() => {
         id: Utils.uid(),
         name: ex.name,
         group: ex.group,
-        notes: ex.notes || '',
+        // Lectura DIRECTA de EJERCICIOS (catalogData), sin pasar por
+        // el cruce que hace getWeekPlan() con PLAN_SEMANAL.
+        notes: (catalogData && catalogData[_normalizeExName(ex.name)]?.Notas) || '',
         photoUrl: ex.photoUrl || '',
         videoUrl: ex.videoUrl || '',
         instructions: ex.instructions || '',
@@ -79,7 +106,7 @@ const Workout = (() => {
       container.innerHTML = `<div style="max-width:640px;margin:0 auto">
         <div class="skeleton" style="height:320px;border-radius:16px"></div>
       </div>`;
-      await _loadPlan();
+      await Promise.all([_loadPlan(), _loadCatalog()]);
       selectDay(day);
       startSession();
       return;
@@ -89,7 +116,7 @@ const Workout = (() => {
       <div class="skeleton" style="height:320px;border-radius:16px"></div>
     </div>`;
 
-    await _loadPlan();
+    await Promise.all([_loadPlan(), _loadCatalog()]);
     const today = Utils.todayDayNum();
     _renderPicker(container, today);
   }
@@ -289,6 +316,7 @@ const Workout = (() => {
           </div>
         </div>
         <div style="display:flex;gap:2px;flex-shrink:0">
+          <button class="btn btn-ghost btn-icon" onclick="Workout.openCalculators(${exIdx})" title="Calentamiento y calculadora de discos">🧮</button>
           <button class="btn btn-ghost btn-icon" onclick="Workout.toggleSupersetPicker(${exIdx})" title="${ex.supersetGroup ? 'Cambiar/quitar superset' : 'Ligar como superset'}" style="${ex.supersetGroup ? `color:${ssColor}` : ''}">🔗</button>
           <button class="btn btn-ghost btn-icon" onclick="Workout.removeExercise(${exIdx})" title="Eliminar ejercicio">🗑</button>
         </div>
@@ -773,6 +801,133 @@ const Workout = (() => {
   }
 
   // ── SUPERSETS (agrupación visual — no cambia cómo se registran los sets) ──
+  // ── CALCULADORAS: CALENTAMIENTO Y DISCOS ──────────────────────────────
+  let _calcTab = 'warmup';
+
+  function openCalculators(exIdx) {
+    Sounds.click();
+    const ex = state.exercises[exIdx];
+    // Prellenar con el peso ya escrito en la primera serie con datos,
+    // si existe — ahorra tener que volver a escribirlo.
+    const firstWithWeight = ex.sets.find(s => s.kg && (s.unit === 'kg' || s.unit === 'lbs'));
+    const prefillKg = firstWithWeight
+      ? (firstWithWeight.unit === 'lbs' ? Utils.lbsToKg(parseFloat(firstWithWeight.kg)) : parseFloat(firstWithWeight.kg))
+      : '';
+    _calcTab = 'warmup';
+
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal" style="max-width:420px">
+        <div class="modal-header">
+          <div class="modal-title">🧮 ${ex.name}</div>
+          <button class="btn btn-ghost btn-icon" onclick="this.closest('.modal-overlay').remove()">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="input-row" style="margin-bottom:16px">
+            <div class="input-group" style="flex:1">
+              <label class="input-label">Peso objetivo (kg)</label>
+              <input type="number" inputmode="decimal" class="input" id="calc-target-kg" value="${prefillKg}" placeholder="Ej. 60" oninput="Workout.recalcCalculators()">
+            </div>
+            <div class="input-group" style="flex:1">
+              <label class="input-label">Peso de la barra</label>
+              <input type="number" inputmode="decimal" class="input" id="calc-bar-kg" value="20" oninput="Workout.recalcCalculators()">
+            </div>
+          </div>
+
+          <div style="display:flex;gap:8px;margin-bottom:16px">
+            <button class="btn btn-primary btn-sm" id="calc-tab-warmup" onclick="Workout.setCalcTab('warmup')" style="flex:1">🔥 Calentamiento</button>
+            <button class="btn btn-secondary btn-sm" id="calc-tab-plates" onclick="Workout.setCalcTab('plates')" style="flex:1">🏋️ Discos</button>
+          </div>
+
+          <div id="calc-results"></div>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    _renderCalcResults();
+  }
+
+  function setCalcTab(tab) {
+    _calcTab = tab;
+    Sounds.click();
+    const wBtn = document.getElementById('calc-tab-warmup');
+    const pBtn = document.getElementById('calc-tab-plates');
+    if (wBtn) { wBtn.className = `btn btn-sm ${tab === 'warmup' ? 'btn-primary' : 'btn-secondary'}`; wBtn.style.flex = '1'; }
+    if (pBtn) { pBtn.className = `btn btn-sm ${tab === 'plates' ? 'btn-primary' : 'btn-secondary'}`; pBtn.style.flex = '1'; }
+    _renderCalcResults();
+  }
+
+  function recalcCalculators() { _renderCalcResults(); }
+
+  function _renderCalcResults() {
+    const results = document.getElementById('calc-results');
+    if (!results) return;
+
+    const target = parseFloat(document.getElementById('calc-target-kg')?.value) || 0;
+    const barKg = parseFloat(document.getElementById('calc-bar-kg')?.value) || 20;
+
+    if (target <= 0) {
+      results.innerHTML = `<div style="text-align:center;padding:20px;color:var(--text-3);font-size:12px">Escribe el peso objetivo arriba</div>`;
+      return;
+    }
+
+    if (_calcTab === 'warmup') {
+      // Progresión estándar: 40% / 60% / 80% del peso de trabajo,
+      // redondeado a 2.5kg (el incremento más común en discos).
+      const round25 = kg => Math.round(kg / 2.5) * 2.5;
+      const sets = [
+        { pct: 40, reps: '8-10' },
+        { pct: 60, reps: '5-6' },
+        { pct: 80, reps: '2-3' },
+      ].map(s => ({ ...s, kg: round25(target * s.pct / 100) }));
+
+      results.innerHTML = `
+        <div style="display:flex;flex-direction:column;gap:8px">
+          ${sets.map((s, i) => `
+            <div style="display:flex;align-items:center;gap:12px;background:var(--bg-input);border-radius:10px;padding:10px 14px">
+              <div style="width:28px;height:28px;border-radius:8px;background:var(--accent-glow);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--accent);flex-shrink:0">${i+1}</div>
+              <div style="flex:1">
+                <div style="font-size:13px;font-weight:700;color:var(--text-1)">${s.kg} kg <span style="font-size:10px;font-weight:400;color:var(--text-3)">(${s.pct}%)</span></div>
+                <div style="font-size:10px;color:var(--text-3)">${s.reps} reps</div>
+              </div>
+            </div>`).join('')}
+          <div style="display:flex;align-items:center;gap:12px;background:var(--accent-glow);border-radius:10px;padding:10px 14px;margin-top:4px">
+            <div style="width:28px;height:28px;border-radius:8px;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0">🎯</div>
+            <div><div style="font-size:13px;font-weight:700;color:var(--accent)">${target} kg</div><div style="font-size:10px;color:var(--text-3)">peso de trabajo</div></div>
+          </div>
+        </div>`;
+    } else {
+      const perSide = (target - barKg) / 2;
+      if (perSide < 0) {
+        results.innerHTML = `<div style="text-align:center;padding:20px;color:var(--warning);font-size:12px">El peso objetivo es menor que la barra sola (${barKg}kg)</div>`;
+        return;
+      }
+      const available = [25, 20, 15, 10, 5, 2.5, 1.25];
+      let remaining = perSide;
+      const plates = [];
+      available.forEach(p => {
+        while (remaining >= p - 0.001) { plates.push(p); remaining -= p; }
+      });
+
+      results.innerHTML = `
+        <div style="text-align:center;margin-bottom:16px">
+          <div style="font-size:11px;color:var(--text-3)">Por lado</div>
+          <div style="font-size:22px;font-weight:800;color:var(--accent)">${Utils.formatNum(perSide, 2)} kg</div>
+        </div>
+        ${plates.length === 0 ? `
+          <div style="text-align:center;padding:10px;color:var(--text-3);font-size:12px">Sin discos — solo la barra</div>` : `
+          <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-bottom:12px">
+            ${plates.map(p => `
+              <div style="width:52px;height:52px;border-radius:50%;background:var(--accent-glow);border:2px solid var(--border-accent);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--accent)">${p}</div>`).join('')}
+          </div>`}
+        <div style="font-size:11px;color:var(--text-3);text-align:center">
+          ${plates.length ? plates.join(' + ') + ' kg' : ''} ${plates.length ? '· ' : ''}más la barra de ${barKg}kg
+        </div>
+        ${remaining > 0.01 ? `<div style="font-size:10px;color:var(--warning);text-align:center;margin-top:8px">⚠ Sobran ${Utils.formatNum(remaining, 2)}kg que no se pueden formar exacto con discos estándar</div>` : ''}
+      `;
+    }
+  }
+
   function toggleSupersetPicker(exIdx) {
     const ex = state.exercises[exIdx];
     Sounds.click();
@@ -895,8 +1050,9 @@ const Workout = (() => {
 
     if (!name) { Sounds.error(); Toast.error('Escribe un nombre para el ejercicio'); return; }
 
+    const catalogNote = (catalogData && catalogData[_normalizeExName(name)]?.Notas) || '';
     state.exercises.push({
-      id: Utils.uid(), name, group, notes: '', collapsed: false, supersetGroup: null,
+      id: Utils.uid(), name, group, notes: catalogNote, collapsed: false, supersetGroup: null,
       sets: Array.from({ length: sets }, () => ({ repsTarget: reps, reps: '', kg: '', unit, kind: _defaultKind(name), done: false })),
     });
 
@@ -1172,13 +1328,14 @@ const Workout = (() => {
     try {
       const result = await API.saveSession(payload);
       API.clearCache();
-      // El plan quedó cacheado en planData (variable de módulo) desde
-      // que arrancó esta sesión — con eso solo, la próxima vez que
-      // Diego elija un día NUNCA se volvería a pedir el plan, aunque
-      // el backend acabe de actualizar las notas de progreso en el
-      // Sheet. Se limpia aquí para que _loadPlan() sí vuelva a
-      // buscarlo la próxima vez.
+      // El plan (y el catálogo de notas) quedaron cacheados en
+      // variables de módulo desde que arrancó esta sesión — con eso
+      // solo, la próxima vez que Diego elija un día NUNCA se volvería
+      // a pedir nada, aunque el backend acabe de actualizar las notas
+      // de progreso en el Sheet. Se limpian aquí para que la próxima
+      // sesión sí busque todo de nuevo.
       planData = null;
+      catalogData = null;
       state.finished = true;
       _fullCleanup();
 
@@ -1253,6 +1410,7 @@ const Workout = (() => {
     removeExercise, addExercise, confirmAddExercise, startRest, addRestTime,
     skipRest, customRest, finishSession, saveFinalSession, toggleAdvancedStats, discardSession, cleanup, onRouteChange,
     quickStartDay, toggleSupersetPicker, linkSuperset,
+    openCalculators, setCalcTab, recalcCalculators,
     hasActiveSession: () => !!(state && state.started && !state.finished),
   };
 })();
