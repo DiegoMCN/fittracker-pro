@@ -178,6 +178,8 @@ const API = (() => {
       getMeasurements: { history: [] },
       getExerciseProgress: { exercises: [] },
       getSessionExercises: { exercises: [] },
+      getStreaks: { currentStreak: 0, longestStreak: 0, weeklyTrained: 0, weeklyPlanned: 5, totalActiveDays: 0 },
+      getOvertrainingStatus: { level: 'bien', flags: [] },
     };
 
     return mocks[action] || { data: [] };
@@ -240,6 +242,12 @@ const API = (() => {
 
     getSessionExercises: (date) =>
       _fetch({ action: 'getSessionExercises', date }),
+
+    getStreaks: () =>
+      _fetch({ action: 'getStreaks' }),
+
+    getOvertrainingStatus: () =>
+      _fetch({ action: 'getOvertrainingStatus' }),
 
     // retries: 0 en TODAS las escrituras — a diferencia de una lectura,
     // reintentar un POST significa ejecutar el guardado (y la llamada a
