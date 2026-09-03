@@ -11,6 +11,7 @@ const Metrics = (() => {
   let _exerciseProgress = [];
   let _volumeByGroup = [];
   let _exerciseFilter = 'Todos';
+  let _exerciseViewMode = 'weight'; // 'weight' | 'oneRM'
   let _usingMock = false;
 
   async function init(container) {
@@ -256,18 +257,32 @@ const Metrics = (() => {
           <div class="card-header">
             <div>
               <div class="card-title">📈 Progresión por ejercicio</div>
-              <div class="card-subtitle">Peso a través del tiempo, uno por ejercicio</div>
+              <div class="card-subtitle">${_exerciseViewMode === 'oneRM' ? '1RM estimado (fórmula de Epley) — normaliza aunque cambies el rango de reps' : 'Peso máximo registrado por sesión'}</div>
             </div>
           </div>
           ${_exerciseProgress.length === 0 ? `
             <div style="text-align:center;padding:20px;color:var(--text-3);font-size:12px">Todavía no hay suficiente historial por ejercicio</div>` : `
+            <div style="display:flex;gap:6px;margin-bottom:12px">
+              <button class="btn ${_exerciseViewMode === 'weight' ? 'btn-primary' : 'btn-secondary'} btn-sm" style="flex:1" onclick="Metrics.setExerciseViewMode('weight')">Peso máximo</button>
+              <button class="btn ${_exerciseViewMode === 'oneRM' ? 'btn-primary' : 'btn-secondary'} btn-sm" style="flex:1" onclick="Metrics.setExerciseViewMode('oneRM')">1RM estimado</button>
+            </div>
             <div style="display:flex;gap:6px;margin-bottom:16px;overflow-x:auto;padding-bottom:4px">
               ${_exerciseFilterGroups().map(g => `
                 <button class="btn ${_exerciseFilter === g ? 'btn-primary' : 'btn-secondary'} btn-sm" style="flex-shrink:0" onclick="Metrics.setExerciseFilter('${g.replace(/'/g,"\\'")}')">${g}</button>
               `).join('')}
             </div>
             <div class="grid-2" style="gap:12px" id="exercise-charts-grid">
-              ${_filteredExercises().map((ex, i) => `
+              ${_filteredExercises().map((ex, i) => {
+                const points = ex.points || [];
+                const lastPoint = points[points.length - 1];
+                const firstPoint = points[0];
+                const hasOneRM = lastPoint && lastPoint.oneRM !== null && lastPoint.oneRM !== undefined;
+                if (_exerciseViewMode === 'oneRM' && !hasOneRM) return ''; // asistencia — 1RM no aplica
+                const displayVal = _exerciseViewMode === 'oneRM' ? lastPoint.oneRM : ex.lastKg;
+                const changePct = _exerciseViewMode === 'oneRM' && firstPoint && firstPoint.oneRM
+                  ? Math.round(((lastPoint.oneRM - firstPoint.oneRM) / firstPoint.oneRM) * 1000) / 10
+                  : ex.changePct;
+                return `
                 <div class="card" style="background:var(--bg-input);border-color:transparent">
                   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
                     <div style="min-width:0">
@@ -275,17 +290,20 @@ const Metrics = (() => {
                       <div style="font-size:9px;color:var(--text-3)">${ex.sessions} sesiones</div>
                     </div>
                     <div style="text-align:right;flex-shrink:0">
-                      <div style="font-size:13px;font-weight:700;color:var(--text-1)">${ex.lastKg}<span style="font-size:9px;color:var(--text-3)">kg</span></div>
-                      <div style="font-size:9px;font-weight:600;color:${ex.changePct > 0 ? 'var(--success)' : ex.changePct < 0 ? 'var(--danger)' : 'var(--text-4)'}">${ex.changePct > 0 ? '+' : ''}${ex.changePct}%</div>
+                      <div style="font-size:13px;font-weight:700;color:var(--text-1)">${Utils.formatNum(displayVal, 1)}<span style="font-size:9px;color:var(--text-3)">kg</span></div>
+                      <div style="font-size:9px;font-weight:600;color:${changePct > 0 ? 'var(--success)' : changePct < 0 ? 'var(--danger)' : 'var(--text-4)'}">${changePct > 0 ? '+' : ''}${changePct}%</div>
                     </div>
                   </div>
                   <div style="position:relative;height:90px;width:100%;overflow:hidden">
                     <canvas id="ex-mini-chart-${i}"></canvas>
                   </div>
-                </div>`).join('')}
+                </div>`;
+              }).join('')}
             </div>
             ${_filteredExercises().length === 0 ? `
-              <div style="text-align:center;padding:20px;color:var(--text-3);font-size:12px">Sin ejercicios en este filtro</div>` : ''}`}
+              <div style="text-align:center;padding:20px;color:var(--text-3);font-size:12px">Sin ejercicios en este filtro</div>` : ''}
+            ${_exerciseViewMode === 'oneRM' && _filteredExercises().some(ex => { const lp = (ex.points||[])[ex.points.length-1]; return !lp || lp.oneRM === null || lp.oneRM === undefined; }) ? `
+              <div style="font-size:10px;color:var(--text-4);margin-top:10px;text-align:center">Los ejercicios de asistencia no aparecen aquí — el 1RM no aplica ahí.</div>` : ''}`}
         </div>
 
       </div>`;
@@ -324,7 +342,11 @@ const Metrics = (() => {
     if (existing) existing.destroy();
     const parent = canvas.parentElement;
     const h = (parent && parent.offsetHeight > 0) ? parent.offsetHeight : 220;
-    const w = (parent && parent.offsetWidth  > 0) ? parent.offsetWidth  : 400;
+    const wRaw = (parent && parent.offsetWidth  > 0) ? parent.offsetWidth  : 400;
+    // Nunca más ancho que la pantalla real — si la medición del
+    // contenedor falla, el valor por defecto puede exceder el ancho
+    // de un iPhone y romper la página con scroll horizontal.
+    const w = Math.min(wRaw, document.documentElement.clientWidth - 48);
     canvas.width = w; canvas.height = h;
     return canvas;
   }
@@ -360,6 +382,12 @@ const Metrics = (() => {
 
   function setExerciseFilter(group) {
     _exerciseFilter = group;
+    Sounds.click();
+    render();
+  }
+
+  function setExerciseViewMode(mode) {
+    _exerciseViewMode = mode;
     Sounds.click();
     render();
   }
@@ -601,6 +629,10 @@ const Metrics = (() => {
     const canvas = _setupCanvas(`ex-mini-chart-${i}`);
     if (!canvas || !ex.points || ex.points.length === 0) return;
 
+    const useOneRM = _exerciseViewMode === 'oneRM';
+    const chartPoints = useOneRM ? ex.points.filter(p => p.oneRM !== null && p.oneRM !== undefined) : ex.points;
+    if (chartPoints.length === 0) return; // ejercicio de asistencia en modo 1RM — ya se filtró arriba, doble seguro
+
     const color = ex.changePct > 0 ? '#00FF87' : ex.changePct < 0 ? '#EF4444' : '#6E6D8A';
 
     canvas.style.cursor = 'pointer';
@@ -609,11 +641,11 @@ const Metrics = (() => {
     new Chart(canvas, {
       type: 'line',
       data: {
-        labels: ex.points.map(p => Utils.formatDateShort(p.date)),
+        labels: chartPoints.map(p => Utils.formatDateShort(p.date)),
         datasets: [{
-          data: ex.points.map(p => p.kg),
+          data: chartPoints.map(p => useOneRM ? p.oneRM : p.kg),
           borderColor: color, backgroundColor: color + '15', fill: true,
-          tension: 0.4, pointRadius: ex.points.length > 1 ? 2 : 4, borderWidth: 2,
+          tension: 0.4, pointRadius: chartPoints.length > 1 ? 2 : 4, borderWidth: 2,
           pointBackgroundColor: color, pointBorderColor: 'transparent',
         }]
       },
@@ -625,7 +657,7 @@ const Metrics = (() => {
           tooltip: {
             backgroundColor: '#13131F', borderColor: 'rgba(255,255,255,0.08)', borderWidth: 1,
             titleColor: '#B4B2CC', bodyColor: '#FFFFFF',
-            callbacks: { label: (ctx) => `${ctx.parsed.y} kg` }
+            callbacks: { label: (ctx) => `${ctx.parsed.y} kg${useOneRM ? ' (1RM est.)' : ''}` }
           }
         },
         scales: {
@@ -886,7 +918,8 @@ const Metrics = (() => {
 
       wrap.innerHTML = `<canvas id="ex-detail-chart"></canvas>`;
       const canvas = document.getElementById('ex-detail-chart');
-      const w = wrap.offsetWidth || 460, h = wrap.offsetHeight || 220;
+      const wRaw = wrap.offsetWidth || 460, h = wrap.offsetHeight || 220;
+      const w = Math.min(wRaw, document.documentElement.clientWidth - 48);
       canvas.width = w; canvas.height = h;
 
       new Chart(canvas, {
@@ -918,7 +951,7 @@ const Metrics = (() => {
     }
   }
 
-  return { init, openCapture, saveCapture, openExerciseDetail, setExerciseFilter };
+  return { init, openCapture, saveCapture, openExerciseDetail, setExerciseFilter, setExerciseViewMode };
 })();
 
 function initMetrics(container) { Metrics.init(container); }

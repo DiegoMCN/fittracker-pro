@@ -17,12 +17,14 @@ async function initDashboard(container) {
 
   // Se piden sin caché — recién guardaste una sesión y necesitas ver
   // el dato fresco, no uno de hace 5 minutos.
-  const [data, sesRes, recordsRes, metricsRes, cardioRes] = await Promise.all([
+  const [data, sesRes, recordsRes, metricsRes, cardioRes, streaksRes, overtrainingRes] = await Promise.all([
     API.getDashboard(),
     API.getSessions(30),
     API.getPersonalRecords(),
     API.getMetrics(),
     API.getCardio(30),
+    API.getStreaks(),
+    API.getOvertrainingStatus(),
   ]);
 
   // Sesiones reales de esta semana (Lun-Dom), para marcar los días
@@ -42,10 +44,10 @@ async function initDashboard(container) {
   const latestMetrics = metricsHistory.length ? metricsHistory[0] : null;
 
   Store.set({ dashboard: data });
-  _renderDashboard(container, data, doneDayNames, recordsRes, sesRes.sessions || [], latestMetrics, cardioRes.sessions || []);
+  _renderDashboard(container, data, doneDayNames, recordsRes, sesRes.sessions || [], latestMetrics, cardioRes.sessions || [], streaksRes, overtrainingRes);
 }
 
-function _renderDashboard(container, data, doneDayNames, records, allSessions, latestMetrics, allCardio) {
+function _renderDashboard(container, data, doneDayNames, records, allSessions, latestMetrics, allCardio, streaks, overtraining) {
   const today     = new Date().getDay();
   const nextSes   = CONFIG.WEEK_PLAN[today] || CONFIG.WEEK_PLAN[(today + 1) % 7];
   const goals     = CONFIG.GOALS;
@@ -279,6 +281,59 @@ function _renderDashboard(container, data, doneDayNames, records, allSessions, l
           <span style="font-size:9px;background:var(--accent);color:var(--bg-primary);padding:3px 8px;border-radius:99px;font-weight:700;flex-shrink:0">AQUÍ</span>` : ''}
         </div>`).join('')}
     </div>
+  </div>
+
+  <!-- Rachas y estado de recuperación -->
+  <div class="grid-2 section">
+
+    <!-- Rachas y consistencia -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">🔥 Rachas</div>
+      </div>
+      <div class="grid-2" style="gap:10px;margin-bottom:14px">
+        <div style="background:var(--bg-input);border-radius:10px;padding:14px;text-align:center">
+          <div style="font-size:26px;font-weight:800;color:${streaks.currentStreak > 0 ? 'var(--accent)' : 'var(--text-3)'}">${streaks.currentStreak}</div>
+          <div style="font-size:10px;color:var(--text-3)">racha actual</div>
+        </div>
+        <div style="background:var(--bg-input);border-radius:10px;padding:14px;text-align:center">
+          <div style="font-size:26px;font-weight:800;color:var(--text-1)">${streaks.longestStreak}</div>
+          <div style="font-size:10px;color:var(--text-3)">racha más larga</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;font-size:11px;color:var(--text-3);margin-bottom:6px">
+        <span>Esta semana</span>
+        <span style="color:var(--text-2);font-weight:600">${streaks.weeklyTrained}/${streaks.weeklyPlanned} días</span>
+      </div>
+      <div style="height:6px;background:var(--bg-input);border-radius:99px;overflow:hidden">
+        <div style="height:100%;background:var(--accent);border-radius:99px;width:${Math.min(100, Math.round(streaks.weeklyTrained / Math.max(streaks.weeklyPlanned,1) * 100))}%"></div>
+      </div>
+    </div>
+
+    <!-- Estado de recuperación / sobreentrenamiento -->
+    <div class="card" style="${overtraining.level === 'alerta' ? 'border-color:rgba(239,68,68,0.4)' : overtraining.level === 'atencion' ? 'border-color:rgba(245,158,11,0.4)' : ''}">
+      <div class="card-header">
+        <div class="card-title">
+          ${overtraining.level === 'alerta' ? '🚨' : overtraining.level === 'atencion' ? '⚠️' : '✅'} Estado de recuperación
+        </div>
+      </div>
+      ${overtraining.flags.length === 0 ? `
+        <div style="display:flex;align-items:center;gap:10px;padding:6px 0">
+          <span style="font-size:24px">💪</span>
+          <div style="font-size:12px;color:var(--text-2)">Sin señales de sobrecarga — tus datos recientes se ven bien.</div>
+        </div>` : `
+        <div style="display:flex;flex-direction:column;gap:8px">
+          ${overtraining.flags.map(f => `
+            <div style="display:flex;gap:8px;font-size:11px;color:var(--text-2);line-height:1.5;background:var(--bg-input);border-radius:8px;padding:8px 10px">
+              <span style="flex-shrink:0">${overtraining.level === 'alerta' ? '🚨' : '⚠️'}</span>
+              <span>${f.text}</span>
+            </div>`).join('')}
+        </div>
+        <div style="font-size:10px;color:var(--text-3);margin-top:10px">
+          ${overtraining.level === 'alerta' ? 'Varias señales a la vez — considera un día de descarga.' : 'Una señal aislada — vale la pena tenerla en cuenta.'}
+        </div>`}
+    </div>
+
   </div>
 
   <!-- Fila secundaria -->
