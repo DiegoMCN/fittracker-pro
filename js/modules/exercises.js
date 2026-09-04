@@ -159,15 +159,9 @@ const Exercises = (() => {
               <div style="font-size:13px;color:var(--text-2);line-height:1.6">${ex.Instrucciones}</div>
             </div>` : ''}
 
-          ${ex.Nota_Progreso ? `
-            <div style="background:var(--accent-glow);border:1px solid var(--border-accent);border-radius:10px;padding:12px 14px;margin-bottom:${ex.Notas ? '10px' : '0'}">
-              <div style="font-size:11px;font-weight:600;color:var(--accent);margin-bottom:4px">📈 Nota de progreso <span style="font-weight:400;color:var(--text-3)">· auto, según tu última sesión</span></div>
-              <div style="font-size:12px;color:var(--text-2);line-height:1.5">${ex.Nota_Progreso}</div>
-            </div>` : ''}
-
           ${ex.Notas ? `
-            <div style="background:var(--bg-input);border-radius:10px;padding:12px 14px">
-              <div style="font-size:11px;font-weight:600;color:var(--text-3);margin-bottom:4px">📝 Notas técnicas</div>
+            <div style="background:var(--accent-glow);border:1px solid var(--border-accent);border-radius:10px;padding:12px 14px">
+              <div style="font-size:11px;font-weight:600;color:var(--accent);margin-bottom:4px">💡 Notas de progreso</div>
               <div style="font-size:12px;color:var(--text-2);line-height:1.5">${ex.Notas}</div>
             </div>` : ''}
         </div>
@@ -238,14 +232,10 @@ const Exercises = (() => {
             <textarea class="input" id="ed-instructions" rows="2" style="resize:vertical">${ex?.Instrucciones || ''}</textarea>
           </div>
           <div class="input-group">
-            <label class="input-label">Notas técnicas (manual)</label>
-            <input class="input" id="ed-notes" value="${ex?.Notas || ''}" placeholder="Ej. Sin balanceo">
+            <label class="input-label">Notas de progreso</label>
+            <input class="input" id="ed-notes" value="${ex?.Notas || ''}" placeholder="Ej. Baseline: 20kg">
+            <div style="font-size:10px;color:var(--text-4);margin-top:4px">Se actualiza sola después de cada sesión — puedes editarla a mano si quieres.</div>
           </div>
-          ${ex?.Nota_Progreso ? `
-          <div class="input-group">
-            <label class="input-label">Nota de progreso (automática, no editable aquí)</label>
-            <div style="font-size:12px;color:var(--text-3);background:var(--bg-input);border-radius:8px;padding:10px 12px;line-height:1.5">${ex.Nota_Progreso}</div>
-          </div>` : ''}
         </div>
         <div class="modal-footer">
           <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancelar</button>

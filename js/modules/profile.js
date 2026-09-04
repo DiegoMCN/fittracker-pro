@@ -485,7 +485,8 @@ const Profile = (() => {
 
     const parent = canvas.parentElement;
     const h = (parent && parent.offsetHeight > 0) ? parent.offsetHeight : 200;
-    const w = (parent && parent.offsetWidth  > 0) ? parent.offsetWidth  : 400;
+    const wRaw = (parent && parent.offsetWidth  > 0) ? parent.offsetWidth  : 400;
+    const w = Math.min(wRaw, document.documentElement.clientWidth - 48);
     canvas.width = w; canvas.height = h;
 
     new Chart(canvas, {
@@ -554,7 +555,8 @@ const Profile = (() => {
 
     const parent = canvas.parentElement;
     const h = (parent && parent.offsetHeight > 0) ? parent.offsetHeight : 180;
-    const w = (parent && parent.offsetWidth  > 0) ? parent.offsetWidth  : 400;
+    const wRaw = (parent && parent.offsetWidth  > 0) ? parent.offsetWidth  : 400;
+    const w = Math.min(wRaw, document.documentElement.clientWidth - 48);
     canvas.width = w; canvas.height = h;
 
     new Chart(canvas, {

@@ -14,6 +14,7 @@ const Metrics = (() => {
   let _weeklyVolume = [];
   let _heatmapDays = [];
   let _cardioZones = null;
+  let _bestSplit = null;
   let _exerciseFilter = 'Todos';
   let _exerciseViewMode = 'weight'; // 'weight' | 'oneRM'
   let _usingMock = false;
@@ -27,9 +28,10 @@ const Metrics = (() => {
         ${[1,2].map(() => `<div class="skeleton" style="height:280px;border-radius:16px"></div>`).join('')}
       </div>`;
 
-    const [sesRes, cardioRes, metricsRes, progressRes, loadRes, weeklyVolRes, heatmapRes, zonesRes] = await Promise.all([
+    const [sesRes, cardioRes, metricsRes, progressRes, loadRes, weeklyVolRes, heatmapRes, zonesRes, bestSplitRes] = await Promise.all([
       API.getSessions(50), API.getCardio(50), API.getMetrics(), API.getExerciseProgress(),
       API.getTrainingLoad(), API.getWeeklyVolume(12), API.getIntensityHeatmap(365), API.getCardioZoneDistribution(60),
+      API.getBestSplitEver(),
     ]);
 
     _sessions = (sesRes.sessions || []).slice().reverse(); // orden cronológico
@@ -42,6 +44,7 @@ const Metrics = (() => {
     _weeklyVolume = weeklyVolRes.weeks || [];
     _heatmapDays = heatmapRes.days || [];
     _cardioZones = zonesRes;
+    _bestSplit = bestSplitRes;
     _usingMock = API.isMock();
 
     render();
@@ -217,6 +220,27 @@ const Metrics = (() => {
           </div>
           ${_renderExerciseRecords()}
         </div>
+
+        <!-- Récord de kilómetro más rápido — de toda la historia, no
+             solo de la sesión completa. Directamente ligado a la meta
+             de 20km/h: un split suelto puede ser tu velocidad real. -->
+        ${_bestSplit && _bestSplit.found ? `
+        <div class="card card-accent" style="margin-bottom:24px">
+          <div class="card-header">
+            <div class="card-title">⚡ Kilómetro más rápido</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:16px">
+            <div style="text-align:center;flex-shrink:0">
+              <div style="font-size:28px;font-weight:800;color:var(--accent)">${_bestSplit.pace}</div>
+              <div style="font-size:10px;color:var(--text-3)">min/km</div>
+            </div>
+            <div style="flex:1;font-size:11px;color:var(--text-3)">
+              ${Utils.formatDate(_bestSplit.date)} · Km ${_bestSplit.splitNum}${_bestSplit.distanceKm < 1 ? ` (${_bestSplit.distanceKm}km)` : ''}
+              ${_bestSplit.fcAvg ? ` · FC ${_bestSplit.fcAvg}bpm` : ''}
+              <br>Equivale a ${Math.round((60/(_bestSplit.paceSec/60))*10)/10} km/h — ${_bestSplit.paceSec <= 180 ? 'ya al ritmo de tu meta de 20km/h 🎯' : `te faltan ${Utils.formatNum(_bestSplit.paceSec - 180, 0)}seg/km para tu meta`}
+            </div>
+          </div>
+        </div>` : ''}
 
         <!-- Distribución de volumen por grupo muscular — sí es un "parte del
              todo" real, por eso aquí sí tiene sentido usar pastel/dona -->

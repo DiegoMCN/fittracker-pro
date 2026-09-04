@@ -9,6 +9,7 @@ const History = (() => {
   let _filter = 'all'; // all | Fuerza | Cardio
   let _expandedId = null;
   let _exerciseDetailCache = {}; // { [fecha]: { loading, exercises } }
+  let _splitsAnalysisCache = {}; // { [fecha]: { loading, data } }
   let _usingMock = false;
 
   async function init(container) {
@@ -28,7 +29,8 @@ const History = (() => {
     const fromSessions = _sessions.map(s => ({ ...s, _kind: 'sesion' }));
     const fromCardio = _cardio.map(c => ({
       date: c.date, type: 'Cardio', duration: c.duration, fcAvg: c.fcAvg, fcPeak: c.fcPeak,
-      calories: null, effort: null, volume: null, notes: c.notes, _kind: 'cardio',
+      calories: c.caloriasActivas, calTotal: c.caloriasTotales, paceProm: c.paceProm,
+      effort: null, volume: null, notes: c.notes, _kind: 'cardio',
       distance: c.distance, cadAvg: c.cadAvg, cadPeak: c.cadPeak, cadPeakVal: c.cadPeak,
       velMax: c.velMax, fcPost1: c.fcPost1, fcPost2: c.fcPost2, rec2min: c.rec2min,
       zone1: c.zone1, zone2: c.zone2, zone3: c.zone3, zone4: c.zone4, zone5: c.zone5,
@@ -110,6 +112,8 @@ const History = (() => {
             </div>
           </div>`).join('')}
       </div>`;
+
+    setTimeout(_renderSplitsPaceChart, 100);
   }
 
   function _sessionCard(s, cardId) {
@@ -146,12 +150,13 @@ const History = (() => {
             ${s.fcMin ? `<div><div style="font-size:10px;color:var(--text-4)">FC mínima</div><div style="font-weight:700;font-size:14px">${s.fcMin} bpm</div></div>` : ''}
             ${s.calories ? `<div><div style="font-size:10px;color:var(--text-4)">Calorías activas</div><div style="font-weight:700;font-size:14px">${s.calories} kcal</div></div>` : ''}
             ${s.calTotal ? `<div><div style="font-size:10px;color:var(--text-4)">Calorías totales</div><div style="font-weight:700;font-size:14px">${s.calTotal} kcal</div></div>` : ''}
+            ${s.paceProm ? `<div><div style="font-size:10px;color:var(--text-4)">Pace promedio</div><div style="font-weight:700;font-size:14px">${s.paceProm}/km</div></div>` : ''}
             ${s.cadAvg ? `<div><div style="font-size:10px;color:var(--text-4)">Cadencia</div><div style="font-weight:700;font-size:14px">${s.cadAvg} spm</div></div>` : ''}
             ${s.cadPeak ? `<div><div style="font-size:10px;color:var(--text-4)">Cadencia pico</div><div style="font-weight:700;font-size:14px">${s.cadPeak} spm</div></div>` : ''}
             ${s.rec2min !== undefined && s.rec2min !== null ? `<div><div style="font-size:10px;color:var(--text-4)">Recuperación 2min</div><div style="font-weight:700;font-size:14px;color:${s.rec2min < 0 ? 'var(--success)' : 'var(--danger)'}">${s.rec2min} bpm</div></div>` : ''}
           </div>
 
-          ${!isCardio ? _renderExerciseDetail(s.date) : ''}
+          ${!isCardio ? _renderExerciseDetail(s.date) : _renderSplitsAnalysis(s.date)}
 
           ${(s.zone1 || s.zone2 || s.zone3 || s.zone4 || s.zone5) ? `
           <div style="margin-top:12px">
@@ -229,6 +234,119 @@ const History = (() => {
       </div>`;
   }
 
+  // Dibuja la gráfica de pacing de la sesión de cardio expandida (si
+  // hay una) — verde si ese split ya va al ritmo objetivo, gris si no.
+  function _renderSplitsPaceChart() {
+    Object.keys(_splitsAnalysisCache).forEach(date => {
+      const canvas = document.getElementById(`splits-pace-chart-${date}`);
+      if (!canvas || !window.Chart) return;
+      const cache = _splitsAnalysisCache[date];
+      if (!cache || cache.loading || !cache.data || !cache.data.hasData) return;
+
+      const existing = Chart.getChart(canvas);
+      if (existing) existing.destroy();
+
+      const splits = cache.data.splits.filter(s => s.paceSec !== null);
+      if (splits.length === 0) return;
+
+      const parent = canvas.parentElement;
+      const h = (parent && parent.offsetHeight > 0) ? parent.offsetHeight : 140;
+      const wRaw = (parent && parent.offsetWidth > 0) ? parent.offsetWidth : 400;
+      const w = Math.min(wRaw, document.documentElement.clientWidth - 48);
+      canvas.width = w; canvas.height = h;
+
+      const TARGET_SEC = 180; // 3:00/km = 20km/h
+
+      new Chart(canvas, {
+        type: 'bar',
+        data: {
+          labels: splits.map(s => `Km ${s.num}`),
+          datasets: [{
+            data: splits.map(s => s.paceSec),
+            backgroundColor: splits.map(s => s.paceSec <= TARGET_SEC ? '#00FF87' : '#6E6D8A'),
+            borderRadius: 4,
+          }]
+        },
+        options: {
+          responsive: false, maintainAspectRatio: false,
+          animation: { duration: 500, easing: 'easeOutQuart' },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: '#13131F', borderColor: 'rgba(255,255,255,0.08)', borderWidth: 1, titleColor: '#B4B2CC', bodyColor: '#FFFFFF',
+              callbacks: { label: (ctx) => `Pace: ${splits[ctx.dataIndex].pace}/km${splits[ctx.dataIndex].fcAvg ? ` · FC ${splits[ctx.dataIndex].fcAvg}bpm` : ''}` }
+            }
+          },
+          scales: {
+            x: { ticks: { color: '#6E6D8A', font: { size: 9, family: 'Poppins' } }, grid: { display: false }, border: { display: false } },
+            y: {
+              reverse: true, // menos segundos = más rápido = barra "mejor" arriba
+              ticks: { color: '#6E6D8A', font: { size: 9, family: 'Poppins' }, callback: v => _secToPaceClient(v) },
+              grid: { color: 'rgba(255,255,255,0.04)' }, border: { display: false },
+            },
+          }
+        }
+      });
+    });
+  }
+
+  function _secToPaceClient(sec) {
+    const m = Math.floor(sec / 60);
+    const s = Math.round(sec % 60);
+    return `${m}:${String(s).padStart(2, '0')}`;
+  }
+
+  function _renderSplitsAnalysis(date) {
+    const cache = _splitsAnalysisCache[date];
+    if (!cache || cache.loading) {
+      return `<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);font-size:11px;color:var(--text-4)">Cargando splits...</div>`;
+    }
+    const d = cache.data;
+    if (!d || !d.hasData) {
+      return `<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);font-size:11px;color:var(--text-4)">Sin splits registrados para esta sesión — puedes agregarlos con "✏️ Completar datos del reloj".</div>`;
+    }
+
+    return `
+      <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+        <div style="font-size:10px;color:var(--text-4);margin-bottom:10px;text-transform:uppercase;letter-spacing:.05em">Análisis de splits</div>
+
+        <!-- Gráfica de pacing -->
+        <div style="position:relative;height:140px;width:100%;overflow:hidden;margin-bottom:14px">
+          <canvas id="splits-pace-chart-${date}"></canvas>
+        </div>
+
+        <!-- Métricas -->
+        <div class="grid-2" style="gap:8px">
+          ${d.paceConsistency ? `
+          <div style="background:var(--bg-input);border-radius:8px;padding:10px">
+            <div style="font-size:9px;color:var(--text-3)">Consistencia de pace</div>
+            <div style="font-size:13px;font-weight:700;color:var(--text-1)">${d.paceConsistency.fastestPace} - ${d.paceConsistency.slowestPace}<span style="font-size:9px;color:var(--text-3)">/km</span></div>
+            <div style="font-size:9px;color:${d.paceConsistency.rangeSec <= 15 ? 'var(--success)' : d.paceConsistency.rangeSec <= 30 ? 'var(--warning)' : 'var(--danger)'}">rango de ${d.paceConsistency.rangeSec}seg</div>
+          </div>` : ''}
+
+          <div style="background:var(--bg-input);border-radius:8px;padding:10px">
+            <div style="font-size:9px;color:var(--text-3)">Al ritmo objetivo (20km/h)</div>
+            <div style="font-size:13px;font-weight:700;color:${d.atTargetPct >= 50 ? 'var(--success)' : 'var(--text-1)'}">${d.atTargetPct}%</div>
+            <div style="font-size:9px;color:var(--text-3)">${d.atTargetCount} de ${d.totalValidSplits} splits</div>
+          </div>
+
+          ${d.cardiacDrift ? `
+          <div style="background:var(--bg-input);border-radius:8px;padding:10px">
+            <div style="font-size:9px;color:var(--text-3)">Deriva cardíaca</div>
+            <div style="font-size:13px;font-weight:700;color:${d.cardiacDrift.fcDrift > 10 && d.cardiacDrift.paceSimilar ? 'var(--warning)' : 'var(--text-1)'}">${d.cardiacDrift.fcDrift > 0 ? '+' : ''}${d.cardiacDrift.fcDrift} bpm</div>
+            <div style="font-size:9px;color:var(--text-3)">${d.cardiacDrift.fcFirstHalf} → ${d.cardiacDrift.fcSecondHalf} bpm${d.cardiacDrift.paceSimilar ? ' (mismo pace)' : ''}</div>
+          </div>` : ''}
+
+          ${d.cadenceDrift ? `
+          <div style="background:var(--bg-input);border-radius:8px;padding:10px">
+            <div style="font-size:9px;color:var(--text-3)">Consistencia de cadencia</div>
+            <div style="font-size:13px;font-weight:700;color:${d.cadenceDrift.cadDrift < -5 ? 'var(--warning)' : 'var(--text-1)'}">${d.cadenceDrift.cadDrift > 0 ? '+' : ''}${d.cadenceDrift.cadDrift} spm</div>
+            <div style="font-size:9px;color:var(--text-3)">${d.cadenceDrift.cadFirstHalf} → ${d.cadenceDrift.cadSecondHalf} spm</div>
+          </div>` : ''}
+        </div>
+      </div>`;
+  }
+
   function setFilter(f) { _filter = f; Sounds.click(); render(); }
 
   function toggleExpand(id, date, isCardio) {
@@ -244,6 +362,16 @@ const History = (() => {
         if (_expandedId === id) render(); // solo re-renderiza si sigue abierta
       }).catch(() => {
         _exerciseDetailCache[date] = { loading: false, exercises: [] };
+      });
+    }
+    // Mismo patrón para el análisis de splits en sesiones de cardio.
+    if (_expandedId && isCardio && date && !_splitsAnalysisCache[date]) {
+      _splitsAnalysisCache[date] = { loading: true, data: null };
+      API.getSplitsAnalysis(date).then(res => {
+        _splitsAnalysisCache[date] = { loading: false, data: res };
+        if (_expandedId === id) render();
+      }).catch(() => {
+        _splitsAnalysisCache[date] = { loading: false, data: { hasData: false } };
       });
     }
     render();
