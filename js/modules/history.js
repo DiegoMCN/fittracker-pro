@@ -372,10 +372,18 @@ const History = (() => {
   }
 
   // ── EDITAR CARDIO EXISTENTE ────────────────────────────────────────────
-  function openCardioEdit(rowNum) {
+  async function openCardioEdit(rowNum) {
     const s = _cardio.find(x => x.rowNum === rowNum);
     if (!s) { Toast.error('No se encontró la sesión'); return; }
     Sounds.click();
+
+    // Trae los splits que ya existan para esta fecha, para precargarlos
+    // en vez de partir de cero cada vez que editas.
+    let existingSplits = [];
+    try {
+      const res = await API.getCardioSplits(s.date);
+      existingSplits = res.splits || [];
+    } catch(e) { /* si falla, se edita sin precarga */ }
 
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay';
@@ -394,7 +402,7 @@ const History = (() => {
             </div>
             <div class="input-group" style="flex:1">
               <label class="input-label">Distancia (km)</label>
-              <input class="input" type="number" step="0.01" id="ce-distance" value="${s.distance || ''}">
+              <input class="input" type="number" step="0.01" id="ce-distance" value="${s.distance || ''}" oninput="History.renderCardioEditSplits()">
             </div>
           </div>
           <div class="input-row">
@@ -419,6 +427,20 @@ const History = (() => {
             <div class="input-group" style="flex:1">
               <label class="input-label">Vel. máxima (km/h)</label>
               <input class="input" type="number" step="0.1" id="ce-velmax" value="${s.velMax || ''}">
+            </div>
+          </div>
+          <div class="input-row">
+            <div class="input-group" style="flex:1">
+              <label class="input-label">Calorías activas</label>
+              <input class="input" type="number" id="ce-cal-active" value="${s.caloriasActivas || ''}">
+            </div>
+            <div class="input-group" style="flex:1">
+              <label class="input-label">Calorías totales</label>
+              <input class="input" type="number" id="ce-cal-total" value="${s.caloriasTotales || ''}">
+            </div>
+            <div class="input-group" style="flex:1">
+              <label class="input-label">Pace promedio</label>
+              <input class="input" id="ce-pace" value="${s.paceProm || ''}" placeholder="5:30">
             </div>
           </div>
           <div style="font-size:10px;color:var(--text-3);margin-top:4px">Recuperación post-esfuerzo</div>
@@ -446,6 +468,9 @@ const History = (() => {
             <div class="input-group" style="flex:1"><label class="input-label">Zona 4</label><input class="input" id="ce-z4" value="${s.zone4 || ''}"></div>
             <div class="input-group" style="flex:1"><label class="input-label">Zona 5</label><input class="input" id="ce-z5" value="${s.zone5 || ''}"></div>
           </div>
+
+          <div id="ce-splits-section"></div>
+
           <div class="input-group">
             <label class="input-label">Notas</label>
             <input class="input" id="ce-notes" value="${(s.notes || '').replace(/"/g, '&quot;')}">
@@ -453,15 +478,102 @@ const History = (() => {
         </div>
         <div class="modal-footer">
           <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancelar</button>
-          <button class="btn btn-primary" id="ce-save-btn" onclick="History.saveCardioEdit(${rowNum})">Guardar cambios</button>
+          <button class="btn btn-primary" id="ce-save-btn" onclick="History.saveCardioEdit(${rowNum}, '${s.date}')">Guardar cambios</button>
         </div>
       </div>`;
     document.body.appendChild(overlay);
+
+    _ceExistingSplits = existingSplits;
+    renderCardioEditSplits();
+  }
+
+  // ── SPLITS EN EL MODAL DE EDICIÓN — mismo patrón que cardio.js ────────
+  let _ceExistingSplits = [];
+
+  function renderCardioEditSplits() {
+    const section = document.getElementById('ce-splits-section');
+    if (!section) return;
+
+    const distance = parseFloat(document.getElementById('ce-distance')?.value) || 0;
+    const numSplits = Math.ceil(distance);
+
+    // Preserva lo ya escrito en pantalla; si no hay nada escrito
+    // todavía, usa los splits que ya venían guardados para esta fecha.
+    const prev = [];
+    for (let i = 0; i < 20; i++) {
+      const t = document.getElementById(`ce-split-time-${i}`)?.value;
+      const f = document.getElementById(`ce-split-fc-${i}`)?.value;
+      const c = document.getElementById(`ce-split-cad-${i}`)?.value;
+      if (t || f || c) prev[i] = { t, f, c };
+    }
+
+    if (numSplits === 0) { section.innerHTML = ''; return; }
+
+    const rows = [];
+    for (let i = 0; i < numSplits; i++) {
+      const isLast = i === numSplits - 1;
+      const splitDist = isLast ? Math.round((distance - i) * 100) / 100 : 1;
+      const label = splitDist < 1 ? `Km ${i+1} (${splitDist}km)` : `Km ${i+1}`;
+      const existing = _ceExistingSplits[i];
+      const p = prev[i] || (existing ? {
+        t: existing.timeSec ? `${Math.floor(existing.timeSec/60)}:${String(existing.timeSec%60).padStart(2,'0')}` : '',
+        f: existing.fcAvg || '', c: existing.cadence || '',
+      } : {});
+      rows.push(`
+        <div class="input-row" style="align-items:flex-end">
+          <div style="width:56px;flex-shrink:0;font-size:10px;color:var(--text-3);padding-bottom:10px">${label}</div>
+          <div class="input-group" style="flex:1">
+            <label class="input-label">Tiempo</label>
+            <input class="input" id="ce-split-time-${i}" placeholder="mm:ss" value="${p.t || ''}">
+          </div>
+          <div class="input-group" style="flex:1">
+            <label class="input-label">FC prom</label>
+            <input class="input" type="number" id="ce-split-fc-${i}" placeholder="bpm" value="${p.f || ''}">
+          </div>
+          <div class="input-group" style="flex:1">
+            <label class="input-label">Cadencia</label>
+            <input class="input" type="number" id="ce-split-cad-${i}" placeholder="spm" value="${p.c || ''}">
+          </div>
+        </div>`);
+    }
+
+    section.innerHTML = `
+      <div style="font-size:10px;color:var(--text-3);margin:4px 0 8px">Splits por kilómetro — pantalla "Splits" del reloj</div>
+      <div style="display:flex;flex-direction:column;gap:8px">${rows.join('')}</div>`;
+  }
+
+  function _collectCardioEditSplits() {
+    const distance = parseFloat(document.getElementById('ce-distance')?.value) || 0;
+    const numSplits = Math.ceil(distance);
+    const splits = [];
+    for (let i = 0; i < numSplits; i++) {
+      const timeStr = document.getElementById(`ce-split-time-${i}`)?.value || '';
+      const fc = document.getElementById(`ce-split-fc-${i}`)?.value || '';
+      const cad = document.getElementById(`ce-split-cad-${i}`)?.value || '';
+      if (!timeStr && !fc && !cad) continue;
+
+      const isLast = i === numSplits - 1;
+      const splitDist = isLast ? Math.round((distance - i) * 100) / 100 : 1;
+
+      let timeSec = 0, pace = '';
+      const parts = timeStr.split(':');
+      if (parts.length === 2) {
+        timeSec = (Number(parts[0]) || 0) * 60 + (Number(parts[1]) || 0);
+        if (splitDist > 0) {
+          const paceSecPerKm = timeSec / splitDist;
+          const paceMin = Math.floor(paceSecPerKm / 60);
+          const paceSec = Math.round(paceSecPerKm % 60);
+          pace = `${paceMin}:${String(paceSec).padStart(2, '0')}`;
+        }
+      }
+      splits.push({ distanceKm: splitDist, timeSec, pace, fcAvg: fc, cadence: cad });
+    }
+    return splits;
   }
 
   let _savingCardioEdit = false;
 
-  async function saveCardioEdit(rowNum) {
+  async function saveCardioEdit(rowNum, date) {
     if (_savingCardioEdit) return; // evita doble click / doble guardado
     _savingCardioEdit = true;
     const btn = document.getElementById('ce-save-btn');
@@ -469,12 +581,14 @@ const History = (() => {
 
     const val = id => document.getElementById(id)?.value || '';
     const payload = {
-      rowNum,
+      rowNum, date,
       duration: val('ce-duration'), distance: val('ce-distance'),
       fcAvg: val('ce-fcavg'), fcPeak: val('ce-fcpeak'),
       cadAvg: val('ce-cadavg'), cadPeak: val('ce-cadpeak'), velMax: val('ce-velmax'),
       fcPost0: val('ce-fcpost0'), fcPost1: val('ce-fcpost1'), fcPost2: val('ce-fcpost2'),
       zone1: val('ce-z1'), zone2: val('ce-z2'), zone3: val('ce-z3'), zone4: val('ce-z4'), zone5: val('ce-z5'),
+      caloriasActivas: val('ce-cal-active'), caloriasTotales: val('ce-cal-total'), paceProm: val('ce-pace'),
+      splits: _collectCardioEditSplits(),
       notes: val('ce-notes'),
     };
 
@@ -500,7 +614,7 @@ const History = (() => {
     }
   }
 
-  return { init, setFilter, toggleExpand, openEdit, saveEdit, openCardioEdit, saveCardioEdit };
+  return { init, setFilter, toggleExpand, openEdit, saveEdit, openCardioEdit, saveCardioEdit, renderCardioEditSplits };
 })();
 
 function initHistory(container) { History.init(container); }
