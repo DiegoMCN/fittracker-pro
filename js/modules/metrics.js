@@ -27,8 +27,9 @@ const Metrics = (() => {
         ${[1,2].map(() => `<div class="skeleton" style="height:280px;border-radius:16px"></div>`).join('')}
       </div>`;
 
-    const [sesRes, cardioRes, metricsRes, progressRes] = await Promise.all([
+    const [sesRes, cardioRes, metricsRes, progressRes, loadRes, weeklyVolRes, heatmapRes, zonesRes] = await Promise.all([
       API.getSessions(50), API.getCardio(50), API.getMetrics(), API.getExerciseProgress(),
+      API.getTrainingLoad(), API.getWeeklyVolume(12), API.getIntensityHeatmap(365), API.getCardioZoneDistribution(60),
     ]);
 
     _sessions = (sesRes.sessions || []).slice().reverse(); // orden cronológico
@@ -37,6 +38,10 @@ const Metrics = (() => {
     _records  = metricsRes.records || {};
     _exerciseProgress = progressRes.exercises || [];
     _volumeByGroup = progressRes.volumeByGroup || [];
+    _trainingLoad = loadRes;
+    _weeklyVolume = weeklyVolRes.weeks || [];
+    _heatmapDays = heatmapRes.days || [];
+    _cardioZones = zonesRes;
     _usingMock = API.isMock();
 
     render();
