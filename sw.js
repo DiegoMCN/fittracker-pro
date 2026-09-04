@@ -1,10 +1,13 @@
 // ═══════════════════════════════════════════
 // SERVICE WORKER — FitTracker Pro
-// ⚠️ Sube CACHE_VERSION cada vez que despliegues cambios,
-//    o el navegador seguirá sirviendo archivos viejos desde caché.
+// Los archivos propios (js/css) ahora se piden con RED PRIMERO — ya no
+// depende de subir CACHE_VERSION a mano para ver cambios nuevos, eso
+// causó bugs fantasma más de una vez. Solo súbelo si agregas o quitas
+// un archivo del APP_SHELL (para que se precachee desde cero), no por
+// cada cambio de contenido dentro de un archivo que ya existía.
 // ═══════════════════════════════════════════
 
-const CACHE_VERSION = 'fittracker-v6';
+const CACHE_VERSION = 'fittracker-v7';
 
 const APP_SHELL = [
   './',
@@ -91,15 +94,20 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
-  // App shell propio: caché primero, actualiza en background (stale-while-revalidate)
+  // App shell propio: RED PRIMERO. Antes era "caché primero, actualiza
+  // en segundo plano" (stale-while-revalidate) — eso significa que
+  // siempre se ve la versión VIEJA de inmediato, y solo se actualiza
+  // hasta la siguiente vez, y encima requería que yo subiera
+  // CACHE_VERSION a mano en cada deploy para forzar el refresco. Ya se
+  // me olvidó dos veces y causó horas de debugging persiguiendo "bugs"
+  // que en realidad eran solo caché vieja. Con red primero, mientras
+  // haya conexión SIEMPRE se ve el código más reciente — el caché
+  // aquí es nada más el respaldo para cuando no hay señal.
   e.respondWith(
-    caches.match(req).then(cached => {
-      const fetchPromise = fetch(req).then(res => {
-        const clone = res.clone();
-        caches.open(CACHE_VERSION).then(c => c.put(req, clone));
-        return res;
-      }).catch(() => cached);
-      return cached || fetchPromise;
-    })
+    fetch(req).then(res => {
+      const clone = res.clone();
+      caches.open(CACHE_VERSION).then(c => c.put(req, clone));
+      return res;
+    }).catch(() => caches.match(req))
   );
 });
