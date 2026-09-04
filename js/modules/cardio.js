@@ -530,9 +530,26 @@ const Cardio = (() => {
               </div>
               <div class="input-group" style="flex:1">
                 <label class="input-label">Distancia</label>
-                <input class="input" type="number" step="0.01" id="cs-distance" placeholder="km">
+                <input class="input" type="number" step="0.01" id="cs-distance" placeholder="km" oninput="Cardio.renderSplitInputs()">
               </div>
             </div>
+            <div class="input-row">
+              <div class="input-group" style="flex:1">
+                <label class="input-label">Calorías activas</label>
+                <input class="input" type="number" id="cs-cal-active" placeholder="kcal">
+              </div>
+              <div class="input-group" style="flex:1">
+                <label class="input-label">Calorías totales</label>
+                <input class="input" type="number" id="cs-cal-total" placeholder="kcal">
+              </div>
+              <div class="input-group" style="flex:1">
+                <label class="input-label">Pace promedio</label>
+                <input class="input" id="cs-pace" placeholder="5:30">
+              </div>
+            </div>
+
+            <div id="splits-section"></div>
+
             <div class="input-group">
               <label class="input-label">Notas</label>
               <input class="input" id="cs-notes" placeholder="Ej. Se sintió más fácil que la semana pasada">
@@ -563,6 +580,90 @@ const Cardio = (() => {
     _saveCardioSession({});
   }
 
+  // Genera las filas de splits según la distancia — cualquier
+  // kilómetro parcial (ej. 2.2km) SÍ cuenta como su propio split, no
+  // se descarta. Preserva lo que ya escribiste si cambias la
+  // distancia y el número de splits varía.
+  function renderSplitInputs() {
+    const section = document.getElementById('splits-section');
+    if (!section) return;
+
+    const distance = parseFloat(document.getElementById('cs-distance')?.value) || 0;
+    const numSplits = Math.ceil(distance);
+
+    // Guarda lo ya escrito antes de reconstruir el HTML
+    const prev = [];
+    for (let i = 0; i < 20; i++) {
+      const t = document.getElementById(`split-time-${i}`)?.value;
+      const f = document.getElementById(`split-fc-${i}`)?.value;
+      const c = document.getElementById(`split-cad-${i}`)?.value;
+      if (t || f || c) prev[i] = { t, f, c };
+    }
+
+    if (numSplits === 0) { section.innerHTML = ''; return; }
+
+    const rows = [];
+    for (let i = 0; i < numSplits; i++) {
+      const isLast = i === numSplits - 1;
+      const splitDist = isLast ? Math.round((distance - i) * 100) / 100 : 1;
+      const label = splitDist < 1 ? `Km ${i+1} (${splitDist}km)` : `Km ${i+1}`;
+      const p = prev[i] || {};
+      rows.push(`
+        <div class="input-row" style="align-items:flex-end">
+          <div style="width:56px;flex-shrink:0;font-size:10px;color:var(--text-3);padding-bottom:10px">${label}</div>
+          <div class="input-group" style="flex:1">
+            <label class="input-label">Tiempo</label>
+            <input class="input" id="split-time-${i}" placeholder="mm:ss" value="${p.t || ''}">
+          </div>
+          <div class="input-group" style="flex:1">
+            <label class="input-label">FC prom</label>
+            <input class="input" type="number" id="split-fc-${i}" placeholder="bpm" value="${p.f || ''}">
+          </div>
+          <div class="input-group" style="flex:1">
+            <label class="input-label">Cadencia</label>
+            <input class="input" type="number" id="split-cad-${i}" placeholder="spm" value="${p.c || ''}">
+          </div>
+        </div>`);
+    }
+
+    section.innerHTML = `
+      <div style="font-size:10px;color:var(--text-3);margin:12px 0 8px">Splits por kilómetro — opcional, de la pantalla "Splits" del reloj</div>
+      <div style="display:flex;flex-direction:column;gap:8px">${rows.join('')}</div>`;
+  }
+
+  // Arma el array de splits desde los inputs dinámicos, calculando el
+  // pace de cada uno a partir de su tiempo y distancia real (así el
+  // último split parcial no queda con un pace inflado).
+  function _collectSplits() {
+    const distance = parseFloat(document.getElementById('cs-distance')?.value) || 0;
+    const numSplits = Math.ceil(distance);
+    const splits = [];
+    for (let i = 0; i < numSplits; i++) {
+      const timeStr = document.getElementById(`split-time-${i}`)?.value || '';
+      const fc = document.getElementById(`split-fc-${i}`)?.value || '';
+      const cad = document.getElementById(`split-cad-${i}`)?.value || '';
+      if (!timeStr && !fc && !cad) continue; // split vacío, se omite
+
+      const isLast = i === numSplits - 1;
+      const splitDist = isLast ? Math.round((distance - i) * 100) / 100 : 1;
+
+      let timeSec = 0, pace = '';
+      const parts = timeStr.split(':');
+      if (parts.length === 2) {
+        timeSec = (Number(parts[0]) || 0) * 60 + (Number(parts[1]) || 0);
+        if (splitDist > 0) {
+          const paceSecPerKm = timeSec / splitDist;
+          const paceMin = Math.floor(paceSecPerKm / 60);
+          const paceSec = Math.round(paceSecPerKm % 60);
+          pace = `${paceMin}:${String(paceSec).padStart(2, '0')}`;
+        }
+      }
+
+      splits.push({ distanceKm: splitDist, timeSec, pace, fcAvg: fc, cadence: cad });
+    }
+    return splits;
+  }
+
   function saveStats() {
     if (!_lockButtons('cs-save-btn')) return;
     const val = id => document.getElementById(id)?.value || '';
@@ -572,6 +673,8 @@ const Cardio = (() => {
       zone1: val('cs-z1'), zone2: val('cs-z2'), zone3: val('cs-z3'), zone4: val('cs-z4'), zone5: val('cs-z5'),
       cadAvg: val('cs-cadavg'), cadPeak: val('cs-cadpeak'),
       velMax: val('cs-velmax'), distance: val('cs-distance'),
+      caloriasActivas: val('cs-cal-active'), caloriasTotales: val('cs-cal-total'), paceProm: val('cs-pace'),
+      splits: _collectSplits(),
       notes: val('cs-notes'),
     });
   }
@@ -600,6 +703,10 @@ const Cardio = (() => {
       zone4: stats.zone4 || '', zone5: stats.zone5 || '',
       cadAvg: stats.cadAvg || '', cadPeak: stats.cadPeak || '',
       velMax: stats.velMax || '',
+      caloriasActivas: stats.caloriasActivas || '',
+      caloriasTotales: stats.caloriasTotales || '',
+      paceProm: stats.paceProm || '',
+      splits: stats.splits || [],
       notes: stats.notes || '',
     };
 
@@ -680,7 +787,7 @@ const Cardio = (() => {
   return {
     init, selectProtocol, backToPicker, startProtocol, togglePause, skipPhase,
     discardSession, onRouteChange, hasActiveSession, skipStats, saveStats,
-    toggleMetronome, adjustMetronome,
+    toggleMetronome, adjustMetronome, renderSplitInputs,
   };
 })();
 

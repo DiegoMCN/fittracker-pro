@@ -10,6 +10,10 @@ const Metrics = (() => {
   let _records = {};
   let _exerciseProgress = [];
   let _volumeByGroup = [];
+  let _trainingLoad = null;
+  let _weeklyVolume = [];
+  let _heatmapDays = [];
+  let _cardioZones = null;
   let _exerciseFilter = 'Todos';
   let _exerciseViewMode = 'weight'; // 'weight' | 'oneRM'
   let _usingMock = false;
@@ -306,6 +310,92 @@ const Metrics = (() => {
               <div style="font-size:10px;color:var(--text-4);margin-top:10px;text-align:center">Los ejercicios de asistencia no aparecen aquí — el 1RM no aplica ahí.</div>` : ''}`}
         </div>
 
+        <!-- Carga de entrenamiento (ACWR) -->
+        ${_trainingLoad && _trainingLoad.acwr !== null ? `
+        <div class="card section" style="${_trainingLoad.zone === 'riesgo' ? 'border-color:rgba(239,68,68,0.4)' : _trainingLoad.zone === 'bajo' ? 'border-color:rgba(245,158,11,0.4)' : ''}">
+          <div class="card-header">
+            <div>
+              <div class="card-title">⚖️ Carga de entrenamiento (ACWR)</div>
+              <div class="card-subtitle">Volumen reciente vs. tu promedio de 4 semanas — métrica real de ciencia del deporte</div>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:20px;margin-bottom:16px">
+            <div style="text-align:center;flex-shrink:0">
+              <div style="font-size:32px;font-weight:800;color:${_trainingLoad.zone === 'riesgo' ? 'var(--danger)' : _trainingLoad.zone === 'bajo' ? 'var(--warning)' : 'var(--success)'}">${_trainingLoad.acwr}</div>
+              <div style="font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em">${_trainingLoad.zone === 'riesgo' ? 'Riesgo' : _trainingLoad.zone === 'bajo' ? 'Bajo' : 'Óptimo'}</div>
+            </div>
+            <div style="flex:1;font-size:11px;color:var(--text-3);line-height:1.6">
+              ${_trainingLoad.zone === 'riesgo'
+                ? `Tu carga de esta semana (${_trainingLoad.acute}kg) está muy por encima de tu promedio reciente (${_trainingLoad.chronic}kg). El rango sano es 0.8-1.3 — considera una semana más ligera.`
+                : _trainingLoad.zone === 'bajo'
+                ? `Tu carga de esta semana (${_trainingLoad.acute}kg) está por debajo de tu promedio (${_trainingLoad.chronic}kg) — normal en una semana de descarga.`
+                : `Tu carga de esta semana (${_trainingLoad.acute}kg) está en el rango sano frente a tu promedio (${_trainingLoad.chronic}kg).`}
+            </div>
+          </div>
+          <div style="position:relative;height:100px;width:100%;overflow:hidden">
+            <canvas id="acwr-trend-chart"></canvas>
+          </div>
+        </div>` : ''}
+
+        <!-- Volumen semanal -->
+        ${_weeklyVolume.length > 0 ? `
+        <div class="card section">
+          <div class="card-header">
+            <div>
+              <div class="card-title">📊 Volumen semanal</div>
+              <div class="card-subtitle">Últimas ${_weeklyVolume.length} semanas — ¿acumulación o descarga?</div>
+            </div>
+          </div>
+          <div style="position:relative;height:180px;width:100%;overflow:hidden">
+            <canvas id="weekly-volume-chart"></canvas>
+          </div>
+        </div>` : ''}
+
+        <!-- Mapa de calor de intensidad anual -->
+        ${_heatmapDays.length > 0 ? `
+        <div class="card section">
+          <div class="card-header">
+            <div>
+              <div class="card-title">🗓️ Intensidad del último año</div>
+              <div class="card-subtitle">Más oscuro = más volumen ese día</div>
+            </div>
+          </div>
+          <div style="overflow-x:auto;padding-bottom:8px" id="heatmap-container"></div>
+          <div style="display:flex;align-items:center;justify-content:flex-end;gap:6px;margin-top:8px">
+            <span style="font-size:9px;color:var(--text-4)">Menos</span>
+            <div style="width:70px;height:6px;border-radius:3px;background:linear-gradient(90deg, var(--bg-input), var(--accent))"></div>
+            <span style="font-size:9px;color:var(--text-4)">Más</span>
+          </div>
+        </div>` : ''}
+
+        <!-- Distribución acumulada de zonas de cardio -->
+        ${_cardioZones && _cardioZones.totalMinutes > 0 ? `
+        <div class="card section">
+          <div class="card-header">
+            <div>
+              <div class="card-title">💓 Distribución de zonas de cardio</div>
+              <div class="card-subtitle">Últimas ${_cardioZones.sessionsCounted} sesiones — ${_cardioZones.totalMinutes} min totales</div>
+            </div>
+          </div>
+          <div style="position:relative;height:200px;width:100%;overflow:hidden">
+            <canvas id="cardio-zones-chart"></canvas>
+          </div>
+        </div>` : ''}
+
+        <!-- Radar de balance muscular -->
+        ${_volumeByGroup.length >= 3 ? `
+        <div class="card section">
+          <div class="card-header">
+            <div>
+              <div class="card-title">🕸️ Balance muscular</div>
+              <div class="card-subtitle">Volumen relativo por grupo — ¿algún grupo se quedó atrás?</div>
+            </div>
+          </div>
+          <div style="position:relative;height:280px;width:100%;overflow:hidden">
+            <canvas id="muscle-radar-chart"></canvas>
+          </div>
+        </div>` : ''}
+
       </div>`;
 
     setTimeout(_renderCharts, 100);
@@ -401,6 +491,11 @@ const Metrics = (() => {
     _chartVolumeDistribution();
     _paintMuscleMap();
     _filteredExercises().forEach((ex, i) => _chartExerciseMini(ex, i));
+    _chartACWRTrend();
+    _chartWeeklyVolume();
+    _renderHeatmap();
+    _chartCardioZones();
+    _chartMuscleRadar();
   }
 
   function _chartFCStrength() {
@@ -758,6 +853,209 @@ const Metrics = (() => {
         el.setAttribute('fill', `rgba(0,255,135,${alpha})`);
         el.innerHTML = `<title>${group}: ${Math.round(v)} kg (${pct}%)</title>`;
       });
+    });
+  }
+
+  // ── ACWR: TENDENCIA DE 6 SEMANAS ──────────────────────────────────────
+  function _chartACWRTrend() {
+    const canvas = _setupCanvas('acwr-trend-chart');
+    if (!canvas || !_trainingLoad || !_trainingLoad.history) return;
+
+    const history = _trainingLoad.history.filter(h => h.acwr !== null);
+    if (history.length < 2) return;
+
+    new Chart(canvas, {
+      type: 'line',
+      data: {
+        labels: history.map(h => Utils.formatDateShort(h.weekEnd)),
+        datasets: [
+          {
+            label: 'ACWR', data: history.map(h => h.acwr),
+            borderColor: '#00FF87', backgroundColor: 'rgba(0,255,135,0.08)', fill: true,
+            tension: 0.3, pointRadius: 4, borderWidth: 2, pointBackgroundColor: '#00FF87', pointBorderColor: 'transparent',
+          },
+          {
+            label: 'Zona sana (máx)', data: history.map(() => 1.3),
+            borderColor: 'rgba(245,158,11,0.4)', borderWidth: 1, borderDash: [4,3], pointRadius: 0, fill: false,
+          },
+          {
+            label: 'Zona sana (mín)', data: history.map(() => 0.8),
+            borderColor: 'rgba(245,158,11,0.4)', borderWidth: 1, borderDash: [4,3], pointRadius: 0, fill: false,
+          },
+        ]
+      },
+      options: {
+        responsive: false, maintainAspectRatio: false,
+        animation: { duration: 600, easing: 'easeOutQuart' },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#13131F', borderColor: 'rgba(255,255,255,0.08)', borderWidth: 1, titleColor: '#B4B2CC', bodyColor: '#FFFFFF',
+            filter: (item) => item.datasetIndex === 0,
+          }
+        },
+        scales: {
+          x: { ticks: { color: '#6E6D8A', font: { size: 9, family: 'Poppins' }, maxRotation: 0 }, grid: { display: false }, border: { display: false } },
+          y: { ticks: { color: '#6E6D8A', font: { size: 9, family: 'Poppins' } }, grid: { color: 'rgba(255,255,255,0.04)' }, border: { display: false } },
+        }
+      }
+    });
+  }
+
+  // ── VOLUMEN SEMANAL (BARRAS) ───────────────────────────────────────────
+  function _chartWeeklyVolume() {
+    const canvas = _setupCanvas('weekly-volume-chart');
+    if (!canvas || _weeklyVolume.length === 0) return;
+
+    new Chart(canvas, {
+      type: 'bar',
+      data: {
+        labels: _weeklyVolume.map(w => Utils.formatDateShort(w.weekStart)),
+        datasets: [{
+          data: _weeklyVolume.map(w => w.volume),
+          backgroundColor: '#00FF87', borderRadius: 4,
+        }]
+      },
+      options: {
+        ...CHART_BASE,
+        plugins: { legend: { display: false }, tooltip: { ...CHART_BASE.plugins.tooltip, callbacks: { label: (ctx) => `${ctx.parsed.y} kg` } } },
+        scales: {
+          x: { ticks: { color: '#6E6D8A', font: { size: 9, family: 'Poppins' }, maxRotation: 0 }, grid: { display: false }, border: { display: false } },
+          y: { ticks: { color: '#6E6D8A', font: { size: 9, family: 'Poppins' } }, grid: { color: 'rgba(255,255,255,0.04)' }, border: { display: false } },
+        }
+      }
+    });
+  }
+
+  // ── MAPA DE CALOR DE INTENSIDAD ANUAL ─────────────────────────────────
+  // No usa Chart.js — es una cuadrícula de casillas coloreadas, estilo
+  // GitHub. Se rellenan los días sin actividad como intensidad 0, para
+  // que no queden huecos en la cuadrícula.
+  function _renderHeatmap() {
+    const container = document.getElementById('heatmap-container');
+    if (!container || _heatmapDays.length === 0) return;
+
+    const byDate = {};
+    _heatmapDays.forEach(d => { byDate[d.date] = d.intensity; });
+    const maxIntensity = Math.max(...(_heatmapDays.map(d => d.intensity)), 1);
+
+    const firstDate = new Date(_heatmapDays[0].date + 'T00:00:00');
+    // Retrocede al lunes de esa semana para que la cuadrícula empiece alineada
+    const startDow = (firstDate.getDay() + 6) % 7;
+    firstDate.setDate(firstDate.getDate() - startDow);
+
+    const today = new Date();
+    const totalDays = Math.ceil((today - firstDate) / 86400000) + 1;
+    const totalWeeks = Math.ceil(totalDays / 7);
+
+    const weeks = [];
+    let cursor = new Date(firstDate);
+    for (let w = 0; w < totalWeeks; w++) {
+      const days = [];
+      for (let d = 0; d < 7; d++) {
+        const dateStr = `${cursor.getFullYear()}-${String(cursor.getMonth()+1).padStart(2,'0')}-${String(cursor.getDate()).padStart(2,'0')}`;
+        const intensity = byDate[dateStr] || 0;
+        const isFuture = cursor > today;
+        days.push({ date: dateStr, intensity, isFuture });
+        cursor.setDate(cursor.getDate() + 1);
+      }
+      weeks.push(days);
+    }
+
+    container.innerHTML = `
+      <div style="display:flex;gap:3px">
+        ${weeks.map(week => `
+          <div style="display:flex;flex-direction:column;gap:3px">
+            ${week.map(day => {
+              if (day.isFuture) return `<div style="width:11px;height:11px"></div>`;
+              const alpha = day.intensity > 0 ? (0.15 + 0.85 * Math.min(1, day.intensity / maxIntensity)) : 0;
+              const bg = day.intensity > 0 ? `rgba(0,255,135,${alpha.toFixed(2)})` : 'var(--bg-input)';
+              return `<div title="${day.date}: ${Math.round(day.intensity)}" style="width:11px;height:11px;border-radius:2px;background:${bg}"></div>`;
+            }).join('')}
+          </div>`).join('')}
+      </div>`;
+  }
+
+  // ── DISTRIBUCIÓN ACUMULADA DE ZONAS DE CARDIO ──────────────────────────
+  function _chartCardioZones() {
+    const canvas = _setupCanvas('cardio-zones-chart');
+    if (!canvas || !_cardioZones) return;
+
+    const zonesWithData = _cardioZones.zones.filter(z => z.minutes > 0);
+    if (zonesWithData.length === 0) return;
+
+    // Frío (Z1) a caliente (Z5) — coincide con la sensación de esfuerzo real.
+    const zoneColors = { Z1: '#3B82F6', Z2: '#06B6D4', Z3: '#F59E0B', Z4: '#F97316', Z5: '#EF4444' };
+
+    new Chart(canvas, {
+      type: 'doughnut',
+      data: {
+        labels: zonesWithData.map(z => z.zone),
+        datasets: [{
+          data: zonesWithData.map(z => z.minutes),
+          backgroundColor: zonesWithData.map(z => zoneColors[z.zone]),
+          borderColor: '#0A0A12', borderWidth: 2,
+        }]
+      },
+      options: {
+        responsive: false, maintainAspectRatio: false,
+        animation: { duration: 700, easing: 'easeOutQuart' },
+        cutout: '62%',
+        plugins: {
+          legend: { display: true, position: 'right', labels: { color: '#B4B2CC', font: { size: 10, family: 'Poppins' }, boxWidth: 10, padding: 8 } },
+          tooltip: {
+            backgroundColor: '#13131F', borderColor: 'rgba(255,255,255,0.08)', borderWidth: 1, titleColor: '#B4B2CC', bodyColor: '#FFFFFF',
+            callbacks: {
+              label: (ctx) => {
+                const pct = _cardioZones.totalMinutes > 0 ? Math.round((ctx.parsed / _cardioZones.totalMinutes) * 100) : 0;
+                return ` ${ctx.label}: ${Math.round(ctx.parsed)} min (${pct}%)`;
+              }
+            }
+          }
+        }
+      }
+    });
+  }
+
+  // ── RADAR DE BALANCE MUSCULAR ──────────────────────────────────────────
+  function _chartMuscleRadar() {
+    const canvas = _setupCanvas('muscle-radar-chart');
+    if (!canvas || _volumeByGroup.length < 3) return;
+
+    const top = _volumeByGroup.slice(0, 8);
+    const maxVol = Math.max(...top.map(g => g.volume), 1);
+
+    new Chart(canvas, {
+      type: 'radar',
+      data: {
+        labels: top.map(g => g.group),
+        datasets: [{
+          data: top.map(g => g.volume),
+          backgroundColor: 'rgba(0,255,135,0.15)',
+          borderColor: '#00FF87', borderWidth: 2,
+          pointBackgroundColor: '#00FF87', pointBorderColor: 'transparent', pointRadius: 3,
+        }]
+      },
+      options: {
+        responsive: false, maintainAspectRatio: false,
+        animation: { duration: 700, easing: 'easeOutQuart' },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#13131F', borderColor: 'rgba(255,255,255,0.08)', borderWidth: 1, titleColor: '#B4B2CC', bodyColor: '#FFFFFF',
+            callbacks: { label: (ctx) => `${Math.round(ctx.parsed.r)} kg` }
+          }
+        },
+        scales: {
+          r: {
+            beginAtZero: true, max: maxVol,
+            ticks: { display: false, backdropColor: 'transparent' },
+            grid: { color: 'rgba(255,255,255,0.06)' },
+            angleLines: { color: 'rgba(255,255,255,0.06)' },
+            pointLabels: { color: '#B4B2CC', font: { size: 10, family: 'Poppins' } },
+          }
+        }
+      }
     });
   }
 
