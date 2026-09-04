@@ -185,6 +185,8 @@ const API = (() => {
       getWeeklyVolume: { weeks: [] },
       getIntensityHeatmap: { days: [] },
       getCardioZoneDistribution: { zones: [], totalMinutes: 0, sessionsCounted: 0 },
+      getSplitsAnalysis: { hasData: false },
+      getBestSplitEver: { found: false },
     };
 
     return mocks[action] || { data: [] };
@@ -268,6 +270,12 @@ const API = (() => {
 
     getCardioZoneDistribution: (limit = 60) =>
       _fetch({ action: 'getCardioZoneDistribution', limit }),
+
+    getSplitsAnalysis: (date) =>
+      _fetch({ action: 'getSplitsAnalysis', date }),
+
+    getBestSplitEver: () =>
+      _fetch({ action: 'getBestSplitEver' }),
 
     // retries: 0 en TODAS las escrituras — a diferencia de una lectura,
     // reintentar un POST significa ejecutar el guardado (y la llamada a
