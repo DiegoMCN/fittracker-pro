@@ -15,6 +15,7 @@ const Metrics = (() => {
   let _heatmapDays = [];
   let _cardioZones = null;
   let _bestSplit = null;
+  let _insights = {};
   let _exerciseFilter = 'Todos';
   let _exerciseViewMode = 'weight'; // 'weight' | 'oneRM'
   let _usingMock = false;
@@ -28,10 +29,10 @@ const Metrics = (() => {
         ${[1,2].map(() => `<div class="skeleton" style="height:280px;border-radius:16px"></div>`).join('')}
       </div>`;
 
-    const [sesRes, cardioRes, metricsRes, progressRes, loadRes, weeklyVolRes, heatmapRes, zonesRes, bestSplitRes] = await Promise.all([
+    const [sesRes, cardioRes, metricsRes, progressRes, loadRes, weeklyVolRes, heatmapRes, zonesRes, bestSplitRes, insightsRes] = await Promise.all([
       API.getSessions(50), API.getCardio(50), API.getMetrics(), API.getExerciseProgress(),
       API.getTrainingLoad(), API.getWeeklyVolume(12), API.getIntensityHeatmap(365), API.getCardioZoneDistribution(60),
-      API.getBestSplitEver(),
+      API.getBestSplitEver(), API.getAllInsights(),
     ]);
 
     _sessions = (sesRes.sessions || []).slice().reverse(); // orden cronológico
@@ -45,6 +46,7 @@ const Metrics = (() => {
     _heatmapDays = heatmapRes.days || [];
     _cardioZones = zonesRes;
     _bestSplit = bestSplitRes;
+    _insights = insightsRes.insights || {};
     _usingMock = API.isMock();
 
     render();
@@ -347,6 +349,7 @@ const Metrics = (() => {
               <div class="card-title">⚖️ Carga de entrenamiento (ACWR)</div>
               <div class="card-subtitle">Volumen reciente vs. tu promedio de 4 semanas — métrica real de ciencia del deporte</div>
             </div>
+            ${_infoBtn('acwr')}
           </div>
           <div style="display:flex;align-items:center;gap:20px;margin-bottom:16px">
             <div style="text-align:center;flex-shrink:0">
@@ -374,6 +377,7 @@ const Metrics = (() => {
               <div class="card-title">📊 Volumen semanal</div>
               <div class="card-subtitle">Últimas ${_weeklyVolume.length} semanas — ¿acumulación o descarga?</div>
             </div>
+            ${_infoBtn('volumen_semanal')}
           </div>
           <div style="position:relative;height:180px;width:100%;overflow:hidden">
             <canvas id="weekly-volume-chart"></canvas>
@@ -388,6 +392,7 @@ const Metrics = (() => {
               <div class="card-title">🗓️ Intensidad del último año</div>
               <div class="card-subtitle">Más oscuro = más volumen ese día</div>
             </div>
+            ${_infoBtn('mapa_calor')}
           </div>
           <div style="overflow-x:auto;padding-bottom:8px" id="heatmap-container"></div>
           <div style="display:flex;align-items:center;justify-content:flex-end;gap:6px;margin-top:8px">
@@ -405,6 +410,7 @@ const Metrics = (() => {
               <div class="card-title">💓 Distribución de zonas de cardio</div>
               <div class="card-subtitle">Últimas ${_cardioZones.sessionsCounted} sesiones — ${_cardioZones.totalMinutes} min totales</div>
             </div>
+            ${_infoBtn('zonas_cardio')}
           </div>
           <div style="position:relative;height:200px;width:100%;overflow:hidden">
             <canvas id="cardio-zones-chart"></canvas>
@@ -419,6 +425,7 @@ const Metrics = (() => {
               <div class="card-title">🕸️ Balance muscular</div>
               <div class="card-subtitle">Volumen relativo por grupo — ¿algún grupo se quedó atrás?</div>
             </div>
+            ${_infoBtn('balance_muscular')}
           </div>
           <div style="position:relative;height:280px;width:100%;overflow:hidden">
             <canvas id="muscle-radar-chart"></canvas>
@@ -488,6 +495,45 @@ const Metrics = (() => {
     grid: { color: 'rgba(255,255,255,0.04)' },
     border: { display: false },
   };
+
+  // Botón (ℹ️) que abre la interpretación del Coach para esa gráfica —
+  // texto que ya viene guardado de IA_INSIGHTS, generado junto con el
+  // consejo del día para no gastar solicitudes extra.
+  function _infoBtn(key) {
+    return `<button class="btn btn-ghost btn-icon" style="width:26px;height:26px;font-size:13px;flex-shrink:0" onclick="Metrics.showInsight('${key}')" title="Ver interpretación del Coach">ℹ️</button>`;
+  }
+
+  const _insightLabels = {
+    acwr: '⚖️ Carga de entrenamiento (ACWR)',
+    volumen_semanal: '📊 Volumen semanal',
+    mapa_calor: '🗓️ Intensidad del último año',
+    zonas_cardio: '💓 Distribución de zonas de cardio',
+    balance_muscular: '🕸️ Balance muscular',
+  };
+
+  function showInsight(key) {
+    Sounds.click();
+    const insight = _insights[key];
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal" style="max-width:420px">
+        <div class="modal-header">
+          <div class="modal-title">${_insightLabels[key] || 'Interpretación'}</div>
+          <button class="btn btn-ghost btn-icon" onclick="this.closest('.modal-overlay').remove()">✕</button>
+        </div>
+        <div class="modal-body">
+          ${insight && insight.texto ? `
+            <div style="font-size:13px;color:var(--text-2);line-height:1.6">${insight.texto}</div>
+            <div style="font-size:10px;color:var(--text-4);margin-top:12px">Generado por el Coach el ${Utils.formatDate(insight.fecha)}</div>
+          ` : `
+            <div style="text-align:center;padding:20px;color:var(--text-3);font-size:12px">
+              Todavía no hay una interpretación generada para esto — ve a Coach IA y genera el consejo de hoy.
+            </div>`}
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+  }
 
   function _exerciseFilterGroups() {
     const groups = new Set(_exerciseProgress.map(ex => ex.group).filter(Boolean));
@@ -1278,7 +1324,7 @@ const Metrics = (() => {
     }
   }
 
-  return { init, openCapture, saveCapture, openExerciseDetail, setExerciseFilter, setExerciseViewMode };
+  return { init, openCapture, saveCapture, openExerciseDetail, setExerciseFilter, setExerciseViewMode, showInsight };
 })();
 
 function initMetrics(container) { Metrics.init(container); }

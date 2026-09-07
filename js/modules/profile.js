@@ -7,6 +7,7 @@ const Profile = (() => {
   let _profile = null;
   let _history = [];
   let _measurements = [];
+  let _insights = {};
   let _usingMock = false;
 
   const FIELDS = [
@@ -31,10 +32,11 @@ const Profile = (() => {
       </div>
       <div class="skeleton" style="height:300px;border-radius:16px"></div>`;
 
-    const [profRes, histRes, measRes] = await Promise.all([API.getProfile(), API.getBodyComposition(30), API.getMeasurements(30)]);
+    const [profRes, histRes, measRes, insightsRes] = await Promise.all([API.getProfile(), API.getBodyComposition(30), API.getMeasurements(30), API.getAllInsights()]);
     _profile = profRes.profile;
     _history = histRes.history || [];
     _measurements = measRes.history || [];
+    _insights = insightsRes.insights || {};
     _usingMock = API.isMock();
     render();
   }
@@ -163,6 +165,8 @@ const Profile = (() => {
           </div>
         </div>` : ''}
 
+        ${_insightCard('composicion_corporal', '🤖 Lo que dice el Coach')}
+
         <!-- Historial -->
         ${_history.length > 0 ? `
         <div class="card">
@@ -232,6 +236,8 @@ const Profile = (() => {
               </div>` : ''}`;
             })()}
         </div>
+
+        ${_insightCard('medidas_corporales', '🤖 Lo que dice el Coach')}
       </div>`;
 
     setTimeout(_renderTrendChart, 100);
@@ -239,6 +245,23 @@ const Profile = (() => {
   }
 
   // ── EDITAR DATOS BÁSICOS ──────────────────────────────────────────────
+  // Tarjeta con la interpretación que ya generó el Coach para esto —
+  // viene de IA_INSIGHTS, no gasta ninguna solicitud extra.
+  function _insightCard(key, title) {
+    const insight = _insights[key];
+    if (!insight || !insight.texto) return '';
+    return `
+      <div class="card card-accent" style="margin-bottom:24px">
+        <div style="display:flex;gap:10px;align-items:flex-start">
+          <span style="font-size:16px;flex-shrink:0">🤖</span>
+          <div>
+            <div style="font-size:11px;font-weight:600;color:var(--accent);margin-bottom:4px">${title}</div>
+            <div style="font-size:12px;color:var(--text-2);line-height:1.6">${insight.texto}</div>
+          </div>
+        </div>
+      </div>`;
+  }
+
   function editBasics() {
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay';

@@ -163,7 +163,7 @@ function _renderDashboard(container, data, doneDayNames, records, allSessions, l
             ? (records.fcRecovery?.value ?? rec.delta ?? null)
             : key === 'plank'
               ? (records.plankMax?.value || null)
-              : _getCurrentGoalValue(key, latestMetrics);
+              : _getCurrentGoalValue(key, latestMetrics, records);
           const baseline = CONFIG.BASELINE[_baselineKey(key)] ?? g.target * 0.5;
           const hasData = current !== null && current !== undefined;
           const pct = key === 'hrRecovery'
@@ -173,7 +173,7 @@ function _renderDashboard(container, data, doneDayNames, records, allSessions, l
           // Con un rango grande (ej. 12→20 km/h) un avance real chico se
           // ve como 3-5% — casi invisible. Se pone un piso mínimo visible
           // para que se note que SÍ hay progreso, no que la barra está rota.
-          const displayPct = (hasData || key === 'hrRecovery') ? Math.max(pct, pct > 0 ? 4 : 0) : 100;
+          const displayPct = (hasData || key === 'hrRecovery') ? Math.max(pct, 4) : 100;
           return `
           <div>
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
@@ -634,18 +634,32 @@ function _weeklyComparison(allSessions, allCardio) {
   return { thisWeek: summarize(thisWeek), lastWeek: summarize(lastWeek) };
 }
 
-function _getCurrentGoalValue(key, latestMetrics) {
-  const fieldMap = {
+function _getCurrentGoalValue(key, latestMetrics, records) {
+  // Combina lo que Diego actualiza a mano en Métricas con lo mejor que
+  // ya está registrado de verdad en las sesiones — así no depende de
+  // que se acuerde de actualizar el número manual cada vez. Siempre
+  // gana el que se acerque más a la meta (el mayor, en todos estos casos).
+  const autoMap = {
+    sprintSpeed: records?.sprintSpeedMax?.value,
+    pullUps:     records?.pullUpsMax?.value,
+    cadence:     records?.cadenceAvgMax?.value,
+    deadHang:    records?.deadHangMax?.value,
+  };
+  const manualMap = {
     sprintSpeed: 'sprintSpeed',
     pullUps: 'pullUps',
     cadence: 'cadAvg',
     deadHang: 'deadHang',
   };
-  const field = fieldMap[key];
-  if (field && latestMetrics && latestMetrics[field] !== null && latestMetrics[field] !== undefined) {
-    return latestMetrics[field];
-  }
-  return null; // sin datos todavía — se muestra "—" en vez de un número inventado
+  const manualField = manualMap[key];
+  const manualVal = (manualField && latestMetrics && latestMetrics[manualField] !== null && latestMetrics[manualField] !== undefined)
+    ? latestMetrics[manualField] : null;
+  const autoVal = (autoMap[key] !== undefined && autoMap[key] > 0) ? autoMap[key] : null;
+
+  if (manualVal === null && autoVal === null) return null; // sin datos todavía — se muestra "—"
+  if (manualVal === null) return autoVal;
+  if (autoVal === null) return manualVal;
+  return Math.max(manualVal, autoVal);
 }
 
 function _baselineKey(key) {

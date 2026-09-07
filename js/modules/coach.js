@@ -113,7 +113,7 @@ const Coach = (() => {
     if (!container) return;
 
     const today = _history[0] && _history[0].date === Utils.today() ? _history[0] : null;
-    const past = today ? _history.slice(1) : _history;
+    const past = (today ? _history.slice(1) : _history).slice(0, 2);
 
     container.innerHTML = `
       <div style="max-width:700px;margin:0 auto">
@@ -178,10 +178,10 @@ const Coach = (() => {
           </div>
         </div>` : ''}
 
-        <!-- Historial -->
+        <!-- Historial — solo los 2 más recientes, para no saturar la página -->
         ${past.length > 0 ? `
         <div class="section-header">
-          <div class="section-title">Historial de consejos</div>
+          <div class="section-title">Últimos 2 consejos</div>
         </div>
         <div style="display:flex;flex-direction:column;gap:10px">
           ${past.map(h => `

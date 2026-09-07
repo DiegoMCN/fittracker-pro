@@ -255,17 +255,32 @@ const History = (() => {
       const w = Math.min(wRaw, document.documentElement.clientWidth - 48);
       canvas.width = w; canvas.height = h;
 
-      const TARGET_SEC = 180; // 3:00/km = 20km/h
+      // Velocidad en km/h en vez de pace en segundos — más fácil de
+      // leer: barra más alta = más rápido, sin invertir el eje ni
+      // hacer cuentas mentales. Se compara directo contra la meta de
+      // 20km/h, que es como Diego piensa su objetivo de todos modos.
+      const TARGET_KMH = 20;
+      const speeds = splits.map(s => Math.round((3600 / s.paceSec) * 10) / 10);
 
       new Chart(canvas, {
-        type: 'bar',
         data: {
           labels: splits.map(s => `Km ${s.num}`),
-          datasets: [{
-            data: splits.map(s => s.paceSec),
-            backgroundColor: splits.map(s => s.paceSec <= TARGET_SEC ? '#00FF87' : '#6E6D8A'),
-            borderRadius: 4,
-          }]
+          datasets: [
+            {
+              type: 'bar',
+              data: speeds,
+              backgroundColor: speeds.map(v => v >= TARGET_KMH ? '#00FF87' : '#6E6D8A'),
+              borderRadius: 4,
+              order: 2,
+            },
+            {
+              type: 'line',
+              label: 'Meta (20km/h)',
+              data: speeds.map(() => TARGET_KMH),
+              borderColor: 'rgba(245,158,11,0.6)', borderWidth: 1.5, borderDash: [5,4],
+              pointRadius: 0, fill: false, order: 1,
+            },
+          ]
         },
         options: {
           responsive: false, maintainAspectRatio: false,
@@ -274,14 +289,14 @@ const History = (() => {
             legend: { display: false },
             tooltip: {
               backgroundColor: '#13131F', borderColor: 'rgba(255,255,255,0.08)', borderWidth: 1, titleColor: '#B4B2CC', bodyColor: '#FFFFFF',
-              callbacks: { label: (ctx) => `Pace: ${splits[ctx.dataIndex].pace}/km${splits[ctx.dataIndex].fcAvg ? ` · FC ${splits[ctx.dataIndex].fcAvg}bpm` : ''}` }
+              filter: (item) => item.datasetIndex === 0,
+              callbacks: { label: (ctx) => `${speeds[ctx.dataIndex]} km/h (${splits[ctx.dataIndex].pace}/km)${splits[ctx.dataIndex].fcAvg ? ` · FC ${splits[ctx.dataIndex].fcAvg}bpm` : ''}` }
             }
           },
           scales: {
             x: { ticks: { color: '#6E6D8A', font: { size: 9, family: 'Poppins' } }, grid: { display: false }, border: { display: false } },
             y: {
-              reverse: true, // menos segundos = más rápido = barra "mejor" arriba
-              ticks: { color: '#6E6D8A', font: { size: 9, family: 'Poppins' }, callback: v => _secToPaceClient(v) },
+              ticks: { color: '#6E6D8A', font: { size: 9, family: 'Poppins' }, callback: v => v + 'km/h' },
               grid: { color: 'rgba(255,255,255,0.04)' }, border: { display: false },
             },
           }
