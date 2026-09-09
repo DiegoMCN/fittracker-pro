@@ -209,6 +209,18 @@
 <script src="js/modules/calendario.js"></script>
 
 <script>
+// ── CERRAR MODALES TOCANDO FUERA (estándar para TODOS los modales) ────────
+// Un solo listener global en vez de agregarle esto a cada uno de los
+// ~17 modales de la app uno por uno — cualquier modal nuevo que se cree
+// con class="modal-overlay" ya hereda este comportamiento sin tocar nada.
+// Se cierra solo si el clic fue en el fondo oscuro (el overlay mismo),
+// nunca si fue dentro del contenido del modal.
+document.addEventListener('click', e => {
+  if (e.target.classList && e.target.classList.contains('modal-overlay')) {
+    e.target.remove();
+  }
+});
+
 // ── KEYBOARD SHORTCUTS ────────────────────────────────────────────────────
 document.addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
