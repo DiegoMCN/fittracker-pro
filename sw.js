@@ -7,7 +7,7 @@
 // cada cambio de contenido dentro de un archivo que ya existía.
 // ═══════════════════════════════════════════
 
-const CACHE_VERSION = 'fittracker-v7';
+const CACHE_VERSION = 'fittracker-v8';
 
 const APP_SHELL = [
   './',
