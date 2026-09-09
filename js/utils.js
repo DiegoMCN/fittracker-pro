@@ -257,12 +257,109 @@ const Utils = {
     return (...args) => { clearTimeout(timer); timer = setTimeout(() => fn(...args), delay); };
   },
 
+  // ── RANGOS DE REFERENCIA DE LA OMS (espejo del backend) ───────────────
+  // Deben coincidir EXACTO con WHO_RANGES en Code.gs — son estándares
+  // médicos fijos, no datos que cambien por usuario ni por día.
+  WHO_RANGES: {
+    bodyFatMale: [
+      { to: 5,  color: '#3B82F6', label: 'Grasa esencial' },
+      { to: 13, color: '#06B6D4', label: 'Atlético' },
+      { to: 17, color: '#00FF87', label: 'En forma' },
+      { to: 24, color: '#F59E0B', label: 'Aceptable' },
+      { to: 45, color: '#EF4444', label: 'Alto' },
+    ],
+    waistMale: [
+      { to: 94,  color: '#00FF87', label: 'Bajo riesgo' },
+      { to: 102, color: '#F59E0B', label: 'Riesgo aumentado' },
+      { to: 160, color: '#EF4444', label: 'Riesgo alto' },
+    ],
+    whrMale: [
+      { to: 0.90, color: '#00FF87', label: 'Bajo riesgo' },
+      { to: 0.95, color: '#F59E0B', label: 'Riesgo moderado' },
+      { to: 1.5,  color: '#EF4444', label: 'Riesgo elevado' },
+    ],
+    bmiGeneral: [
+      { to: 18.5, color: '#3B82F6', label: 'Bajo peso' },
+      { to: 25,   color: '#00FF87', label: 'Normal' },
+      { to: 30,   color: '#F59E0B', label: 'Sobrepeso' },
+      { to: 50,   color: '#EF4444', label: 'Obesidad' },
+    ],
+  },
+
   // Clase de color por esfuerzo
   effortColor(n) {
     if (n <= 3) return '#10B981';
     if (n <= 5) return '#F59E0B';
     if (n <= 7) return '#F97316';
     return '#EF4444';
+  },
+
+  // ── BURBUJA DE INFO ESTÁNDAR ──────────────────────────────────────────
+  // Popup centrado (incluso en móvil) para mostrar la interpretación de
+  // una gráfica o dato — cualquier módulo la puede usar igual. Se
+  // cierra tocando fuera (manejado por el listener global en
+  // index.html) o con el botón ✕. bodyHtml puede incluir el termómetro
+  // de gaugeHTML() si aplica.
+  showInfoModal(title, bodyHtml) {
+    document.querySelectorAll('.modal-overlay-info').forEach(el => el.remove()); // no amontonar si ya había una abierta
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay modal-overlay-info';
+    overlay.innerHTML = `
+      <div class="modal">
+        <div class="modal-header">
+          <div class="modal-title">${title}</div>
+          <button class="btn btn-ghost btn-icon" onclick="this.closest('.modal-overlay').remove()">✕</button>
+        </div>
+        <div class="modal-body">${bodyHtml}</div>
+      </div>`;
+    document.body.appendChild(overlay);
+  },
+
+  // Botón (ℹ️) estándar — cualquier tarjeta de gráfica o dato lo usa
+  // igual, solo cambia la clave y el título que le pasas.
+  infoButtonHTML(onclickCall, label = 'Ver interpretación') {
+    return `<button class="btn btn-ghost btn-icon" style="width:26px;height:26px;font-size:13px;flex-shrink:0" onclick="${onclickCall}" title="${label}">ℹ️</button>`;
+  },
+
+  // ── TERMÓMETRO HORIZONTAL (rangos de referencia, ej. OMS) ─────────────
+  // config: { value, min, max, unit, zones: [{ to, color, label }] }
+  // Las zonas van de izquierda a derecha, cada una hasta su "to" —
+  // la última zona debe llegar hasta `max`. El marcador se posiciona
+  // proporcional a dónde cae `value` dentro de [min, max].
+  gaugeHTML(config) {
+    const { value, min, max, unit = '', zones } = config;
+    if (value === null || value === undefined || !zones || !zones.length) {
+      return `<div style="font-size:11px;color:var(--text-3);text-align:center;padding:10px">Sin dato suficiente para ubicar en el rango.</div>`;
+    }
+    const clampedValue = Math.min(max, Math.max(min, value));
+    const pct = ((clampedValue - min) / (max - min)) * 100;
+
+    let prevTo = min;
+    const segments = zones.map(z => {
+      const widthPct = ((z.to - prevTo) / (max - min)) * 100;
+      prevTo = z.to;
+      return `<div style="width:${widthPct}%;height:100%;background:${z.color}"></div>`;
+    }).join('');
+
+    // Zona donde cae el valor actual, para el texto de resumen debajo
+    let currentZone = zones[zones.length - 1];
+    for (const z of zones) { if (value <= z.to) { currentZone = z; break; } }
+
+    return `
+      <div style="margin:12px 0 6px">
+        <div style="position:relative;height:14px;border-radius:7px;overflow:hidden;display:flex">${segments}</div>
+        <div style="position:relative;height:0">
+          <div style="position:absolute;top:-20px;left:${pct}%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center">
+            <div style="font-size:10px;font-weight:700;color:var(--text-1);white-space:nowrap">${Utils.formatNum(value, 1)}${unit}</div>
+            <div style="width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid var(--text-1)"></div>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text-4);margin-bottom:10px">
+        <span>${min}${unit}</span><span>${max}${unit}</span>
+      </div>
+      <div style="text-align:center;font-size:11px;font-weight:600;color:${currentZone.color}">${currentZone.label}</div>
+    `;
   },
 };
 
