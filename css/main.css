@@ -573,6 +573,19 @@ ul, ol { list-style: none; }
   padding: var(--space-5);
   animation: fade-in var(--transition-fast) forwards;
 }
+/* Burbuja de info (interpretación de gráficas/datos) — siempre
+   centrada, incluso en móvil, a diferencia de los modales normales
+   que ahí suben como hoja desde abajo. Es una tarjeta chica de solo
+   lectura, no un formulario, así que centrada se lee mejor. */
+.modal-overlay.modal-overlay-info {
+  align-items: center !important;
+  padding: var(--space-5) !important;
+}
+.modal-overlay.modal-overlay-info .modal {
+  max-width: 380px !important;
+  margin: 0 !important;
+  border-radius: var(--radius-xl) !important;
+}
 .modal {
   background: var(--bg-card);
   border: 1px solid var(--border);
