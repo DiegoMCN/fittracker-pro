@@ -17,7 +17,7 @@ async function initDashboard(container) {
 
   // Se piden sin caché — recién guardaste una sesión y necesitas ver
   // el dato fresco, no uno de hace 5 minutos.
-  const [data, sesRes, recordsRes, metricsRes, cardioRes, streaksRes, overtrainingRes] = await Promise.all([
+  const [data, sesRes, recordsRes, metricsRes, cardioRes, streaksRes, overtrainingRes, insightsRes] = await Promise.all([
     API.getDashboard(),
     API.getSessions(30),
     API.getPersonalRecords(),
@@ -25,6 +25,7 @@ async function initDashboard(container) {
     API.getCardio(30),
     API.getStreaks(),
     API.getOvertrainingStatus(),
+    API.getAllInsights(),
   ]);
 
   // Sesiones reales de esta semana (Lun-Dom), para marcar los días
@@ -44,10 +45,11 @@ async function initDashboard(container) {
   const latestMetrics = metricsHistory.length ? metricsHistory[0] : null;
 
   Store.set({ dashboard: data });
-  _renderDashboard(container, data, doneDayNames, recordsRes, sesRes.sessions || [], latestMetrics, cardioRes.sessions || [], streaksRes, overtrainingRes);
+  _renderDashboard(container, data, doneDayNames, recordsRes, sesRes.sessions || [], latestMetrics, cardioRes.sessions || [], streaksRes, overtrainingRes, insightsRes.insights || {});
 }
 
-function _renderDashboard(container, data, doneDayNames, records, allSessions, latestMetrics, allCardio, streaks, overtraining) {
+function _renderDashboard(container, data, doneDayNames, records, allSessions, latestMetrics, allCardio, streaks, overtraining, insights) {
+  _dashboardInsights = insights || {};
   const today     = new Date().getDay();
   const nextSes   = CONFIG.WEEK_PLAN[today] || CONFIG.WEEK_PLAN[(today + 1) % 7];
   const goals     = CONFIG.GOALS;
@@ -290,6 +292,7 @@ function _renderDashboard(container, data, doneDayNames, records, allSessions, l
     <div class="card">
       <div class="card-header">
         <div class="card-title">🔥 Rachas</div>
+        ${_infoBtn('racha')}
       </div>
       <div class="grid-2" style="gap:10px;margin-bottom:14px">
         <div style="background:var(--bg-input);border-radius:10px;padding:14px;text-align:center">
@@ -394,6 +397,7 @@ function _renderDashboard(container, data, doneDayNames, records, allSessions, l
           <div class="card-title">📈 Esta semana vs. la pasada</div>
           <div class="card-subtitle">Comparativa automática, sin IA — cálculo directo de tus datos</div>
         </div>
+        ${_infoBtn('comparativa_semanal')}
       </div>
       <div class="grid-4" style="gap:10px">
         ${rows.map(r => {
@@ -476,6 +480,42 @@ function _realRecordsList(records) {
     return [{ icon:'🎯', label:'Sin récords todavía', value:'—', date:'', color:'var(--text-3)', sub:'Completa sesiones para ver tus marcas aquí' }];
   }
   return list;
+}
+
+// ── BOTÓN DE INFO (mismo estándar que Metrics) ─────────────────────────────
+// dashboard.js no usa el patrón de módulo IIFE de los demás archivos —
+// aquí todo son funciones globales, así que _dashboardInsights vive
+// como variable de nivel superior en vez de estado privado.
+let _dashboardInsights = {};
+
+function _infoBtn(key) {
+  return `<button class="btn btn-ghost btn-icon" style="width:26px;height:26px;font-size:13px;flex-shrink:0" onclick="showDashboardInsight('${key}')" title="Ver qué muestra esta tarjeta">ℹ️</button>`;
+}
+
+const _dashboardChartInfo = {
+  racha: { title: '🔥 Rachas', desc: 'Días seguidos entrenando (fuerza o cardio) — la racha sigue viva aunque hoy todavía no hayas entrenado, solo se rompe si pasa más de un día.' },
+  comparativa_semanal: { title: '📈 Esta semana vs. la pasada', desc: 'Sesiones, volumen, FC promedio y esfuerzo — comparado directo contra la semana anterior, calculado de tus datos sin usar IA.' },
+};
+
+function showDashboardInsight(key) {
+  Sounds.click();
+  const info = _dashboardChartInfo[key] || { title: 'Interpretación', desc: '' };
+  const insight = _dashboardInsights[key];
+
+  const body = `
+    ${info.desc ? `<div style="font-size:12px;color:var(--text-3);line-height:1.6;margin-bottom:${insight && insight.texto ? '14px' : '0'}">${info.desc}</div>` : ''}
+    ${insight && insight.texto ? `
+      <div style="border-top:1px solid var(--border);padding-top:12px">
+        <div style="font-size:10px;font-weight:600;color:var(--accent);margin-bottom:6px">🤖 LO QUE DICE EL COACH</div>
+        <div style="font-size:13px;color:var(--text-2);line-height:1.6">${insight.texto}</div>
+        <div style="font-size:10px;color:var(--text-4);margin-top:10px">Generado el ${Utils.formatDate(insight.fecha)}</div>
+      </div>
+    ` : `
+      <div style="border-top:1px solid var(--border);padding-top:12px;text-align:center">
+        <div style="font-size:11px;color:var(--text-3)">Sin interpretación personalizada todavía — genera el consejo de hoy en Coach IA.</div>
+      </div>`}`;
+
+  Utils.showInfoModal(info.title, body);
 }
 
 function _renderFCChart(allSessions) {

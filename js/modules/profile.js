@@ -70,8 +70,8 @@ const Profile = (() => {
               <button class="btn btn-ghost btn-sm" onclick="Profile.editBasics()">✏️ Editar</button>
             </div>
             <div class="grid-2" style="gap:12px">
-              <div>
-                <div style="font-size:11px;color:var(--text-3)">Peso</div>
+              <div style="cursor:pointer" onclick="Profile.showFieldInsight('peso', ${_profile?.Peso_kg ? _profile.Peso_kg : 'null'})">
+                <div style="font-size:11px;color:var(--text-3)">Peso ℹ️</div>
                 <div style="font-size:20px;font-weight:700">${_profile?.Peso_kg || '—'}<span style="font-size:12px;color:var(--text-3)"> kg</span></div>
               </div>
               <div>
@@ -101,12 +101,12 @@ const Profile = (() => {
             </div>
             ${latest ? `
               <div class="grid-2" style="gap:12px">
-                <div>
-                  <div style="font-size:11px;color:var(--text-3)">Grasa corporal</div>
+                <div style="cursor:pointer" onclick="Profile.showFieldInsight('bodyFatPct', ${latest.bodyFatPct ?? 'null'})">
+                  <div style="font-size:11px;color:var(--text-3)">Grasa corporal ℹ️</div>
                   <div style="font-size:20px;font-weight:700;color:var(--danger)">${latest.bodyFatPct ?? '—'}<span style="font-size:12px"> %</span></div>
                 </div>
-                <div>
-                  <div style="font-size:11px;color:var(--text-3)">Masa muscular</div>
+                <div style="cursor:pointer" onclick="Profile.showFieldInsight('muscleMass', ${latest.muscleMass ?? 'null'})">
+                  <div style="font-size:11px;color:var(--text-3)">Masa muscular ℹ️</div>
                   <div style="font-size:20px;font-weight:700;color:var(--accent)">${latest.muscleMass ?? '—'}<span style="font-size:12px"> kg</span></div>
                 </div>
               </div>
@@ -136,9 +136,10 @@ const Profile = (() => {
                 const prevVal = prev ? prev[f.key] : null;
                 const delta = (val !== null && prevVal !== null && val !== undefined && prevVal !== undefined)
                   ? Math.round((val - prevVal) * 10) / 10 : null;
+                const hasInfo = !!_fieldInfo[f.key];
                 return `
-                <div style="background:var(--bg-input);border-radius:10px;padding:12px">
-                  <div style="font-size:10px;color:var(--text-3);margin-bottom:4px">${f.label}</div>
+                <div style="background:var(--bg-input);border-radius:10px;padding:12px;${hasInfo ? 'cursor:pointer' : ''}" ${hasInfo ? `onclick="Profile.showFieldInsight('${f.key}', ${val ?? 'null'})"` : ''}>
+                  <div style="font-size:10px;color:var(--text-3);margin-bottom:4px">${f.label}${hasInfo ? ' ℹ️' : ''}</div>
                   <div style="font-size:16px;font-weight:700;color:${f.color}">${val ?? '—'}<span style="font-size:10px;color:var(--text-3)"> ${f.unit}</span></div>
                   ${delta !== null ? `<div style="font-size:9px;color:var(--text-4);margin-top:2px">${delta >= 0 ? '+' : ''}${delta} vs anterior</div>` : ''}
                 </div>`;
@@ -215,16 +216,17 @@ const Profile = (() => {
               const whr = (latest.cintura && latest.cadera) ? Math.round((latest.cintura / latest.cadera) * 100) / 100 : null;
               return `
               ${whr ? `
-              <div style="background:var(--bg-input);border-radius:10px;padding:10px 14px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between">
-                <div style="font-size:11px;color:var(--text-3)">Ratio cintura/cadera</div>
+              <div style="background:var(--bg-input);border-radius:10px;padding:10px 14px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;cursor:pointer" onclick="Profile.showFieldInsight('whr', ${whr})">
+                <div style="font-size:11px;color:var(--text-3)">Ratio cintura/cadera ℹ️</div>
                 <div style="font-size:15px;font-weight:700;color:${whr <= 0.9 ? 'var(--success)' : whr <= 0.95 ? 'var(--warning)' : 'var(--danger)'}">${whr} <span style="font-size:10px;color:var(--text-4);font-weight:400">${whr <= 0.9 ? '(bajo riesgo)' : whr <= 0.95 ? '(riesgo moderado)' : '(riesgo elevado)'}</span></div>
               </div>` : ''}
               <div class="grid-4" style="gap:10px;margin-bottom:16px">
                 ${fields.filter(f => latest[f.key]).map(f => {
                   const delta = (prev && prev[f.key]) ? Math.round((latest[f.key] - prev[f.key]) * 10) / 10 : null;
+                  const hasInfo = !!_fieldInfo[f.key];
                   return `
-                  <div style="background:var(--bg-input);border-radius:10px;padding:10px">
-                    <div style="font-size:9px;color:var(--text-3);margin-bottom:3px">${f.label}</div>
+                  <div style="background:var(--bg-input);border-radius:10px;padding:10px;${hasInfo ? 'cursor:pointer' : ''}" ${hasInfo ? `onclick="Profile.showFieldInsight('${f.key}', ${latest[f.key]})"` : ''}>
+                    <div style="font-size:9px;color:var(--text-3);margin-bottom:3px">${f.label}${hasInfo ? ' ℹ️' : ''}</div>
                     <div style="font-size:15px;font-weight:700;color:var(--text-1)">${latest[f.key]}<span style="font-size:9px;color:var(--text-3)"> cm</span></div>
                     ${delta !== null ? `<div style="font-size:9px;color:${delta < 0 ? 'var(--success)' : delta > 0 ? 'var(--text-3)' : 'var(--text-4)'}">${delta > 0 ? '+' : ''}${delta} cm</div>` : ''}
                   </div>`;
@@ -260,6 +262,61 @@ const Profile = (() => {
           </div>
         </div>
       </div>`;
+  }
+
+  // Descripción de qué es cada dato — no depende de la IA, siempre
+  // disponible. Los que tienen "who" muestran además el termómetro con
+  // rangos fijos de la OMS; los que tienen "insightKey" agregan la
+  // interpretación personalizada del Coach cuando ya se generó.
+  const _fieldInfo = {
+    bmi:                { title: 'IMC — Índice de Masa Corporal', desc: 'Tu peso relativo a tu estatura. Es un indicador general de población, no distingue músculo de grasa — un atleta musculoso puede salir "sobrepeso" sin serlo.', who: 'bmiGeneral', min: 15, max: 40 },
+    visceralFat:        { title: 'Grasa visceral', desc: 'La grasa alrededor de tus órganos internos, no la que se ve/pellizca. Niveles altos se asocian a mayor riesgo cardiovascular independientemente del peso total.' },
+    bodyFatPct:         { title: 'Grasa corporal', desc: 'Qué porcentaje de tu peso total es grasa (el resto es músculo, agua, hueso, órganos). Es más preciso que el peso solo para ver composición real.', who: 'bodyFatMale', min: 5, max: 35, insightKey: 'grasa_corporal' },
+    subcutaneousFatPct: { title: 'Grasa subcutánea', desc: 'La grasa justo debajo de la piel, la que sí se pellizca — distinta de la visceral, y menos relacionada con riesgo cardiovascular.' },
+    metabolicAge:       { title: 'Edad metabólica', desc: 'Compara tu metabolismo basal contra el promedio de otras edades — una edad metabólica menor a la real suele reflejar buena composición corporal.' },
+    leanBodyMass:       { title: 'Peso libre de grasa', desc: 'Todo tu peso que NO es grasa: músculo, hueso, órganos, agua. Súbelo (o mantenlo) mientras bajas grasa es la meta de una recomposición sana.' },
+    waterPct:           { title: 'Agua corporal', desc: 'Qué porcentaje de tu peso es agua. Varía bastante con hidratación del momento — no te preocupes por cambios de un día a otro.' },
+    skeletalMusclePct:  { title: 'Músculo esquelético', desc: 'El músculo que puedes entrenar y hacer crecer (excluye músculo liso de órganos). Subir este número con el tiempo es una señal directa de que tu entrenamiento de fuerza está funcionando.' },
+    boneMass:           { title: 'Masa ósea', desc: 'El peso estimado de tu esqueleto. Cambia muy poco en el tiempo — no esperes variaciones grandes de una medición a otra.' },
+    proteinPct:         { title: 'Proteína corporal', desc: 'Qué porcentaje de tu peso es proteína — se relaciona con tu masa muscular total.' },
+    bmr:                { title: 'BMR — Metabolismo basal', desc: 'Las calorías que quemas solo por existir, sin moverte — la base de cualquier cálculo de cuánto necesitas comer al día.' },
+    muscleMass:         { title: 'Masa muscular', desc: 'El peso total de tu músculo (esquelético + liso + cardíaco). Súbelo con el tiempo confirma que el entrenamiento de fuerza está dando resultado.', insightKey: 'composicion_corporal' },
+    peso: { title: 'Peso corporal', desc: 'Tu peso total — sube o baja por grasa, músculo, agua y hasta lo que comiste ese día. Míralo en tendencia de semanas, no día a día.', insightKey: 'composicion_corporal' },
+    cintura:      { title: 'Cintura', desc: 'La circunferencia de tu cintura — uno de los mejores indicadores individuales de riesgo cardiovascular, más que el peso solo.', who: 'waistMale', min: 60, max: 120, insightKey: 'cintura' },
+    pecho:        { title: 'Pecho', desc: 'Circunferencia de pecho — más útil para ver tu progreso de desarrollo muscular que para salud general.' },
+    cadera:       { title: 'Cadera', desc: 'Circunferencia de cadera — se usa junto con la cintura para calcular tu ratio cintura/cadera.' },
+    brazoIzq:     { title: 'Brazo izquierdo', desc: 'Circunferencia de brazo — compárala con el derecho para detectar asimetrías de desarrollo entre lados.' },
+    brazoDer:     { title: 'Brazo derecho', desc: 'Circunferencia de brazo — compárala con el izquierdo para detectar asimetrías de desarrollo entre lados.' },
+    musloIzq:     { title: 'Muslo izquierdo', desc: 'Circunferencia de muslo — compárala con el derecho para detectar asimetrías de desarrollo entre lados.' },
+    musloDer:     { title: 'Muslo derecho', desc: 'Circunferencia de muslo — compárala con el izquierdo para detectar asimetrías de desarrollo entre lados.' },
+    pantorrilla:  { title: 'Pantorrilla', desc: 'Circunferencia de pantorrilla — un grupo muscular que suele responder más lento al entrenamiento que otros.' },
+    whr:          { title: 'Ratio cintura/cadera', desc: 'Tu cintura dividida entre tu cadera — la OMS lo usa como indicador de dónde acumulas grasa, más ligado a riesgo cardiovascular que el peso o el IMC solos.', who: 'whrMale', min: 0.7, max: 1.2, insightKey: 'ratio_cintura_cadera' },
+  };
+
+  function showFieldInsight(key, currentValue) {
+    Sounds.click();
+    const info = _fieldInfo[key];
+    if (!info) return;
+    const insight = info.insightKey ? _insights[info.insightKey] : null;
+
+    const gaugeHtml = (info.who && currentValue !== null && currentValue !== undefined)
+      ? Utils.gaugeHTML({ value: currentValue, min: info.min, max: info.max, unit: key === 'whr' ? '' : (info.who === 'bodyFatMale' ? '%' : info.who === 'bmiGeneral' ? '' : 'cm'), zones: Utils.WHO_RANGES[info.who] })
+      : '';
+
+    const body = `
+      <div style="font-size:12px;color:var(--text-3);line-height:1.6;margin-bottom:${gaugeHtml || (insight && insight.texto) ? '10px' : '0'}">${info.desc}</div>
+      ${gaugeHtml ? `<div style="font-size:9px;color:var(--text-4);text-align:center;margin-top:2px">Rangos de referencia de la OMS</div>${gaugeHtml}` : ''}
+      ${insight && insight.texto ? `
+        <div style="border-top:1px solid var(--border);padding-top:12px;margin-top:${gaugeHtml ? '4px' : '10px'}">
+          <div style="font-size:10px;font-weight:600;color:var(--accent);margin-bottom:6px">🤖 LO QUE DICE EL COACH</div>
+          <div style="font-size:13px;color:var(--text-2);line-height:1.6">${insight.texto}</div>
+          <div style="font-size:10px;color:var(--text-4);margin-top:10px">Generado el ${Utils.formatDate(insight.fecha)}</div>
+        </div>` : (info.insightKey ? `
+        <div style="border-top:1px solid var(--border);padding-top:12px;margin-top:10px;text-align:center">
+          <div style="font-size:11px;color:var(--text-3)">Sin interpretación personalizada todavía — genera el consejo de hoy en Coach IA.</div>
+        </div>` : '')}`;
+
+    Utils.showInfoModal(info.title, body);
   }
 
   function editBasics() {
@@ -691,7 +748,7 @@ const Profile = (() => {
     }
   }
 
-  return { init, editBasics, saveBasics, openComposition, saveComposition, openMeasurements, saveMeasurements };
+  return { init, editBasics, saveBasics, openComposition, saveComposition, openMeasurements, saveMeasurements, showFieldInsight };
 })();
 
 function initProfile(container) { Profile.init(container); }

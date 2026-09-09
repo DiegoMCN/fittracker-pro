@@ -110,6 +110,7 @@ const Metrics = (() => {
               <div class="card-title">Métricas corporales</div>
               <div class="card-subtitle">${_metricsHistory.length ? `Última: ${Utils.formatDate(_metricsHistory[0].date)}` : 'Sin registros todavía'}</div>
             </div>
+            ${_infoBtn('perf_trend')}
           </div>
           ${_metricsHistory.length === 0 ? `
             <div style="text-align:center;padding:30px 20px;color:var(--text-3)">
@@ -169,6 +170,7 @@ const Metrics = (() => {
                 <div class="card-title">FC promedio — Fuerza</div>
                 <div class="card-subtitle">Tendencia de recuperación cardiovascular</div>
               </div>
+              ${_infoBtn('fc_fuerza')}
             </div>
             <div style="position:relative;height:220px;width:100%">
               <canvas id="chart-fc-strength"></canvas>
@@ -181,6 +183,7 @@ const Metrics = (() => {
                 <div class="card-title">Cadencia — Cardio</div>
                 <div class="card-subtitle">Promedio y pico por sesión</div>
               </div>
+              ${_infoBtn('cadencia')}
             </div>
             <div style="position:relative;height:220px;width:100%">
               <canvas id="chart-cadence"></canvas>
@@ -192,9 +195,10 @@ const Metrics = (() => {
           <div class="card">
             <div class="card-header">
               <div>
-                <div class="card-title">Volumen semanal</div>
-                <div class="card-subtitle">Kg totales movidos por semana</div>
+                <div class="card-title">Volumen por sesión</div>
+                <div class="card-subtitle">Kg totales movidos, sesión a sesión</div>
               </div>
+              ${_infoBtn('volumen')}
             </div>
             <div style="position:relative;height:220px;width:100%">
               <canvas id="chart-volume"></canvas>
@@ -207,6 +211,7 @@ const Metrics = (() => {
                 <div class="card-title">Recuperación cardíaca (2 min)</div>
                 <div class="card-subtitle">Delta post-esfuerzo · negativo es mejor</div>
               </div>
+              ${_infoBtn('recuperacion')}
             </div>
             <div style="position:relative;height:220px;width:100%">
               <canvas id="chart-recovery"></canvas>
@@ -230,6 +235,7 @@ const Metrics = (() => {
         <div class="card card-accent" style="margin-bottom:24px">
           <div class="card-header">
             <div class="card-title">⚡ Kilómetro más rápido</div>
+            ${_infoBtn('record_km')}
           </div>
           <div style="display:flex;align-items:center;gap:16px">
             <div style="text-align:center;flex-shrink:0">
@@ -253,6 +259,7 @@ const Metrics = (() => {
               <div class="card-title">🥧 Distribución de volumen</div>
               <div class="card-subtitle">De qué grupo muscular viene tu volumen total movido</div>
             </div>
+            ${_infoBtn('volumen_distribucion')}
           </div>
           <div style="position:relative;height:220px;width:100%;overflow:hidden">
             <canvas id="volume-distribution-chart"></canvas>
@@ -267,6 +274,7 @@ const Metrics = (() => {
               <div class="card-title">🧍 Mapa muscular</div>
               <div class="card-subtitle">Qué tanto has trabajado cada grupo — más verde, más volumen</div>
             </div>
+            ${_infoBtn('mapa_muscular')}
           </div>
           <div id="muscle-map-wrap" style="display:flex;justify-content:center;gap:24px;flex-wrap:wrap">
             <div style="text-align:center">
@@ -294,6 +302,7 @@ const Metrics = (() => {
               <div class="card-title">📈 Progresión por ejercicio</div>
               <div class="card-subtitle">${_exerciseViewMode === 'oneRM' ? '1RM estimado (fórmula de Epley) — normaliza aunque cambies el rango de reps' : 'Peso máximo registrado por sesión'}</div>
             </div>
+            ${_infoBtn('exercise_progress')}
           </div>
           ${_exerciseProgress.length === 0 ? `
             <div style="text-align:center;padding:20px;color:var(--text-3);font-size:12px">Todavía no hay suficiente historial por ejercicio</div>` : `
@@ -500,39 +509,50 @@ const Metrics = (() => {
   // texto que ya viene guardado de IA_INSIGHTS, generado junto con el
   // consejo del día para no gastar solicitudes extra.
   function _infoBtn(key) {
-    return `<button class="btn btn-ghost btn-icon" style="width:26px;height:26px;font-size:13px;flex-shrink:0" onclick="Metrics.showInsight('${key}')" title="Ver interpretación del Coach">ℹ️</button>`;
+    return `<button class="btn btn-ghost btn-icon" style="width:26px;height:26px;font-size:13px;flex-shrink:0" onclick="Metrics.showInsight('${key}')" title="Ver qué muestra esta gráfica">ℹ️</button>`;
   }
 
-  const _insightLabels = {
-    acwr: '⚖️ Carga de entrenamiento (ACWR)',
-    volumen_semanal: '📊 Volumen semanal',
-    mapa_calor: '🗓️ Intensidad del último año',
-    zonas_cardio: '💓 Distribución de zonas de cardio',
-    balance_muscular: '🕸️ Balance muscular',
+  // Título + explicación fija de "para qué sirve" cada gráfica — esto
+  // NO depende de la IA, siempre está disponible aunque el Coach no
+  // haya generado el consejo de hoy todavía. La interpretación
+  // personalizada (si existe) se agrega debajo, aparte.
+  const _chartInfo = {
+    perf_trend: { title: '📈 Métricas de rendimiento', desc: 'Velocidad de sprint, dominadas y cadencia a través de tus mediciones manuales — tu progreso hacia las metas del programa, no solo el número de hoy.' },
+    fc_fuerza: { title: '❤️ Evolución FC en fuerza', desc: 'Tu frecuencia cardíaca promedio durante las sesiones de fuerza — si baja con el tiempo a un esfuerzo parecido, tu corazón se está volviendo más eficiente.' },
+    cadencia: { title: '🦵 Cadencia', desc: 'Tus pasos por minuto en cardio a través del tiempo — acercarte a tu meta de 170spm reduce el impacto por zancada y mejora tu eficiencia de carrera.' },
+    volumen: { title: '🏋️ Volumen', desc: 'El peso total que moviste por sesión (peso × repeticiones) — la tendencia de fondo de tu fuerza, más confiable que ver un solo ejercicio suelto.' },
+    recuperacion: { title: '💚 Recuperación', desc: 'Qué tanto baja tu FC en los 2 minutos después de esforzarte — entre más baje, mejor está respondiendo tu corazón al entrenamiento.' },
+    exercise_progress: { title: '📈 Progresión por ejercicio', desc: 'El peso (o 1RM estimado) de cada ejercicio a través de tus sesiones — toca cualquier mini-gráfica para ver el detalle completo de ese ejercicio.' },
+    volumen_distribucion: { title: '🥧 Distribución de volumen', desc: 'De qué grupo muscular viene tu volumen total — te dice si algún grupo está recibiendo mucho más (o menos) trabajo que los demás.', insightKey: 'volumen_distribucion' },
+    mapa_muscular: { title: '🧍 Mapa muscular', desc: 'La misma distribución de volumen, pero ubicada sobre el cuerpo — más fácil de ver de un vistazo qué zona has trabajado más.', insightKey: 'mapa_muscular' },
+    acwr: { title: '⚖️ Carga de entrenamiento (ACWR)', desc: 'Compara tu volumen de esta semana contra tu promedio de las últimas 4 — fuera del rango 0.8-1.3 es zona de riesgo real de lesión, con respaldo de ciencia del deporte.' },
+    volumen_semanal: { title: '📊 Volumen semanal', desc: 'Tu volumen total por semana — la vista clásica de periodización, para ver si vas en fase de acumulación o de descarga.' },
+    mapa_calor: { title: '🗓️ Intensidad del último año', desc: 'Un cuadrito por día, más oscuro entre más entrenaste — la vista completa de qué tan consistente has sido en el año.' },
+    zonas_cardio: { title: '💓 Distribución de zonas de cardio', desc: 'Cuánto tiempo total has pasado en cada zona de frecuencia cardíaca — te dice si tu cardio es mayormente base aeróbica o puro esfuerzo alto.' },
+    balance_muscular: { title: '🕸️ Balance muscular', desc: 'Tu volumen relativo por grupo muscular en forma de radar — fácil de comparar entre grupos y ver si alguno se quedó atrás.' },
+    record_km: { title: '⚡ Kilómetro más rápido', desc: 'Tu mejor kilómetro de toda tu historia, sin importar en qué sesión haya pasado — un split suelto dentro de una carrera larga puede ser tu velocidad real más alta.' },
   };
 
   function showInsight(key) {
     Sounds.click();
-    const insight = _insights[key];
-    const overlay = document.createElement('div');
-    overlay.className = 'modal-overlay';
-    overlay.innerHTML = `
-      <div class="modal" style="max-width:420px">
-        <div class="modal-header">
-          <div class="modal-title">${_insightLabels[key] || 'Interpretación'}</div>
-          <button class="btn btn-ghost btn-icon" onclick="this.closest('.modal-overlay').remove()">✕</button>
+    const info = _chartInfo[key] || { title: 'Interpretación', desc: '' };
+    const insightKey = info.insightKey || key;
+    const insight = _insights[insightKey];
+
+    const body = `
+      ${info.desc ? `<div style="font-size:12px;color:var(--text-3);line-height:1.6;margin-bottom:${insight && insight.texto ? '14px' : '0'}">${info.desc}</div>` : ''}
+      ${insight && insight.texto ? `
+        <div style="border-top:1px solid var(--border);padding-top:12px">
+          <div style="font-size:10px;font-weight:600;color:var(--accent);margin-bottom:6px">🤖 LO QUE DICE EL COACH</div>
+          <div style="font-size:13px;color:var(--text-2);line-height:1.6">${insight.texto}</div>
+          <div style="font-size:10px;color:var(--text-4);margin-top:10px">Generado el ${Utils.formatDate(insight.fecha)}</div>
         </div>
-        <div class="modal-body">
-          ${insight && insight.texto ? `
-            <div style="font-size:13px;color:var(--text-2);line-height:1.6">${insight.texto}</div>
-            <div style="font-size:10px;color:var(--text-4);margin-top:12px">Generado por el Coach el ${Utils.formatDate(insight.fecha)}</div>
-          ` : `
-            <div style="text-align:center;padding:20px;color:var(--text-3);font-size:12px">
-              Todavía no hay una interpretación generada para esto — ve a Coach IA y genera el consejo de hoy.
-            </div>`}
-        </div>
-      </div>`;
-    document.body.appendChild(overlay);
+      ` : `
+        <div style="border-top:1px solid var(--border);padding-top:12px;text-align:center">
+          <div style="font-size:11px;color:var(--text-3)">Sin interpretación personalizada todavía — genera el consejo de hoy en Coach IA.</div>
+        </div>`}`;
+
+    Utils.showInfoModal(info.title, body);
   }
 
   function _exerciseFilterGroups() {
