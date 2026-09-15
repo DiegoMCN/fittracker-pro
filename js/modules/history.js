@@ -7,6 +7,7 @@ const History = (() => {
   let _sessions = [];
   let _cardio = [];
   let _filter = 'all'; // all | Fuerza | Cardio
+  let _phaseFilter = 'all'; // all | valor exacto de "Fase" guardado en la sesión
   let _expandedId = null;
   let _exerciseDetailCache = {}; // { [fecha]: { loading, exercises } }
   let _splitsAnalysisCache = {}; // { [fecha]: { loading, data } }
@@ -35,6 +36,7 @@ const History = (() => {
       velMax: c.velMax, fcPost1: c.fcPost1, fcPost2: c.fcPost2, rec2min: c.rec2min,
       zone1: c.zone1, zone2: c.zone2, zone3: c.zone3, zone4: c.zone4, zone5: c.zone5,
       coachNote: c.coachNote || '', rowNum: c.rowNum, protocol: c.protocol,
+      phase: c.phase || '',
     }));
     const all = [...fromSessions, ...fromCardio];
     all.sort((a,b) => (b.date || '').localeCompare(a.date || ''));
@@ -45,8 +47,15 @@ const History = (() => {
     const container = document.getElementById('page-content');
     if (!container) return;
 
-    let list = _merged();
+    const fullList = _merged();
+    // Fases distintas que de verdad aparecen en tu historial — no se
+    // inventan pestañas de fases que todavía no tienen ninguna sesión.
+    const availablePhases = [...new Set(fullList.map(s => s.phase).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+
+    let list = fullList;
     if (_filter !== 'all') list = list.filter(s => s.type === _filter);
+    if (_phaseFilter !== 'all') list = list.filter(s => s.phase === _phaseFilter);
 
     // Agrupar por fecha
     const grouped = {};
@@ -88,13 +97,22 @@ const History = (() => {
         </div>
 
         <!-- Filtros -->
-        <div style="display:flex;gap:8px;margin-bottom:20px">
+        <div style="display:flex;gap:8px;margin-bottom:${availablePhases.length > 1 ? '10px' : '20px'};overflow-x:auto">
           ${['all','Fuerza','Cardio'].map(f => `
             <button class="btn ${_filter === f ? 'btn-primary' : 'btn-secondary'} btn-sm"
               onclick="History.setFilter('${f}')">
               ${f === 'all' ? 'Todas' : f}
             </button>`).join('')}
         </div>
+
+        ${availablePhases.length > 1 ? `
+        <div style="display:flex;gap:8px;margin-bottom:20px;overflow-x:auto">
+          <button class="btn ${_phaseFilter === 'all' ? 'btn-primary' : 'btn-secondary'} btn-sm" style="flex-shrink:0"
+            onclick="History.setPhaseFilter('all')">Todas las fases</button>
+          ${availablePhases.map(p => `
+            <button class="btn ${_phaseFilter === p ? 'btn-primary' : 'btn-secondary'} btn-sm" style="flex-shrink:0"
+              onclick="History.setPhaseFilter('${p.replace(/'/g, "\\'")}')">${p}</button>`).join('')}
+        </div>` : ''}
 
         <!-- Timeline -->
         ${dates.length === 0 ? `
@@ -363,6 +381,7 @@ const History = (() => {
   }
 
   function setFilter(f) { _filter = f; Sounds.click(); render(); }
+  function setPhaseFilter(p) { _phaseFilter = p; Sounds.click(); render(); }
 
   function toggleExpand(id, date, isCardio) {
     _expandedId = _expandedId === id ? null : id;
@@ -757,7 +776,7 @@ const History = (() => {
     }
   }
 
-  return { init, setFilter, toggleExpand, openEdit, saveEdit, openCardioEdit, saveCardioEdit, renderCardioEditSplits };
+  return { init, setFilter, setPhaseFilter, toggleExpand, openEdit, saveEdit, openCardioEdit, saveCardioEdit, renderCardioEditSplits };
 })();
 
 function initHistory(container) { History.init(container); }

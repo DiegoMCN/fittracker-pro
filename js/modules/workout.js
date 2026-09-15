@@ -10,16 +10,45 @@ const Workout = (() => {
   let catalogData = null;    // Cache de EJERCICIOS — lectura DIRECTA, sin cruce con PLAN_SEMANAL
   let elapsedInterval = null;
   let restInterval = null;
+  let allPhases = [];        // Todas las fases del programa (para las pestañas)
+  let realCurrentPhaseNumber = null; // La fase ACTIVA de verdad (no la que se está viendo)
+  let viewingPhaseNumber = null;     // La fase que se está mostrando en el picker
+  let planLocked = false;    // true si viewingPhaseNumber no es la fase activa
+  let planDataByPhase = {};  // Cache del plan, una entrada por fase vista
 
   // ── CARGA DEL PLAN (desde Google Sheet vía Apps Script) ──────────────
-  async function _loadPlan() {
-    if (planData) return planData;
-    const res = await API.getWeekPlan();
+  async function _loadPlan(phase) {
+    const cacheKey = phase || 'current';
+    const cached = planDataByPhase[cacheKey];
+    if (cached) {
+      planData = cached.plan;
+      viewingPhaseNumber = cached.viewingPhaseNumber;
+      planLocked = cached.locked;
+      return planData;
+    }
+    const res = await API.getWeekPlan(phase);
     planData = res.plan || [];
+    realCurrentPhaseNumber = res.phase?.number ?? realCurrentPhaseNumber;
+    viewingPhaseNumber = res.viewingPhase ?? realCurrentPhaseNumber;
+    planLocked = !!res.locked;
+    planDataByPhase[cacheKey] = { plan: planData, locked: planLocked, viewingPhaseNumber };
     if (API.isMock()) {
       Toast.warning('Sin conexión al Sheet — usando plan de ejemplo local');
     }
     return planData;
+  }
+
+  // Todas las fases del programa, para las pestañas del picker — se
+  // carga una sola vez, no cambia durante la sesión.
+  async function _loadAllPhases() {
+    if (allPhases.length) return allPhases;
+    try {
+      const res = await API.getProgramPhases(CONFIG.PROGRAM_WEEKS);
+      allPhases = res.phases || [];
+    } catch(e) {
+      allPhases = [];
+    }
+    return allPhases;
   }
 
   // Lectura DIRECTA de EJERCICIOS — igual que hace el módulo de
@@ -106,7 +135,7 @@ const Workout = (() => {
       container.innerHTML = `<div style="max-width:640px;margin:0 auto">
         <div class="skeleton" style="height:320px;border-radius:16px"></div>
       </div>`;
-      await Promise.all([_loadPlan(), _loadCatalog()]);
+      await Promise.all([_loadPlan(), _loadCatalog(), _loadAllPhases()]);
       selectDay(day);
       startSession();
       return;
@@ -116,30 +145,64 @@ const Workout = (() => {
       <div class="skeleton" style="height:320px;border-radius:16px"></div>
     </div>`;
 
-    await Promise.all([_loadPlan(), _loadCatalog()]);
+    await Promise.all([_loadPlan(), _loadCatalog(), _loadAllPhases()]);
     const today = Utils.todayDayNum();
     _renderPicker(container, today);
   }
 
+  // Cambia qué fase se está viendo en el picker — trae su plan (con
+  // caché) y vuelve a dibujar. La fase que NO es la activa se muestra
+  // bloqueada: se puede consultar, no se puede iniciar sesión ahí.
+  async function switchPhase(phaseNumber, container) {
+    Sounds.click();
+    await _loadPlan(phaseNumber);
+    const today = Utils.todayDayNum();
+    _renderPicker(document.getElementById('page-content') || container, today);
+  }
+
   function _renderPicker(container, selectedDay) {
+    const realPhases = allPhases.filter(p => !p.pending);
+    const showTabs = realPhases.length > 1;
+
     container.innerHTML = `
       <div style="max-width:640px;margin:0 auto">
+        ${showTabs ? `
+        <div style="display:flex;gap:6px;margin-bottom:14px;overflow-x:auto;padding-bottom:2px">
+          ${realPhases.map(p => `
+            <button class="btn ${p.number === viewingPhaseNumber ? 'btn-primary' : 'btn-secondary'} btn-sm" style="flex-shrink:0"
+              onclick="Workout.switchPhase(${p.number})">
+              ${p.number === realCurrentPhaseNumber ? '' : '🔒 '}Fase ${p.number}
+            </button>`).join('')}
+        </div>` : ''}
+
+        ${planLocked ? `
+        <div style="background:var(--bg-input);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:14px;display:flex;gap:10px;align-items:center">
+          <span style="font-size:18px">🔒</span>
+          <div style="font-size:11px;color:var(--text-3);line-height:1.5">Esta fase ya no está activa — solo la puedes consultar. Para entrenar, cambia a la fase actual arriba.</div>
+        </div>` : ''}
+
         <div class="card" style="margin-bottom:20px">
           <div class="card-header">
             <div>
-              <div class="card-title">¿Qué día quieres entrenar?</div>
+              <div class="card-title">¿Qué día quieres entrenar?
+                ${(() => {
+                  const p = allPhases.find(ph => ph.number === viewingPhaseNumber);
+                  return p ? `<span style="font-size:10px;font-weight:600;color:var(--text-3);background:var(--bg-input);padding:3px 8px;border-radius:99px;margin-left:8px;vertical-align:middle">Fase ${p.number} — ${p.name}</span>` : '';
+                })()}
+              </div>
               <div class="card-subtitle">Plan cargado desde tu Google Sheet — editable antes de iniciar</div>
             </div>
           </div>
           <div style="display:flex;flex-direction:column;gap:8px">
             ${[1,2,3,4,5,6,0].map(day => {
               const dayPlan = _planForDay(day) || CONFIG.WEEK_PLAN[day];
-              const isToday = day === Utils.todayDayNum();
+              const isToday = day === Utils.todayDayNum() && !planLocked;
               const exCount = dayPlan?.exercises?.length || 0;
               const isRest = dayPlan?.type === 'rest';
               return `
-              <div onclick="Workout.selectDay(${day})" style="
+              <div onclick="${planLocked ? `Workout.lockedDayTap()` : `Workout.selectDay(${day})`}" style="
                 display:flex;align-items:center;gap:14px;padding:14px;border-radius:12px;cursor:pointer;
+                opacity:${planLocked ? '0.6' : '1'};
                 background:${isToday ? 'var(--accent-glow)' : 'var(--bg-input)'};
                 border:1px solid ${isToday ? 'var(--border-accent)' : 'var(--border)'};
                 transition:all 0.15s"
@@ -152,15 +215,21 @@ const Workout = (() => {
                   <div style="font-size:11px;color:var(--text-3)">${exCount > 0 ? exCount + ' ejercicios base' : isRest ? 'Día de descanso' : 'Cardio / Zona 2'}</div>
                 </div>
                 ${isToday ? '<span style="font-size:10px;background:var(--accent);color:var(--bg-primary);padding:2px 8px;border-radius:99px;font-weight:700">HOY</span>' : ''}
-                <span style="color:var(--text-4)">→</span>
+                <span style="color:var(--text-4)">${planLocked ? '🔒' : '→'}</span>
               </div>`;
             }).join('')}
           </div>
         </div>
+        ${!planLocked ? `
         <button class="btn btn-secondary" style="width:100%" onclick="Workout.selectDay(-1)">
           ✏️ Empezar sesión libre (sin plan base)
-        </button>
+        </button>` : ''}
       </div>`;
+  }
+
+  function lockedDayTap() {
+    Sounds.error();
+    Toast.warning('Esta fase ya pasó — cambia a la fase actual para poder iniciar una sesión');
   }
 
   function selectDay(day) {
@@ -253,6 +322,7 @@ const Workout = (() => {
               <div style="font-size:11px;color:var(--text-3);display:flex;align-items:center;gap:6px;margin-top:2px">
                 <span id="elapsed-time" style="font-variant-numeric:tabular-nums">${Utils.formatTime(Math.floor((Date.now() - state.startedAt)/1000))}</span>
                 · ${doneSets}/${totalSets} series
+                ${realCurrentPhaseNumber ? `· Fase ${realCurrentPhaseNumber}` : ''}
                 ${WakeLock.isActive() ? '<span style="color:var(--accent)">· 🔓 pantalla activa</span>' : ''}
               </div>
             </div>
@@ -402,6 +472,11 @@ const Workout = (() => {
             color:${set.done ? 'var(--bg-primary)' : 'var(--text-3)'};
             border:1px solid ${set.done ? 'var(--accent)' : 'var(--border)'};
             transition:all 0.2s">${set.done ? '✓' : ''}</button>
+
+          ${ex.sets.length > 1 ? `
+          <button onclick="Workout.removeSet(${exIdx},${sIdx})" title="Quitar esta serie" style="
+            width:22px;height:22px;border-radius:6px;flex-shrink:0;font-size:11px;
+            background:transparent;color:var(--text-4);border:none">✕</button>` : ''}
         `}
       </div>
 
@@ -797,6 +872,18 @@ const Workout = (() => {
       kind: lastSet?.kind || _defaultKind(ex.name), done: false
     });
     Sounds.click();
+    _rerender();
+  }
+
+  // Quita una serie específica — para cuando "+ Agregar serie" se
+  // toca por error. No deja quitar la última serie de un ejercicio
+  // (para eso ya existe "🗑 Eliminar ejercicio", quitar la única serie
+  // restante dejaría el ejercicio en un estado raro sin series).
+  function removeSet(exIdx, sIdx) {
+    const ex = state.exercises[exIdx];
+    if (!ex || ex.sets.length <= 1) return;
+    Sounds.click();
+    ex.sets.splice(sIdx, 1);
     _rerender();
   }
 
@@ -1198,6 +1285,10 @@ const Workout = (() => {
                 <input class="input" type="number" step="0.1" id="ws-weight" placeholder="kg">
               </div>
             </div>
+            <div class="input-group">
+              <label class="input-label">¿Algo que quieras contarle al Coach?</label>
+              <input class="input" id="ws-comment" placeholder="Ej. Dormí mal, jugué futbol anoche, me sentí pesado...">
+            </div>
           </div>
         </div>
 
@@ -1287,7 +1378,7 @@ const Workout = (() => {
     const stats = skip ? {} : {
       kcalAct: val('ws-kcalact'), kcalTot: val('ws-kcaltot'),
       fcAvg: val('ws-fcavg'), fcPeak: val('ws-fcpeak'), fcMin: val('ws-fcmin'),
-      effort: val('ws-effort'), weight: val('ws-weight'),
+      effort: val('ws-effort'), weight: val('ws-weight'), comment: val('ws-comment'),
       zone1: val('ws-z1'), zone2: val('ws-z2'), zone3: val('ws-z3'), zone4: val('ws-z4'), zone5: val('ws-z5'),
       fcPost0: val('ws-fcpost0'), fcPost1: val('ws-fcpost1'), fcPost2: val('ws-fcpost2'),
     };
@@ -1317,6 +1408,7 @@ const Workout = (() => {
       zone1: stats.zone1 || '', zone2: stats.zone2 || '', zone3: stats.zone3 || '',
       zone4: stats.zone4 || '', zone5: stats.zone5 || '',
       fcPost0: stats.fcPost0 || '', fcPost1: stats.fcPost1 || '', fcPost2: stats.fcPost2 || '',
+      comment: stats.comment || '',
       exercises: state.exercises.map(ex => ({
         name: ex.name, group: ex.group, supersetGroup: ex.supersetGroup || '',
         sets: ex.sets.filter(s => s.done).map(s => ({
@@ -1406,11 +1498,12 @@ const Workout = (() => {
   }
 
   return {
-    init, selectDay, backToPicker, startSession, toggleCollapse, updateSet, changeUnit, setKind, refreshKgHint, toggleSetDone, addSet,
+    init, selectDay, backToPicker, startSession, toggleCollapse, updateSet, changeUnit, setKind, refreshKgHint, toggleSetDone, addSet, removeSet,
     removeExercise, addExercise, confirmAddExercise, startRest, addRestTime,
     skipRest, customRest, finishSession, saveFinalSession, toggleAdvancedStats, discardSession, cleanup, onRouteChange,
     quickStartDay, toggleSupersetPicker, linkSuperset,
     openCalculators, setCalcTab, recalcCalculators,
+    switchPhase, lockedDayTap,
     hasActiveSession: () => !!(state && state.started && !state.finished),
   };
 })();

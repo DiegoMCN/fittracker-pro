@@ -207,5 +207,11 @@ const CONFIG = {
   },
 };
 
-// Freeze para evitar mutaciones accidentales
-Object.freeze(CONFIG);
+// NO se congela CONFIG — desde que agregamos fases y protocolos de
+// HIT editables en el Sheet, el arranque de la app necesita poder
+// reemplazar CONFIG.PROGRAM_PHASES y CONFIG.HIT_PROTOCOLS con los
+// datos reales al cargar. Object.freeze() bloqueaba esas asignaciones
+// EN SILENCIO (sin error visible) — CONFIG se quedaba pegado en los
+// valores de respaldo aunque la consulta al Sheet funcionara
+// perfecto. Si en algún momento se vuelve a congelar, hay que
+// recordar que rompe ambas funciones de nuevo.

@@ -188,6 +188,11 @@ const API = (() => {
       getSplitsAnalysis: { hasData: false },
       getBestSplitEver: { found: false },
       getAllInsights: { insights: {} },
+      getProgramPhases: { phases: [
+        { number: 1, name: 'Reconstrucción', startWeek: 1, endWeek: 4, focus: 'Base de fuerza y técnica, recuperación cardiovascular', pending: false },
+        { number: null, name: 'Por definir', startWeek: 5, endWeek: 12, focus: '', pending: true },
+      ] },
+      getHitProtocols: { protocols: {} }, // vacío en mock — CONFIG.HIT_PROTOCOLS de respaldo cubre esto
     };
 
     return mocks[action] || { data: [] };
@@ -215,8 +220,8 @@ const API = (() => {
     getExercises: () =>
       _fetch({ action: 'getExercises' }),
 
-    getWeekPlan: () =>
-      _fetch({ action: 'getWeekPlan' }),
+    getWeekPlan: (phase) =>
+      _fetch({ action: 'getWeekPlan', ...(phase ? { phase } : {}) }),
 
     getStrengthHistory: (exercise) =>
       _fetch({ action: 'getStrengthHistory', exercise }),
@@ -280,6 +285,12 @@ const API = (() => {
 
     getAllInsights: () =>
       _fetch({ action: 'getAllInsights' }),
+
+    getProgramPhases: (totalWeeks = 12) =>
+      _fetch({ action: 'getProgramPhases', totalWeeks }),
+
+    getHitProtocols: () =>
+      _fetch({ action: 'getHitProtocols' }),
 
     // retries: 0 en TODAS las escrituras — a diferencia de una lectura,
     // reintentar un POST significa ejecutar el guardado (y la llamada a

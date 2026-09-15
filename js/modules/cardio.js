@@ -47,48 +47,129 @@ const Cardio = (() => {
     _renderPicker(container);
   }
 
+  let _selectedHitDuration = null; // se fija al primer render, con la duración más cercana a "hoy"
+
+  // Separa CONFIG.HIT_PROTOCOLS en categorías — por patrón de clave,
+  // no por un campo nuevo en el Sheet, para no tener que tocar el
+  // backend otra vez. "10min-nivel2" etc. son la matriz de HIT; todo
+  // lo demás (sprint-tecnico, zona2, y lo que Diego agregue a futuro
+  // con otro nombre) cae en su propia categoría por separado.
+  function _categorizeProtocols() {
+    const hitByDuration = {}; // { '10': [{level, key, protocol}], '15': [...], '25': [...] }
+    const sprint = [];
+    const zona = [];
+    const otros = [];
+
+    Object.entries(CONFIG.HIT_PROTOCOLS).forEach(([key, p]) => {
+      const hitMatch = key.match(/^(\d+)min-nivel(\d+)$/i);
+      if (hitMatch) {
+        const dur = hitMatch[1];
+        (hitByDuration[dur] = hitByDuration[dur] || []).push({ level: Number(hitMatch[2]), key, protocol: p });
+        return;
+      }
+      if (/sprint/i.test(key) || /sprint/i.test(p.name)) { sprint.push({ key, protocol: p }); return; }
+      if (/^zona/i.test(key) || /zona/i.test(p.name)) { zona.push({ key, protocol: p }); return; }
+      otros.push({ key, protocol: p });
+    });
+
+    Object.values(hitByDuration).forEach(list => list.sort((a,b) => a.level - b.level));
+    return { hitByDuration, sprint, zona, otros };
+  }
+
+  function _protocolRow(key, p, today, compact) {
+    const isToday = p.day === today;
+    const totalMin = Math.round(p.phases.reduce((s,ph) => s + ph.duration, 0) / 60);
+    const maxEffort = p.phases.some(ph => ph.effort === 'max') ? 'max' : p.phases.some(ph => ph.effort === 'z2') ? 'z2' : 'moderate';
+    return `
+      <div onclick="Cardio.selectProtocol('${key}')" style="
+        display:flex;align-items:center;gap:${compact ? '10px' : '14px'};padding:${compact ? '10px 12px' : '16px'};border-radius:12px;cursor:pointer;
+        background:${isToday ? 'var(--accent-glow)' : 'var(--bg-input)'};
+        border:1px solid ${isToday ? 'var(--border-accent)' : 'var(--border)'};
+        transition:all 0.15s"
+        onmouseenter="this.style.borderColor='var(--text-4)'"
+        onmouseleave="this.style.borderColor='${isToday ? 'var(--border-accent)' : 'var(--border)'}'">
+        <div style="width:${compact ? '36px' : '44px'};height:${compact ? '36px' : '44px'};border-radius:10px;background:${EFFORT_COLOR[maxEffort]}22;
+          display:flex;align-items:center;justify-content:center;font-size:${compact ? '16px' : '20px'};flex-shrink:0">
+          ${maxEffort === 'max' ? '🔥' : maxEffort === 'z2' ? '🧘' : '⚡'}
+        </div>
+        <div style="flex:1">
+          <div style="font-weight:600;font-size:${compact ? '13px' : '14px'}">${p.name}</div>
+          <div style="font-size:11px;color:var(--text-3)">${p.phases.length} fases · ~${totalMin} min total</div>
+        </div>
+        ${isToday ? '<span style="font-size:10px;background:var(--accent);color:var(--bg-primary);padding:2px 8px;border-radius:99px;font-weight:700">HOY</span>' : ''}
+        <span style="color:var(--text-4)">→</span>
+      </div>`;
+  }
+
   function _renderPicker(container) {
     const today = Utils.todayDayNum();
+    const { hitByDuration, sprint, zona, otros } = _categorizeProtocols();
+    const durations = Object.keys(hitByDuration).sort((a,b) => Number(a) - Number(b));
+    if (!_selectedHitDuration || !hitByDuration[_selectedHitDuration]) {
+      _selectedHitDuration = durations[0] || null;
+    }
+
     container.innerHTML = `
       <div style="max-width:640px;margin:0 auto">
+
+        ${durations.length > 0 ? `
         <div class="card" style="margin-bottom:16px">
           <div class="card-header">
             <div>
-              <div class="card-title">¿Qué protocolo corres hoy?</div>
-              <div class="card-subtitle">Timer con fases automáticas, sonido y vibración en cada transición</div>
+              <div class="card-title">🔥 HIT por nivel</div>
+              <div class="card-subtitle">Primero elige duración, luego dificultad</div>
             </div>
           </div>
-          <div style="display:flex;flex-direction:column;gap:10px">
-            ${Object.entries(CONFIG.HIT_PROTOCOLS).map(([key, p]) => {
-              const isToday = p.day === today;
-              const totalMin = Math.round(p.phases.reduce((s,ph) => s + ph.duration, 0) / 60);
-              const maxEffort = p.phases.some(ph => ph.effort === 'max') ? 'max' : p.phases.some(ph => ph.effort === 'z2') ? 'z2' : 'moderate';
-              return `
-              <div onclick="Cardio.selectProtocol('${key}')" style="
-                display:flex;align-items:center;gap:14px;padding:16px;border-radius:12px;cursor:pointer;
-                background:${isToday ? 'var(--accent-glow)' : 'var(--bg-input)'};
-                border:1px solid ${isToday ? 'var(--border-accent)' : 'var(--border)'};
-                transition:all 0.15s"
-                onmouseenter="this.style.borderColor='var(--text-4)'"
-                onmouseleave="this.style.borderColor='${isToday ? 'var(--border-accent)' : 'var(--border)'}'">
-                <div style="width:44px;height:44px;border-radius:10px;background:${EFFORT_COLOR[maxEffort]}22;
-                  display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">
-                  ${maxEffort === 'max' ? '🔥' : maxEffort === 'z2' ? '🧘' : '⚡'}
-                </div>
-                <div style="flex:1">
-                  <div style="font-weight:600;font-size:14px">${p.name}</div>
-                  <div style="font-size:11px;color:var(--text-3)">${p.phases.length} fases · ~${totalMin} min total</div>
-                </div>
-                ${isToday ? '<span style="font-size:10px;background:var(--accent);color:var(--bg-primary);padding:2px 8px;border-radius:99px;font-weight:700">HOY</span>' : ''}
-                <span style="color:var(--text-4)">→</span>
-              </div>`;
-            }).join('')}
+          <div style="display:flex;gap:8px;margin-bottom:14px">
+            ${durations.map(d => `
+              <button class="btn ${d === _selectedHitDuration ? 'btn-primary' : 'btn-secondary'} btn-sm" style="flex:1"
+                onclick="Cardio.selectHitDuration('${d}')">${d}'</button>`).join('')}
           </div>
-        </div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            ${(hitByDuration[_selectedHitDuration] || []).map(({key, protocol}) => _protocolRow(key, protocol, today, true)).join('')}
+          </div>
+        </div>` : ''}
+
+        ${sprint.length > 0 ? `
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-header">
+            <div class="card-title">⚡ Sprint técnico</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            ${sprint.map(({key, protocol}) => _protocolRow(key, protocol, today, false)).join('')}
+          </div>
+        </div>` : ''}
+
+        ${zona.length > 0 ? `
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-header">
+            <div class="card-title">🧘 Zona 2 / Continuo</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            ${zona.map(({key, protocol}) => _protocolRow(key, protocol, today, false)).join('')}
+          </div>
+        </div>` : ''}
+
+        ${otros.length > 0 ? `
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-header">
+            <div class="card-title">Otros protocolos</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            ${otros.map(({key, protocol}) => _protocolRow(key, protocol, today, false)).join('')}
+          </div>
+        </div>` : ''}
+
         <button class="btn btn-secondary" style="width:100%" onclick="Cardio.selectProtocol('libre')">
           ⏱ Cronómetro libre (sin protocolo)
         </button>
       </div>`;
+  }
+
+  function selectHitDuration(duration) {
+    Sounds.click();
+    _selectedHitDuration = duration;
+    _renderPicker(document.getElementById('page-content'));
   }
 
   function selectProtocol(key) {
@@ -785,7 +866,7 @@ const Cardio = (() => {
   }
 
   return {
-    init, selectProtocol, backToPicker, startProtocol, togglePause, skipPhase,
+    init, selectProtocol, selectHitDuration, backToPicker, startProtocol, togglePause, skipPhase,
     discardSession, onRouteChange, hasActiveSession, skipStats, saveStats,
     toggleMetronome, adjustMetronome, renderSplitInputs,
   };
