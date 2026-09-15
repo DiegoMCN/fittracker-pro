@@ -143,7 +143,18 @@ function _renderDashboard(container, data, doneDayNames, records, allSessions, l
       <div class="metric-delta ${thisWeek.calories > 500 ? 'up' : 'flat'}">
         ${thisWeek.calories > 1000 ? '🔥 Excelente semana' : thisWeek.calories > 500 ? '💪 Buen ritmo' : '📅 Empieza la semana'}
       </div>
-      <div style="font-size:11px;color:var(--text-3);margin-top:6px">Volumen: ${Utils.formatNum(thisWeek.volume)} kg movidos</div>
+      <div style="font-size:11px;color:var(--text-3);margin-top:6px">Esta semana</div>
+    </div>
+
+    <!-- Volumen semana — antes vivía pegado a la tarjeta de calorías,
+         sin relación entre sí; ahora tiene su propio espacio -->
+    <div class="metric-card" style="--accent-color:var(--purple-light)">
+      <div class="metric-label">Volumen movido</div>
+      <div style="display:flex;align-items:baseline;gap:4px;margin:8px 0">
+        <span class="metric-value" style="color:var(--purple-light)">${Utils.formatNum(thisWeek.volume)}</span>
+        <span class="metric-unit">kg</span>
+      </div>
+      <div style="font-size:11px;color:var(--text-3);margin-top:6px">Esta semana</div>
     </div>
   </div>
 
