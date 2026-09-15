@@ -324,13 +324,57 @@ function _updateSidebarPhase() {
   if (elProg) elProg.style.width = `${Math.min(100, pct)}%`;
   if (elDet)  elDet.textContent  = `${completedWeeks} semana${completedWeeks === 1 ? '' : 's'} completada${completedWeeks === 1 ? '' : 's'}`;
 }
+// ── FASES DEL PROGRAMA — desde el Sheet (PROGRAMA_FASES), no fijas en
+//    config.js. Si falla la consulta (sin conexión, etc.), se quedan
+//    los valores de respaldo que ya trae config.js por defecto.
+async function _loadProgramPhases() {
+  try {
+    const res = await API.getProgramPhases(CONFIG.PROGRAM_WEEKS);
+    if (!res.phases || !res.phases.length) return;
+    CONFIG.PROGRAM_PHASES = res.phases;
+    const week = CONFIG.CURRENT_PHASE.currentWeek; // el getter no se toca, sigue calculándose de PROGRAM_START_DATE
+    // Igual que _getCurrentPhase() en el backend: NUNCA se queda en
+    // una fase "por definir" como la actual — si la semana cae en un
+    // hueco todavía sin decidir, se queda en la ÚLTIMA fase real
+    // conocida. Antes esto no filtraba "pending", por eso el sidebar
+    // podía mostrar "Fase null / Por definir" mientras Sesión Activa
+    // (que sí usa esa salvaguarda) mostraba la fase real — quedaban
+    // desincronizados entre sí.
+    const realPhases = res.phases.filter(p => !p.pending);
+    const match = realPhases.find(p => week >= p.startWeek && week <= p.endWeek) || realPhases[realPhases.length - 1];
+    if (!match) return; // sin ninguna fase real definida todavía — se queda con el respaldo de config.js
+    Object.assign(CONFIG.CURRENT_PHASE, {
+      number: match.number,
+      name: `Fase ${match.number} — ${match.name}`,
+      startWeek: match.startWeek,
+      endWeek: match.endWeek,
+    });
+  } catch(e) {
+    console.warn('No se pudieron cargar las fases del Sheet, usando valores por defecto de config.js', e);
+  }
+}
+// ── PROTOCOLOS DE HIT — desde el Sheet (HIT_PROTOCOLOS + HIT_FASES),
+//    no fijos en config.js. Si falla, se quedan los de respaldo.
+async function _loadHitProtocols() {
+  try {
+    const res = await API.getHitProtocols();
+    if (!res.protocols || !Object.keys(res.protocols).length) return;
+    CONFIG.HIT_PROTOCOLS = res.protocols;
+  } catch(e) {
+    console.warn('No se pudieron cargar los protocolos de HIT del Sheet, usando valores por defecto de config.js', e);
+  }
+}
 _updateSidebarPhase();
 
 // ── INIT ──────────────────────────────────────────────────────────────────
 // Soporta accesos directos del ícono de la app (?page=workout, ?page=cardio)
 const _initialPage = new URLSearchParams(location.search).get('page');
 const _validPages = ['dashboard','workout','cardio','plan','history','metrics','exercises'];
-Router.navigate(_validPages.includes(_initialPage) ? _initialPage : 'dashboard');
+(async () => {
+  await Promise.all([_loadProgramPhases(), _loadHitProtocols()]);
+  _updateSidebarPhase(); // repinta con la fase real ya cargada
+  Router.navigate(_validPages.includes(_initialPage) ? _initialPage : 'dashboard');
+})();
 </script>
 
 </body>
