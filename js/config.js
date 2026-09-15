@@ -40,7 +40,7 @@ const CONFIG = {
   // Fecha real de inicio de Fase 1 — cambia esto si reinicias el programa.
   // La semana actual se calcula sola a partir de aquí, en vez de estar
   // hardcodeada (por eso antes se quedaba trabada en "Semana 3" para siempre).
-  PROGRAM_START_DATE: '2026-08-17', // lunes de esta semana
+  PROGRAM_START_DATE: '2026-08-24', // lunes de esta semana — fecha real confirmada de inicio (antes decía 17 de agosto por error, causaba un desfase de 1 semana en toda la app)
 
   // Fase actual del programa
   CURRENT_PHASE: {
