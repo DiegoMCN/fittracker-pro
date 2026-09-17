@@ -1420,6 +1420,7 @@ const Workout = (() => {
     try {
       const result = await API.saveSession(payload);
       API.clearCache();
+      Router.invalidateAll(); // lo que acabas de guardar puede afectar varios módulos (Dashboard, Métricas, etc.)
       // El plan (y el catálogo de notas) quedaron cacheados en
       // variables de módulo desde que arrancó esta sesión — con eso
       // solo, la próxima vez que Diego elija un día NUNCA se volvería

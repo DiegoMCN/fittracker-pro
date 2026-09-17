@@ -56,6 +56,10 @@ function _renderDashboard(container, data, doneDayNames, records, allSessions, l
   const thisWeek  = data.thisWeek || { sessions: 0, target: 6, calories: 0, volume: 0 };
   const weekPct   = Math.round((thisWeek.sessions / thisWeek.target) * 100);
   const lastSes   = data.lastSession || {};
+  // Combina fuerza + cardio correctamente para calorías y volumen —
+  // antes "thisWeek.calories" (del backend) solo sumaba fuerza, y las
+  // dos tarjetas no tenían comparativo contra la semana pasada.
+  const wc = _weeklyComparison(allSessions, allCardio);
   const rec       = data.recentRecovery || { delta: -14 };
   const recClass  = rec.delta <= -10 ? 'up' : rec.delta <= -5 ? 'flat' : 'down';
 
@@ -133,27 +137,35 @@ function _renderDashboard(container, data, doneDayNames, records, allSessions, l
       </div>
     </div>
 
-    <!-- Calorías semana -->
+    <!-- Calorías semana — ahora suma fuerza Y cardio (antes solo fuerza) -->
     <div class="metric-card" style="--accent-color:var(--warning)">
       <div class="metric-label">Calorías activas</div>
       <div style="display:flex;align-items:baseline;gap:4px;margin:8px 0">
-        <span class="metric-value" style="color:var(--warning)">${Utils.formatNum(thisWeek.calories)}</span>
+        <span class="metric-value" style="color:var(--warning)">${Utils.formatNum(wc.thisWeek.calories)}</span>
         <span class="metric-unit">kcal</span>
       </div>
-      <div class="metric-delta ${thisWeek.calories > 500 ? 'up' : 'flat'}">
-        ${thisWeek.calories > 1000 ? '🔥 Excelente semana' : thisWeek.calories > 500 ? '💪 Buen ritmo' : '📅 Empieza la semana'}
-      </div>
+      ${wc.lastWeek.calories > 0 ? `
+      <div class="metric-delta ${wc.thisWeek.calories >= wc.lastWeek.calories ? 'up' : 'down'}">
+        ${wc.thisWeek.calories >= wc.lastWeek.calories ? '↑' : '↓'} ${Utils.formatNum(Math.abs(wc.thisWeek.calories - wc.lastWeek.calories))} kcal vs. semana pasada
+      </div>` : `
+      <div class="metric-delta ${wc.thisWeek.calories > 500 ? 'up' : 'flat'}">
+        ${wc.thisWeek.calories > 1000 ? '🔥 Excelente semana' : wc.thisWeek.calories > 500 ? '💪 Buen ritmo' : '📅 Empieza la semana'}
+      </div>`}
       <div style="font-size:11px;color:var(--text-3);margin-top:6px">Esta semana</div>
     </div>
 
     <!-- Volumen semana — antes vivía pegado a la tarjeta de calorías,
-         sin relación entre sí; ahora tiene su propio espacio -->
+         sin relación entre sí; ahora tiene su propio espacio y comparativo -->
     <div class="metric-card" style="--accent-color:var(--purple-light)">
       <div class="metric-label">Volumen movido</div>
       <div style="display:flex;align-items:baseline;gap:4px;margin:8px 0">
-        <span class="metric-value" style="color:var(--purple-light)">${Utils.formatNum(thisWeek.volume)}</span>
+        <span class="metric-value" style="color:var(--purple-light)">${Utils.formatNum(wc.thisWeek.volume)}</span>
         <span class="metric-unit">kg</span>
       </div>
+      ${wc.lastWeek.volume > 0 ? `
+      <div class="metric-delta ${wc.thisWeek.volume >= wc.lastWeek.volume ? 'up' : 'down'}">
+        ${wc.thisWeek.volume >= wc.lastWeek.volume ? '↑' : '↓'} ${Utils.formatNum(Math.abs(wc.thisWeek.volume - wc.lastWeek.volume))} kg vs. semana pasada
+      </div>` : ''}
       <div style="font-size:11px;color:var(--text-3);margin-top:6px">Esta semana</div>
     </div>
   </div>
@@ -394,7 +406,6 @@ function _renderDashboard(container, data, doneDayNames, records, allSessions, l
 
   <!-- Comparativa semanal — esta semana vs. la pasada -->
   ${(() => {
-    const wc = _weeklyComparison(allSessions, allCardio);
     const rows = [
       { label: 'Sesiones', unit: '', this: wc.thisWeek.sessions, last: wc.lastWeek.sessions, higherIsBetter: true, icon: '📅' },
       { label: 'Volumen movido', unit: 'kg', this: wc.thisWeek.volume, last: wc.lastWeek.volume, higherIsBetter: true, icon: '🏋️' },
@@ -674,9 +685,17 @@ function _weeklyComparison(allSessions, allCardio) {
     const withFC = rows.filter(r => r.fcAvg);
     const withVol = rows.filter(r => r.volume);
     const withEffort = rows.filter(r => r.effort);
+    // Las calorías vienen con nombre de campo distinto según la fuente
+    // — "calories" en sesiones de fuerza (getSessions), "caloriasActivas"
+    // en cardio (getCardio). Este era el bug real: aquí decía
+    // "r.kcalAct", un campo que getSessions() nunca regresa así —
+    // por eso NINGUNA sesión de fuerza contaba, sin importar si
+    // Diego las llenaba bien o no.
+    const calories = rows.reduce((sum, r) => sum + (Number(r.calories) || Number(r.caloriasActivas) || 0), 0);
     return {
       sessions: rows.length,
       volume: withVol.reduce((sum, r) => sum + (r.volume || 0), 0),
+      calories: Math.round(calories),
       avgFC: withFC.length ? Math.round(withFC.reduce((s,r) => s + r.fcAvg, 0) / withFC.length) : null,
       avgEffort: withEffort.length ? Math.round((withEffort.reduce((s,r) => s + r.effort, 0) / withEffort.length) * 10) / 10 : null,
     };

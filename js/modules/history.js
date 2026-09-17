@@ -514,6 +514,7 @@ const History = (() => {
     try {
       const result = await API.updateSession(payload);
       API.clearCache();
+      Router.invalidateAll(); // lo que acabas de guardar puede afectar varios módulos (Dashboard, Métricas, etc.)
       document.querySelector('.modal-overlay')?.remove();
       if (result.queued) {
         Sounds.click(); Haptics.medium();
@@ -757,6 +758,7 @@ const History = (() => {
     try {
       const result = await API.updateCardio(payload);
       API.clearCache();
+      Router.invalidateAll(); // lo que acabas de guardar puede afectar varios módulos (Dashboard, Métricas, etc.)
       document.querySelector('.modal-overlay')?.remove();
       if (result.queued) {
         Sounds.click(); Haptics.medium();

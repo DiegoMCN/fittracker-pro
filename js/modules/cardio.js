@@ -798,6 +798,7 @@ const Cardio = (() => {
     try {
       const result = await API.saveCardio(payload);
       API.clearCache();
+      Router.invalidateAll(); // lo que acabas de guardar puede afectar varios módulos (Dashboard, Métricas, etc.)
 
       if (result.queued) {
         Sounds.click(); Haptics.medium();

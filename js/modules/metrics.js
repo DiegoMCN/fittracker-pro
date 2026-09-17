@@ -733,7 +733,7 @@ const Metrics = (() => {
             pointBorderColor: 'transparent', borderDash: [4,3], spanGaps: true,
           },
           {
-            label: 'Dominadas', data: chronological.map(h => h.pullUps), yAxisID: 'yLeft',
+            label: 'Dominadas', data: chronological.map(h => h.pullUps), yAxisID: 'yFar',
             borderColor: '#EF4444', backgroundColor: 'transparent',
             tension: 0.4, pointRadius: 4, borderWidth: 2, pointBackgroundColor: '#EF4444',
             pointBorderColor: 'transparent', borderDash: [2,2], spanGaps: true,
@@ -760,6 +760,14 @@ const Metrics = (() => {
             type: 'linear', position: 'right',
             ticks: { color: '#7C3AED', font: { size: 9, family: 'Poppins' } },
             grid: { display: false }, border: { display: false },
+          },
+          // Dominadas maneja rangos de un solo dígito, muy distinto a
+          // km/h de velocidad — antes compartía eje con esa y se veía
+          // aplastada casi plana en la parte de abajo. Eje propio,
+          // oculto (no se dibuja una tercera columna de números, pero
+          // sí escala independiente para que la línea se vea real).
+          yFar: {
+            type: 'linear', position: 'right', display: false,
           },
         }
       }

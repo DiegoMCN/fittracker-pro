@@ -7,7 +7,7 @@ const API = (() => {
 
   // Cache simple en memoria
   const _cache = new Map();
-  const CACHE_TTL = 5 * 60 * 1000; // 5 minutos
+  const CACHE_TTL = 20 * 60 * 1000; // 20 minutos — antes 5. La invalidación real ya pasa en los 4 puntos donde algo cambia de verdad (terminar sesión, editar Bitácora, Perfil, Coach), así que alargar esto solo evita recargas innecesarias al ir y venir entre módulos, no arriesga mostrar datos viejos después de guardar algo.
   let _lastWasMock = false;
 
   function _cacheGet(key) {

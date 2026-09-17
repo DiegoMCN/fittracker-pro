@@ -256,6 +256,7 @@ const Coach = (() => {
     try {
       const res = await API.refreshDashboardInsight();
       API.clearCache();
+      Router.invalidateAll(); // lo que acabas de guardar puede afectar varios módulos (Dashboard, Métricas, etc.)
       if (res.insight) {
         // Actualiza el historial local sin refetch completo
         const today = Utils.today();
@@ -265,7 +266,7 @@ const Coach = (() => {
         Toast.success('Consejo generado 🤖');
         render();
       } else {
-        Toast.warning('No se pudo generar el consejo — revisa que tengas la API key configurada');
+        Toast.warning('No se pudo generar el consejo — revisa el log de Apps Script (Ejecuciones) para ver la causa exacta: puede ser la API key, cuota agotada, o un error de la API');
         if (btn) { btn.disabled = false; btn.innerHTML = '🎯 Generar consejo de hoy'; }
       }
     } catch(err) {

@@ -280,8 +280,8 @@ const Profile = (() => {
     boneMass:           { title: 'Masa ósea', desc: 'El peso estimado de tu esqueleto. Cambia muy poco en el tiempo — no esperes variaciones grandes de una medición a otra.' },
     proteinPct:         { title: 'Proteína corporal', desc: 'Qué porcentaje de tu peso es proteína — se relaciona con tu masa muscular total.' },
     bmr:                { title: 'BMR — Metabolismo basal', desc: 'Las calorías que quemas solo por existir, sin moverte — la base de cualquier cálculo de cuánto necesitas comer al día.' },
-    muscleMass:         { title: 'Masa muscular', desc: 'El peso total de tu músculo (esquelético + liso + cardíaco). Súbelo con el tiempo confirma que el entrenamiento de fuerza está dando resultado.', insightKey: 'composicion_corporal' },
-    peso: { title: 'Peso corporal', desc: 'Tu peso total — sube o baja por grasa, músculo, agua y hasta lo que comiste ese día. Míralo en tendencia de semanas, no día a día.', insightKey: 'composicion_corporal' },
+    muscleMass:         { title: 'Masa muscular', desc: 'El peso total de tu músculo (esquelético + liso + cardíaco). Súbelo con el tiempo confirma que el entrenamiento de fuerza está dando resultado.', insightKey: 'masa_muscular' },
+    peso: { title: 'Peso corporal', desc: 'Tu peso total — sube o baja por grasa, músculo, agua y hasta lo que comiste ese día. Míralo en tendencia de semanas, no día a día.', insightKey: 'peso' },
     cintura:      { title: 'Cintura', desc: 'La circunferencia de tu cintura — uno de los mejores indicadores individuales de riesgo cardiovascular, más que el peso solo.', who: 'waistMale', min: 60, max: 120, insightKey: 'cintura' },
     pecho:        { title: 'Pecho', desc: 'Circunferencia de pecho — más útil para ver tu progreso de desarrollo muscular que para salud general.' },
     cadera:       { title: 'Cadera', desc: 'Circunferencia de cadera — se usa junto con la cintura para calcular tu ratio cintura/cadera.' },
@@ -379,6 +379,7 @@ const Profile = (() => {
     try {
       const result = await API.saveProfile(payload);
       API.clearCache();
+      Router.invalidateAll(); // lo que acabas de guardar puede afectar varios módulos (Dashboard, Métricas, etc.)
       document.querySelector('.modal-overlay')?.remove();
       if (result.queued) {
         Sounds.click(); Haptics.medium();
@@ -518,6 +519,7 @@ const Profile = (() => {
     try {
       const result = await API.saveBodyComposition(payload);
       API.clearCache();
+      Router.invalidateAll(); // lo que acabas de guardar puede afectar varios módulos (Dashboard, Métricas, etc.)
       document.querySelector('.modal-overlay')?.remove();
       if (result.queued) {
         Sounds.click(); Haptics.medium();
@@ -721,6 +723,7 @@ const Profile = (() => {
     try {
       const result = await API.saveMeasurements(payload);
       API.clearCache();
+      Router.invalidateAll(); // lo que acabas de guardar puede afectar varios módulos (Dashboard, Métricas, etc.)
       document.querySelector('.modal-overlay')?.remove();
       if (result.queued) {
         Sounds.click(); Haptics.medium();

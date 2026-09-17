@@ -439,6 +439,22 @@ const Router = (() => {
   return {
     register(name, fn) { _routes[name] = fn; },
 
+    // No-ops — se dejan aquí (en vez de borrarlos) porque varios
+    // módulos ya llaman Router.invalidateAll() al guardar algo. El
+    // caché de verdad vive en api.js (por solicitud, con TTL) — ahí es
+    // donde de verdad se evita repetir llamadas innecesarias al
+    // backend. Se intentó cachear el HTML completo de cada página para
+    // saltarse la re-ejecución del módulo, pero varias páginas
+    // (Métricas, Dashboard, Coach) dibujan gráficas en <canvas>, y el
+    // contenido de un canvas NO se guarda como parte del HTML — se
+    // hubieran visto en blanco al restaurar. Con api.js cacheando por
+    // solicitud, el módulo siempre se vuelve a ejecutar completo (así
+    // las gráficas siempre se redibujan bien), pero la mayoría de sus
+    // llamadas resuelven casi al instante desde caché en vez de ir
+    // de nuevo al backend.
+    invalidate(...pages) { API.clearCache(); },
+    invalidateAll() { API.clearCache(); },
+
     navigate(page, params = {}) {
       if (_current === page) return;
 
