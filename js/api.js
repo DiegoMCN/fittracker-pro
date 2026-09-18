@@ -312,6 +312,9 @@ const API = (() => {
     saveProfile: (data) =>
       _fetch({ action: 'saveProfile', method: 'POST', ...data }, { useCache: false, retries: 0 }),
 
+    saveHomeCity: (data) =>
+      _fetch({ action: 'saveHomeCity', method: 'POST', ...data }, { useCache: false, retries: 0 }),
+
     saveBodyComposition: (data) =>
       _fetch({ action: 'saveBodyComposition', method: 'POST', ...data }, { useCache: false, retries: 0 }),
 
