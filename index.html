@@ -17,7 +17,9 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/main.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 </head>
 <body>
 
@@ -87,6 +89,10 @@
       <div class="nav-item" data-page="perfil" onclick="Router.navigate('perfil')">
         <span class="nav-icon">🧬</span>
         <span>Perfil</span>
+      </div>
+      <div class="nav-item" data-page="config" onclick="Router.navigate('config')">
+        <span class="nav-icon">⚙️</span>
+        <span>Configuración</span>
       </div>
       <div class="nav-item" data-page="import" onclick="Router.navigate('import')">
         <span class="nav-icon">📥</span>
@@ -203,6 +209,7 @@
 <script src="js/modules/exercises.js"></script>
 <script src="js/modules/metrics.js"></script>
 <script src="js/modules/profile.js"></script>
+<script src="js/modules/configuracion.js"></script>
 <script src="js/modules/import.js"></script>
 <script src="js/modules/coach.js"></script>
 <script src="js/modules/nutricion.js"></script>
@@ -290,6 +297,7 @@ Router.register('history',   (container) => initHistory(container));
 Router.register('metrics',   (container) => initMetrics(container));
 Router.register('exercises', (container) => initExercises(container));
 Router.register('perfil',    (container) => initProfile(container));
+Router.register('config',    (container) => initConfiguracion(container));
 Router.register('import',    (container) => initImport(container));
 
 // ── SERVICE WORKER (PWA / offline) ───────────────────────────────────────
