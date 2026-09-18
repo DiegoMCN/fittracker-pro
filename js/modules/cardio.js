@@ -745,15 +745,46 @@ const Cardio = (() => {
     return splits;
   }
 
+  // Cuando Diego no captura la distancia a mano, se estima desde los
+  // datos que YA existen: velocidad × duración de cada fase del
+  // protocolo. Fases con velocidad no numérica (ej. "constante" en
+  // Zona 2) se ignoran en la suma — esas sí dependen de captura
+  // manual, porque no hay un número de velocidad del que partir.
+  function _estimateDistanceKm(phases) {
+    if (!phases || !phases.length) return 0;
+    let totalKm = 0;
+    phases.forEach(ph => {
+      const speedStr = String(ph.speed || '').trim();
+      let speedKmh;
+      if (speedStr.includes('-')) {
+        const parts = speedStr.split('-').map(Number);
+        if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) speedKmh = (parts[0] + parts[1]) / 2;
+      } else {
+        speedKmh = Number(speedStr);
+      }
+      if (!speedKmh || isNaN(speedKmh)) return;
+      totalKm += speedKmh * (ph.duration / 3600);
+    });
+    return Math.round(totalKm * 100) / 100;
+  }
+
   function saveStats() {
     if (!_lockButtons('cs-save-btn')) return;
     const val = id => document.getElementById(id)?.value || '';
+    // La captura manual siempre gana — el estimado es solo respaldo
+    // para cuando Diego no la llenó (típico en HIT, donde no se ve
+    // natural anotar distancia a mano en cada intervalo).
+    let distance = val('cs-distance');
+    if (!distance && state.protocol?.phases) {
+      const estimated = _estimateDistanceKm(state.protocol.phases);
+      if (estimated > 0) distance = estimated;
+    }
     _saveCardioSession({
       fcAvg: val('cs-fcavg'), fcPeak: val('cs-fcpeak'),
       fcPost0: val('cs-fcpost0'), fcPost1: val('cs-fcpost1'), fcPost2: val('cs-fcpost2'),
       zone1: val('cs-z1'), zone2: val('cs-z2'), zone3: val('cs-z3'), zone4: val('cs-z4'), zone5: val('cs-z5'),
       cadAvg: val('cs-cadavg'), cadPeak: val('cs-cadpeak'),
-      velMax: val('cs-velmax'), distance: val('cs-distance'),
+      velMax: val('cs-velmax'), distance,
       caloriasActivas: val('cs-cal-active'), caloriasTotales: val('cs-cal-total'), paceProm: val('cs-pace'),
       splits: _collectSplits(),
       notes: val('cs-notes'),

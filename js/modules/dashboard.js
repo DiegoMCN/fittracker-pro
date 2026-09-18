@@ -2,6 +2,178 @@
 // DASHBOARD MODULE
 // ═══════════════════════════════════════════
 
+// Lugares reales para comparar contra los kilómetros corridos — la
+// distancia real a cada uno se calcula en tiempo real desde la
+// ciudad de "casa" que Diego configure (Configuración), así esto
+// sirve sin importar si algún día cambia de ciudad. Cubre un rango
+// amplio (7km a 1267km desde Playa del Carmen) para que casi
+// cualquier total de hoy/semana/mes/año encuentre una comparación
+// razonable.
+const _KM_LANDMARKS = [
+  { name: 'Xcaret', lat: 20.5827, lng: -87.1201 },
+  { name: 'Puerto Aventuras', lat: 20.4986, lng: -87.2394 },
+  { name: 'Cozumel', lat: 20.4230, lng: -86.9223 },
+  { name: 'Puerto Morelos', lat: 20.8460, lng: -86.8747 },
+  { name: 'Tulum', lat: 20.2114, lng: -87.4654 },
+  { name: 'Cancún', lat: 21.1619, lng: -86.8515 },
+  { name: 'Valladolid', lat: 20.6896, lng: -88.2019 },
+  { name: 'Chichén Itzá', lat: 20.6843, lng: -88.5678 },
+  { name: 'Mérida', lat: 20.9674, lng: -89.5926 },
+  { name: 'Chetumal', lat: 18.5001, lng: -88.2960 },
+  { name: 'Campeche', lat: 19.8301, lng: -90.5349 },
+  { name: 'La Habana, Cuba', lat: 23.1136, lng: -82.3666 },
+  { name: 'Villahermosa', lat: 17.9895, lng: -92.9475 },
+  { name: 'Ciudad de Guatemala', lat: 14.6349, lng: -90.5069 },
+  { name: 'Miami, EE.UU.', lat: 25.7617, lng: -80.1918 },
+  { name: 'Veracruz', lat: 19.1738, lng: -96.1342 },
+  { name: 'Ciudad de México', lat: 19.4326, lng: -99.1332 },
+];
+
+function _haversineKm(lat1, lng1, lat2, lng2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat/2) ** 2 + Math.cos(lat1 * Math.PI/180) * Math.cos(lat2 * Math.PI/180) * Math.sin(dLng/2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+// Encuentra el lugar cuya distancia real desde casa esté más cerca
+// del km corrido — no necesariamente por debajo, el más cercano en
+// cualquier dirección se siente más natural que forzar "todavía no
+// llegas a X".
+function _closestLandmark(homeLat, homeLng, km) {
+  if (km <= 0 || homeLat == null || homeLng == null) return null;
+  let best = null, bestDiff = Infinity;
+  _KM_LANDMARKS.forEach(p => {
+    const distKm = _haversineKm(homeLat, homeLng, p.lat, p.lng);
+    const diff = Math.abs(distKm - km);
+    if (diff < bestDiff) { bestDiff = diff; best = { ...p, distKm: Math.round(distKm) }; }
+  });
+  return best;
+}
+
+// Tarjeta tipo carrusel (swipeable) — hoy / semana / mes / año, para
+// no saturar el Dashboard con 4 tarjetas fijas. Cada slide compara
+// los km corridos contra un lugar real, calculado desde la ciudad de
+// "casa" que Diego configure en Configuración.
+function _kmCarouselHTML(distanceStats, profile) {
+  const homeLat = profile?.Ciudad_Lat != null ? Number(profile.Ciudad_Lat) : null;
+  const homeLng = profile?.Ciudad_Lng != null ? Number(profile.Ciudad_Lng) : null;
+  const homeCity = profile?.Ciudad_Origen || '';
+  const stats = distanceStats || { today: 0, week: 0, month: 0, year: 0 };
+
+  if (homeLat == null || homeLng == null) {
+    return `
+    <div class="card" style="margin-bottom:20px">
+      <div class="card-header"><div class="card-title">🏃 Kilómetros corridos</div></div>
+      <div style="font-size:12px;color:var(--text-3);line-height:1.6">
+        Configura tu ciudad de origen en <b>Configuración</b> para ver cuánto equivalen en distancias reales tus kilómetros corridos.
+      </div>
+      <button class="btn btn-secondary btn-sm" style="margin-top:10px" onclick="Router.navigate('config')">⚙️ Ir a Configuración</button>
+    </div>`;
+  }
+
+  const periods = [
+    { key: 'today', label: 'Hoy',        km: stats.today },
+    { key: 'week',  label: 'Esta semana', km: stats.week },
+    { key: 'month', label: 'Este mes',   km: stats.month },
+    { key: 'year',  label: 'Este año',   km: stats.year },
+  ];
+
+  return `
+    <div class="card" style="margin-bottom:20px;padding:0;overflow:hidden">
+      <div style="padding:16px 16px 4px 16px">
+        <div class="card-title">🏃 Kilómetros corridos</div>
+        <div class="card-subtitle">Desliza para ver hoy, la semana, el mes y el año — comparado contra ${homeCity || 'tu ciudad'}</div>
+      </div>
+      <div id="km-carousel" style="display:flex;overflow-x:auto;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;gap:0" onscroll="Dashboard_onKmScroll(this)">
+        ${periods.map(p => {
+          const landmark = _closestLandmark(homeLat, homeLng, p.km);
+          return `
+          <div style="flex:0 0 100%;scroll-snap-align:start;padding:12px 16px 18px 16px;box-sizing:border-box">
+            <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:4px">
+              <span style="font-size:22px;font-weight:700;color:var(--accent)">${p.km.toFixed(p.km < 10 ? 1 : 0)}</span>
+              <span style="font-size:12px;color:var(--text-3)">km · ${p.label}</span>
+            </div>
+            ${landmark ? `
+            <div style="font-size:12px;color:var(--text-2);margin-bottom:10px">
+              Es como si hubieras ido de <b>${homeCity || 'tu casa'}</b> hasta <b>${landmark.name}</b> (${landmark.distKm} km)
+            </div>
+            <div id="km-map-${p.key}" data-home-lat="${homeLat}" data-home-lng="${homeLng}" data-dest-lat="${landmark.lat}" data-dest-lng="${landmark.lng}"
+              style="height:140px;border-radius:10px;overflow:hidden;background:var(--bg-input)"></div>
+            ` : `
+            <div style="font-size:12px;color:var(--text-3)">Sin carreras registradas todavía — ${p.label.toLowerCase()}.</div>
+            `}
+          </div>`;
+        }).join('')}
+      </div>
+      <div style="display:flex;justify-content:center;gap:6px;padding:4px 0 14px 0">
+        ${periods.map((p,i) => `<span class="km-dot" data-idx="${i}" style="width:6px;height:6px;border-radius:99px;background:${i===0 ? 'var(--accent)' : 'var(--border)'};transition:background 0.2s"></span>`).join('')}
+      </div>
+    </div>`;
+}
+
+function Dashboard_onKmScroll(el) {
+  const idx = Math.round(el.scrollLeft / el.clientWidth);
+  el.parentElement.querySelectorAll('.km-dot').forEach((dot, i) => {
+    dot.style.background = i === idx ? 'var(--accent)' : 'var(--border)';
+  });
+}
+
+// Los mapas de Leaflet necesitan que su contenedor ya tenga tamaño
+// real en el DOM — se inicializan después de que el HTML ya se pintó,
+// igual que las gráficas de Chart.js más abajo.
+// Los mapas de Leaflet necesitan que su contenedor ya tenga tamaño
+// real en el DOM — se inicializan después de que el HTML ya se pintó,
+// igual que las gráficas de Chart.js más abajo.
+async function _initKmMaps() {
+  if (typeof L === 'undefined') return;
+  const els = Array.from(document.querySelectorAll('[id^="km-map-"]')).filter(el => !el.dataset.mapInit);
+  els.forEach(el => { el.dataset.mapInit = '1'; });
+
+  await Promise.all(els.map(async (el) => {
+    const homeLat = Number(el.dataset.homeLat), homeLng = Number(el.dataset.homeLng);
+    const destLat = Number(el.dataset.destLat), destLng = Number(el.dataset.destLng);
+    try {
+      const map = L.map(el.id, {
+        zoomControl: false, attributionControl: false, dragging: false,
+        scrollWheelZoom: false, doubleClickZoom: false, touchZoom: false, boxZoom: false,
+      });
+      // tile.openstreetmap.org bloquea uso embebido en apps (403) — su
+      // política solo permite tráfico muy ligero/de prueba. CARTO
+      // ofrece el mismo mapa base (son los mismos datos de
+      // OpenStreetMap) gratis y sin API key, pensado justo para este
+      // tipo de uso.
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 12 }).addTo(map);
+
+      // Ruta real por carretera (no línea recta) — OSRM tiene un
+      // servidor público gratis, sin API key, pensado para uso ligero
+      // como este. Si no hay camino por tierra (ej. Cozumel, es isla)
+      // cae de vuelta a la línea punteada recta.
+      let routeLatLngs = null;
+      try {
+        const url = `https://router.project-osrm.org/route/v1/driving/${homeLng},${homeLat};${destLng},${destLat}?overview=full&geometries=geojson`;
+        const res = await fetch(url);
+        const data = await res.json();
+        if (data.code === 'Ok' && data.routes?.[0]?.geometry?.coordinates) {
+          routeLatLngs = data.routes[0].geometry.coordinates.map(([lng, lat]) => [lat, lng]);
+        }
+      } catch(e) { /* sin ruta por carretera — usa línea recta abajo */ }
+
+      const pathLatLngs = routeLatLngs || [[homeLat, homeLng], [destLat, destLng]];
+      const bounds = L.latLngBounds(pathLatLngs);
+      map.fitBounds(bounds, { padding: [24, 24] });
+      L.polyline(pathLatLngs, {
+        color: '#00FF87', weight: routeLatLngs ? 3 : 2, opacity: 0.85,
+        dashArray: routeLatLngs ? null : '5,5', // línea recta (sin ruta real) se marca punteada, para que se note que es aproximada
+      }).addTo(map);
+      L.circleMarker([homeLat, homeLng], { radius: 5, color: '#00FF87', fillColor: '#00FF87', fillOpacity: 1 }).addTo(map);
+      L.circleMarker([destLat, destLng], { radius: 5, color: '#7C3AED', fillColor: '#7C3AED', fillOpacity: 1 }).addTo(map);
+    } catch(e) { /* silencioso — si un mapa falla, no debe tumbar el resto del Dashboard */ }
+  }));
+}
+
+
 async function initDashboard(container) {
   // Skeleton mientras carga
   container.innerHTML = `
@@ -17,7 +189,7 @@ async function initDashboard(container) {
 
   // Se piden sin caché — recién guardaste una sesión y necesitas ver
   // el dato fresco, no uno de hace 5 minutos.
-  const [data, sesRes, recordsRes, metricsRes, cardioRes, streaksRes, overtrainingRes, insightsRes] = await Promise.all([
+  const [data, sesRes, recordsRes, metricsRes, cardioRes, streaksRes, overtrainingRes, insightsRes, profileRes] = await Promise.all([
     API.getDashboard(),
     API.getSessions(30),
     API.getPersonalRecords(),
@@ -26,6 +198,7 @@ async function initDashboard(container) {
     API.getStreaks(),
     API.getOvertrainingStatus(),
     API.getAllInsights(),
+    API.getProfile(),
   ]);
 
   // Sesiones reales de esta semana (Lun-Dom), para marcar los días
@@ -45,10 +218,10 @@ async function initDashboard(container) {
   const latestMetrics = metricsHistory.length ? metricsHistory[0] : null;
 
   Store.set({ dashboard: data });
-  _renderDashboard(container, data, doneDayNames, recordsRes, sesRes.sessions || [], latestMetrics, cardioRes.sessions || [], streaksRes, overtrainingRes, insightsRes.insights || {});
+  _renderDashboard(container, data, doneDayNames, recordsRes, sesRes.sessions || [], latestMetrics, cardioRes.sessions || [], streaksRes, overtrainingRes, insightsRes.insights || {}, profileRes.profile || {});
 }
 
-function _renderDashboard(container, data, doneDayNames, records, allSessions, latestMetrics, allCardio, streaks, overtraining, insights) {
+function _renderDashboard(container, data, doneDayNames, records, allSessions, latestMetrics, allCardio, streaks, overtraining, insights, profile) {
   _dashboardInsights = insights || {};
   const today     = new Date().getDay();
   const nextSes   = CONFIG.WEEK_PLAN[today] || CONFIG.WEEK_PLAN[(today + 1) % 7];
@@ -169,6 +342,8 @@ function _renderDashboard(container, data, doneDayNames, records, allSessions, l
       <div style="font-size:11px;color:var(--text-3);margin-top:6px">Esta semana</div>
     </div>
   </div>
+
+  ${_kmCarouselHTML(data.distanceStats, profile)}
 
   <!-- Fila principal -->
   <div class="grid-2 section">
@@ -477,6 +652,7 @@ function _renderDashboard(container, data, doneDayNames, records, allSessions, l
 
   // Renderizar chart FC tendencia — esperar a que el DOM esté pintado
   setTimeout(() => _renderFCChart(allSessions), 100);
+  setTimeout(() => _initKmMaps(), 100);
 }
 
 // Construye la lista de récords reales — si no hay datos suficientes
