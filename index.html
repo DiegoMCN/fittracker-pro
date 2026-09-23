@@ -155,6 +155,9 @@
         <div class="topbar-subtitle" id="topbar-subtitle">Tu progreso en tiempo real</div>
       </div>
       <div class="topbar-actions">
+        <button class="btn btn-secondary btn-sm" id="offline-toggle-btn" onclick="toggleForceOffline()" title="Forzar modo sin conexión — todo se guarda local sin intentar red">
+          🟢 En línea
+        </button>
         <button class="btn btn-secondary btn-sm" onclick="showQuickLog()">+ Log rápido</button>
         <button class="btn btn-primary" onclick="Router.navigate('workout')">
           ⚡ Entrenar ahora
@@ -166,6 +169,7 @@
     <div class="mobile-topbar">
       <button class="menu-toggle" onclick="toggleSidebar()">☰</button>
       <span style="font-weight:700;font-size:15px" id="mobile-title">Dashboard</span>
+      <button class="btn btn-secondary btn-sm" id="offline-toggle-btn-mobile" onclick="toggleForceOffline()" title="Forzar modo sin conexión" style="padding:6px 8px">🟢</button>
       <button class="btn btn-primary btn-sm" onclick="Router.navigate('workout')">⚡</button>
     </div>
 
@@ -243,6 +247,34 @@ function toggleSidebar() {
   document.getElementById('sidebar').classList.toggle('open');
   document.getElementById('sidebar-overlay').classList.toggle('open');
 }
+
+// ── MODO OFFLINE — indicador visible + botón manual ─────────────────────
+// El navegador avisa solo cuando el DISPOSITIVO pierde señal por
+// completo ('offline'/'online'), pero eso no cubre una conexión débil
+// con señal que igual no llega al servidor — para eso está el botón
+// manual, y el timeout de 8s en api.js hace el resto.
+function _updateOfflineIndicator() {
+  const forced = API.isForcedOffline();
+  const deviceOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
+  const offline = forced || deviceOffline;
+  const label = forced ? '🔴 Offline (forzado)' : offline ? '🔴 Sin conexión' : '🟢 En línea';
+  ['offline-toggle-btn', 'offline-toggle-btn-mobile'].forEach(id => {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    btn.textContent = id.includes('mobile') ? (offline ? '🔴' : '🟢') : label;
+    btn.style.opacity = offline ? '1' : '0.7';
+  });
+}
+function toggleForceOffline() {
+  API.setForceOffline(!API.isForcedOffline());
+  _updateOfflineIndicator();
+  Toast[API.isForcedOffline() ? 'warning' : 'success'](
+    API.isForcedOffline() ? 'Modo offline activado — todo se guarda local' : 'Modo offline desactivado'
+  );
+}
+window.addEventListener('online', _updateOfflineIndicator);
+window.addEventListener('offline', _updateOfflineIndicator);
+
 function closeSidebar() {
   document.getElementById('sidebar').classList.remove('open');
   document.getElementById('sidebar-overlay').classList.remove('open');
@@ -379,6 +411,7 @@ _updateSidebarPhase();
 const _initialPage = new URLSearchParams(location.search).get('page');
 const _validPages = ['dashboard','workout','cardio','plan','history','metrics','exercises'];
 (async () => {
+  _updateOfflineIndicator();
   await Promise.all([_loadProgramPhases(), _loadHitProtocols()]);
   _updateSidebarPhase(); // repinta con la fase real ya cargada
   Router.navigate(_validPages.includes(_initialPage) ? _initialPage : 'dashboard');
