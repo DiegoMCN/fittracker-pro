@@ -7,7 +7,7 @@
 // cada cambio de contenido dentro de un archivo que ya existía.
 // ═══════════════════════════════════════════
 
-const CACHE_VERSION = 'fittracker-v8';
+const CACHE_VERSION = 'fittracker-v9';
 
 const APP_SHELL = [
   './',
@@ -24,8 +24,11 @@ const APP_SHELL = [
   './js/modules/plan.js',
   './js/modules/history.js',
   './js/modules/exercises.js',
+  './js/vendor/body-muscles-1.0.0.umd.min.js',
+  './js/muscle-map.js',
   './js/modules/metrics.js',
   './js/modules/profile.js',
+  './js/modules/configuracion.js',
   './js/modules/import.js',
   './js/modules/coach.js',
   './js/modules/nutricion.js',
