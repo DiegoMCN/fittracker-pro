@@ -9,6 +9,11 @@ const API = (() => {
   const _cache = new Map();
   const CACHE_TTL = 20 * 60 * 1000; // 20 minutos — antes 5. La invalidación real ya pasa en los 4 puntos donde algo cambia de verdad (terminar sesión, editar Bitácora, Perfil, Coach), así que alargar esto solo evita recargas innecesarias al ir y venir entre módulos, no arriesga mostrar datos viejos después de guardar algo.
   let _lastWasMock = false;
+  // Modo offline forzado manualmente desde la app — para cuando hay
+  // señal pero está tan débil/lenta que ni vale la pena esperar el
+  // timeout de 8s en cada solicitud; Diego lo activa a mano y todo se
+  // guarda local de inmediato, sin ningún intento de red.
+  let _forceOffline = localStorage.getItem('fittracker_force_offline') === '1';
 
   function _cacheGet(key) {
     if (!_cache.has(key)) return null;
@@ -21,25 +26,34 @@ const API = (() => {
 
   // Un solo intento de red — usado tanto por el retry loop como por la
   // cola offline al reintentar items pendientes.
-  async function _attemptFetch(params) {
-    let res;
-    if (params.method === 'POST') {
-      // text/plain evita el preflight CORS que Apps Script no soporta.
-      // El backend hace JSON.parse(e.postData.contents) sin importar el content-type.
-      res = await fetch(CONFIG.API_URL, {
-        method: 'POST',
-        body: JSON.stringify(params),
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' }
-      });
-    } else {
-      const qs = new URLSearchParams(params).toString();
-      res = await fetch(`${CONFIG.API_URL}?${qs}`);
-    }
+  const FETCH_TIMEOUT_MS = 8000; // antes no había timeout — esperaba lo que el navegador tardara solo en darse por vencido, a veces minutos en una señal débil
 
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    if (data.error) throw new Error(data.error);
-    return data;
+  async function _attemptFetch(params) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    try {
+      let res;
+      if (params.method === 'POST') {
+        // text/plain evita el preflight CORS que Apps Script no soporta.
+        // El backend hace JSON.parse(e.postData.contents) sin importar el content-type.
+        res = await fetch(CONFIG.API_URL, {
+          method: 'POST',
+          body: JSON.stringify(params),
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          signal: controller.signal,
+        });
+      } else {
+        const qs = new URLSearchParams(params).toString();
+        res = await fetch(`${CONFIG.API_URL}?${qs}`, { signal: controller.signal });
+      }
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      return data;
+    } finally {
+      clearTimeout(timeoutId);
+    }
   }
 
   // Fetch base con retry
@@ -50,6 +64,22 @@ const API = (() => {
     if (useCache && params.method !== 'POST') {
       const cached = _cacheGet(cacheKey);
       if (cached) return cached;
+    }
+
+    // navigator.onLine detecta "sin señal a nivel dispositivo" al
+    // instante, sin esperar ningún timeout de red — si el navegador ya
+    // sabe que no hay conexión, ni siquiera vale la pena intentar el
+    // fetch, se va derecho a la cola local. Esto NO detecta una
+    // conexión débil/inestable con señal pero sin llegar al servidor
+    // — para eso sirve el timeout de arriba.
+    if ((typeof navigator !== 'undefined' && navigator.onLine === false) || _forceOffline) {
+      if (params.method === 'POST' && typeof OfflineQueue !== 'undefined') {
+        OfflineQueue.add(params);
+        console.warn('[API] Sin conexión (o modo offline forzado) — escritura encolada sin intentar red:', params.action);
+        return { success: true, queued: true, message: 'Sin conexión — guardado localmente' };
+      }
+      _lastWasMock = true;
+      return _getMockData(params.action);
     }
 
     let lastError;
@@ -204,6 +234,12 @@ const API = (() => {
     clearCache,
     isMock: () => _lastWasMock,
     rawPost: (params) => _attemptFetch(params),
+    isOffline: () => _forceOffline || (typeof navigator !== 'undefined' && navigator.onLine === false),
+    isForcedOffline: () => _forceOffline,
+    setForceOffline: (val) => {
+      _forceOffline = !!val;
+      localStorage.setItem('fittracker_force_offline', _forceOffline ? '1' : '0');
+    },
 
     getDashboard: () =>
       _fetch({ action: 'getDashboard' }),
