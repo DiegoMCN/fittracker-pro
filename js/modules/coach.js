@@ -265,6 +265,9 @@ const Coach = (() => {
         Sounds.serieDone(); Haptics.success();
         Toast.success('Consejo generado 🤖');
         render();
+      } else if (res.duplicate) {
+        Toast.warning('Ya hay una solicitud en curso — espera a que termine antes de volver a pedir.');
+        if (btn) { btn.disabled = false; btn.innerHTML = '🎯 Generar consejo de hoy'; }
       } else {
         Toast.warning('No se pudo generar el consejo — revisa el log de Apps Script (Ejecuciones) para ver la causa exacta: puede ser la API key, cuota agotada, o un error de la API');
         if (btn) { btn.disabled = false; btn.innerHTML = '🎯 Generar consejo de hoy'; }
