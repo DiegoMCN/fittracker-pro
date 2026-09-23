@@ -274,7 +274,7 @@ const Coach = (() => {
       }
     } catch(err) {
       Sounds.error();
-      Toast.error('Error al generar el consejo');
+      Toast.error(err.message && err.message.includes('Sin conexión') ? err.message : 'Error al generar el consejo');
       console.error(err);
       if (btn) { btn.disabled = false; btn.innerHTML = '🎯 Generar consejo de hoy'; }
     } finally {
