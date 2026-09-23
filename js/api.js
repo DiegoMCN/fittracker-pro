@@ -15,6 +15,16 @@ const API = (() => {
   // guarda local de inmediato, sin ningún intento de red.
   let _forceOffline = localStorage.getItem('fittracker_force_offline') === '1';
 
+  // Acciones que NUNCA se deben encolar para reintento automático en
+  // segundo plano. La cola offline existe para GUARDAR datos (una
+  // sesión, un peso) — eso sí tiene sentido reintentarlo solo hasta
+  // que se guarde. Pero "generar consejo" es una ACCIÓN bajo demanda:
+  // gasta cuota real de Gemini cada vez que se ejecuta, y si queda
+  // encolada, se dispara sola la próxima vez que haya señal — sin que
+  // Diego haya vuelto a tocar el botón. Mejor que falle limpio y él
+  // decida si lo vuelve a pedir.
+  const NON_QUEUEABLE_ACTIONS = new Set(['refreshDashboardInsight']);
+
   function _cacheGet(key) {
     if (!_cache.has(key)) return null;
     const { data, ts } = _cache.get(key);
@@ -73,10 +83,13 @@ const API = (() => {
     // conexión débil/inestable con señal pero sin llegar al servidor
     // — para eso sirve el timeout de arriba.
     if ((typeof navigator !== 'undefined' && navigator.onLine === false) || _forceOffline) {
-      if (params.method === 'POST' && typeof OfflineQueue !== 'undefined') {
+      if (params.method === 'POST' && typeof OfflineQueue !== 'undefined' && !NON_QUEUEABLE_ACTIONS.has(params.action)) {
         OfflineQueue.add(params);
         console.warn('[API] Sin conexión (o modo offline forzado) — escritura encolada sin intentar red:', params.action);
         return { success: true, queued: true, message: 'Sin conexión — guardado localmente' };
+      }
+      if (params.method === 'POST') {
+        throw new Error('Sin conexión — esta acción no se guarda para después, intenta de nuevo cuando tengas señal');
       }
       _lastWasMock = true;
       return _getMockData(params.action);
@@ -98,8 +111,11 @@ const API = (() => {
     // ── Todos los intentos fallaron ──
     if (params.method === 'POST') {
       // CRÍTICO: nunca fingir que una escritura se guardó. Se encola
-      // para sincronizar en cuanto vuelva la conexión.
-      if (typeof OfflineQueue !== 'undefined') {
+      // para sincronizar en cuanto vuelva la conexión — EXCEPTO
+      // acciones bajo demanda como generar el consejo (ver
+      // NON_QUEUEABLE_ACTIONS arriba): esas deben fallar limpio, no
+      // quedar esperando para dispararse solas después.
+      if (typeof OfflineQueue !== 'undefined' && !NON_QUEUEABLE_ACTIONS.has(params.action)) {
         OfflineQueue.add(params);
         console.warn('[API] Sin conexión — escritura encolada para sincronizar después:', params.action);
         return { success: true, queued: true, message: 'Guardado localmente — se sincronizará cuando haya conexión' };

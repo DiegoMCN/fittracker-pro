@@ -6,6 +6,7 @@
 
 const OfflineQueue = (() => {
   const KEY = 'ft_offline_queue';
+  let _flushing = false; // evita que 'online' y DOMContentLoaded corran flush() en paralelo y suban el mismo registro dos veces
 
   function _get() {
     try { return JSON.parse(localStorage.getItem(KEY)) || []; }
@@ -30,18 +31,24 @@ const OfflineQueue = (() => {
   // Intenta enviar todo lo pendiente. No usa la cola de retry normal de
   // API — un solo intento directo por item, para no duplicar lógica.
   async function flush() {
+    if (_flushing) return { synced: 0, failed: 0 }; // ya hay un flush corriendo, no dupliques el envío
     const arr = _get();
     if (arr.length === 0) return { synced: 0, failed: 0 };
 
+    _flushing = true;
     let synced = 0, failed = 0;
-    for (const item of arr) {
-      try {
-        await API.rawPost(item.params);
-        remove(item.id);
-        synced++;
-      } catch(e) {
-        failed++;
+    try {
+      for (const item of arr) {
+        try {
+          await API.rawPost(item.params);
+          remove(item.id);
+          synced++;
+        } catch(e) {
+          failed++;
+        }
       }
+    } finally {
+      _flushing = false;
     }
     if (synced > 0) API.clearCache();
     _updateBadge();
