@@ -213,6 +213,7 @@ const API = (() => {
       getCardioSplits: { splits: [] },
       getTrainingLoad: { acute: 0, chronic: 0, acwr: null, zone: 'sin_datos', history: [] },
       getWeeklyVolume: { weeks: [] },
+      getMuscleWeeklySets: { windows: [] },
       getIntensityHeatmap: { days: [] },
       getCardioZoneDistribution: { zones: [], totalMinutes: 0, sessionsCounted: 0 },
       getSplitsAnalysis: { hasData: false },
@@ -306,6 +307,9 @@ const API = (() => {
 
     getWeeklyVolume: (weeks = 10) =>
       _fetch({ action: 'getWeeklyVolume', weeks }),
+
+    getMuscleWeeklySets: (windows = 4) =>
+      _fetch({ action: 'getMuscleWeeklySets', windows }),
 
     getIntensityHeatmap: (days = 365) =>
       _fetch({ action: 'getIntensityHeatmap', days }),
