@@ -10,6 +10,10 @@ const Metrics = (() => {
   let _records = {};
   let _exerciseProgress = [];
   let _volumeByGroup = [];
+  let _muscleWindows = [];      // ventanas de 7 días con series por ejercicio (getMuscleWeeklySets)
+  let _muscleWindowMode = 'w0'; // w0 = últimos 7 días, w1 = 7 días previos, avg = promedio 4 semanas
+  let _muscleCharts = [];       // instancias de BodyChart (frente y espalda)
+  let _selectedMuscleRegion = null;
   let _trainingLoad = null;
   let _weeklyVolume = [];
   let _heatmapDays = [];
@@ -29,10 +33,10 @@ const Metrics = (() => {
         ${[1,2].map(() => `<div class="skeleton" style="height:280px;border-radius:16px"></div>`).join('')}
       </div>`;
 
-    const [sesRes, cardioRes, metricsRes, progressRes, loadRes, weeklyVolRes, heatmapRes, zonesRes, bestSplitRes, insightsRes] = await Promise.all([
+    const [sesRes, cardioRes, metricsRes, progressRes, loadRes, weeklyVolRes, heatmapRes, zonesRes, bestSplitRes, insightsRes, muscleRes] = await Promise.all([
       API.getSessions(50), API.getCardio(50), API.getMetrics(), API.getExerciseProgress(),
       API.getTrainingLoad(), API.getWeeklyVolume(12), API.getIntensityHeatmap(365), API.getCardioZoneDistribution(60),
-      API.getBestSplitEver(), API.getAllInsights(),
+      API.getBestSplitEver(), API.getAllInsights(), API.getMuscleWeeklySets(4),
     ]);
 
     _sessions = (sesRes.sessions || []).slice().reverse(); // orden cronológico
@@ -41,6 +45,7 @@ const Metrics = (() => {
     _records  = metricsRes.records || {};
     _exerciseProgress = progressRes.exercises || [];
     _volumeByGroup = progressRes.volumeByGroup || [];
+    _muscleWindows = (muscleRes && muscleRes.windows) || [];
     _trainingLoad = loadRes;
     _weeklyVolume = weeklyVolRes.weeks || [];
     _heatmapDays = heatmapRes.days || [];
@@ -266,32 +271,34 @@ const Metrics = (() => {
           </div>
         </div>
 
-        <!-- Mapa muscular — SVG con cada músculo como figura independiente,
-             pintado con más intensidad según cuánto volumen ha recibido -->
+        <!-- Mapa muscular — librería body-muscles (fijada en js/vendor),
+             68 zonas musculares agrupadas en 23 regiones. Intensidad =
+             series efectivas por semana (ver js/muscle-map.js). -->
         <div class="card" style="margin-bottom:24px">
           <div class="card-header">
             <div>
               <div class="card-title">🧍 Mapa muscular</div>
-              <div class="card-subtitle">Qué tanto has trabajado cada grupo — más verde, más volumen</div>
+              <div class="card-subtitle">Series efectivas por músculo — cada nivel equivale a 2 series por semana</div>
             </div>
             ${_infoBtn('mapa_muscular')}
           </div>
-          <div id="muscle-map-wrap" style="display:flex;justify-content:center;gap:24px;flex-wrap:wrap">
-            <div style="text-align:center">
-              ${_muscleMapSVG('front')}
-              <div style="font-size:10px;color:var(--text-3);margin-top:4px">Frente</div>
+          <div id="mm-tabs" style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">
+            ${[['w0','Últimos 7 días'],['w1','7 días previos'],['avg','Promedio 4 sem.']].map(([k,l]) => `
+              <button class="btn ${_muscleWindowMode === k ? 'btn-primary' : 'btn-secondary'} btn-sm" data-mm="${k}" onclick="Metrics.setMuscleWindow('${k}')">${l}</button>`).join('')}
+          </div>
+          <div style="display:flex;justify-content:center;gap:8px">
+            <div style="flex:1;max-width:200px;text-align:center">
+              <div id="mm-front"></div>
+              <div style="font-size:10px;color:var(--text-3)">Frente</div>
             </div>
-            <div style="text-align:center">
-              ${_muscleMapSVG('back')}
-              <div style="font-size:10px;color:var(--text-3);margin-top:4px">Espalda</div>
+            <div style="flex:1;max-width:200px;text-align:center">
+              <div id="mm-back"></div>
+              <div style="font-size:10px;color:var(--text-3)">Espalda</div>
             </div>
           </div>
-          <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:12px">
-            <span style="font-size:9px;color:var(--text-4)">Menos</span>
-            <div style="width:90px;height:6px;border-radius:3px;background:linear-gradient(90deg, rgba(0,255,135,0.15), rgba(0,255,135,0.9))"></div>
-            <span style="font-size:9px;color:var(--text-4)">Más</span>
-            <span style="font-size:9px;color:var(--text-4);margin-left:10px">· Gris = sin datos</span>
-          </div>
+          <div id="mm-detail" style="margin-top:12px"></div>
+          <div id="mm-low" style="margin-top:10px"></div>
+          <div id="mm-legend" style="margin-top:12px"></div>
         </div>` : ''}
 
         <!-- Progresión por ejercicio — una gráfica de línea por cada uno,
@@ -524,7 +531,7 @@ const Metrics = (() => {
     recuperacion: { title: '💚 Recuperación', desc: 'Qué tanto baja tu FC en los 2 minutos después de esforzarte — entre más baje, mejor está respondiendo tu corazón al entrenamiento.' },
     exercise_progress: { title: '📈 Progresión por ejercicio', desc: 'El peso (o 1RM estimado) de cada ejercicio a través de tus sesiones — toca cualquier mini-gráfica para ver el detalle completo de ese ejercicio.' },
     volumen_distribucion: { title: '🥧 Distribución de volumen', desc: 'De qué grupo muscular viene tu volumen total — te dice si algún grupo está recibiendo mucho más (o menos) trabajo que los demás.', insightKey: 'volumen_distribucion' },
-    mapa_muscular: { title: '🧍 Mapa muscular', desc: 'La misma distribución de volumen, pero ubicada sobre el cuerpo — más fácil de ver de un vistazo qué zona has trabajado más.', insightKey: 'mapa_muscular' },
+    mapa_muscular: { title: '🧍 Mapa muscular', desc: 'Cada serie completada suma a los músculos que trabaja: 1 serie al principal, 0.5 a los secundarios. El nivel (0-10) es la suma de la semana dividida entre 2. Referencias: 3-4 = mantenimiento (6-9 series), 5-7 = zona productiva (10-15 series), 8-9 = productiva alta, 10 = 20+ series, vigila la recuperación. Toca un músculo para ver de qué ejercicios vino y cómo va contra la semana anterior.', insightKey: 'mapa_muscular' },
     acwr: { title: '⚖️ Carga de entrenamiento (ACWR)', desc: 'Compara tu volumen de esta semana contra tu promedio de las últimas 4 — fuera del rango 0.8-1.3 es zona de riesgo real de lesión, con respaldo de ciencia del deporte.' },
     volumen_semanal: { title: '📊 Volumen semanal', desc: 'Tu volumen total por semana — la vista clásica de periodización, para ver si vas en fase de acumulación o de descarga.' },
     mapa_calor: { title: '🗓️ Intensidad del último año', desc: 'Un cuadrito por día, más oscuro entre más entrenaste — la vista completa de qué tan consistente has sido en el año.' },
@@ -584,7 +591,7 @@ const Metrics = (() => {
     _chartRecovery();
     _chartPerformanceTrend();
     _chartVolumeDistribution();
-    _paintMuscleMap();
+    _renderMuscleMap();
     _filteredExercises().forEach((ex, i) => _chartExerciseMini(ex, i));
     _chartACWRTrend();
     _chartWeeklyVolume();
@@ -871,92 +878,158 @@ const Metrics = (() => {
   // así se puede pintar y poner tooltip por grupo sin librerías extra.
   // Las clases coinciden con los nombres de grupo del catálogo de
   // ejercicios (Pecho, Espalda, Biceps...).
-  function _muscleMapSVG(view) {
-    const N = 'fill="rgba(255,255,255,0.045)"';  // partes neutras (cabeza, manos...)
-    const M = 'fill="rgba(255,255,255,0.07)"';   // músculos sin datos todavía
+  // ── MAPA MUSCULAR (body-muscles + js/muscle-map.js) ─────────────────
+  // Regiones que se consideran "principales" para el aviso de poco
+  // estímulo — las demás (tibial, sóleo, aductores, flexores de cadera,
+  // trapecio superior, antebrazo, lumbar, oblicuos, glúteo medio) casi
+  // solo reciben trabajo indirecto y marcarlas como "bajas" sería ruido.
+  const _MM_MAIN_REGIONS = ['pecho_alto','pecho_bajo','deltoide_lateral','deltoide_posterior','dorsal','trapecio_medio','biceps','triceps','abdomen','cuadriceps','isquios','gluteo_mayor','gemelos'];
 
-    if (view === 'front') {
-      return `
-      <svg viewBox="0 0 120 185" width="130" height="200" style="overflow:visible">
-        <circle cx="60" cy="13" r="9" ${N}/>
-        <rect x="55" y="21" width="10" height="7" rx="3" ${N}/>
-        <ellipse cx="39" cy="37" rx="8.5" ry="6.5" class="mm-Hombro" ${M}/>
-        <ellipse cx="81" cy="37" rx="8.5" ry="6.5" class="mm-Hombro" ${M}/>
-        <rect x="45" y="33" width="14.5" height="13" rx="5" class="mm-Pecho" ${M}/>
-        <rect x="60.5" y="33" width="14.5" height="13" rx="5" class="mm-Pecho" ${M}/>
-        <ellipse cx="34" cy="57" rx="6" ry="10" class="mm-Biceps" ${M}/>
-        <ellipse cx="86" cy="57" rx="6" ry="10" class="mm-Biceps" ${M}/>
-        <ellipse cx="30" cy="79" rx="5" ry="10" ${N}/>
-        <ellipse cx="90" cy="79" rx="5" ry="10" ${N}/>
-        <rect x="48" y="48" width="24" height="30" rx="8" class="mm-Core" ${M}/>
-        <rect x="47" y="80" width="26" height="11" rx="5" ${N}/>
-        <ellipse cx="52" cy="112" rx="8" ry="20" class="mm-Cuadriceps" ${M}/>
-        <ellipse cx="68" cy="112" rx="8" ry="20" class="mm-Cuadriceps" ${M}/>
-        <ellipse cx="51" cy="152" rx="5.5" ry="16" ${N}/>
-        <ellipse cx="69" cy="152" rx="5.5" ry="16" ${N}/>
-        <ellipse cx="50" cy="174" rx="5" ry="3.5" ${N}/>
-        <ellipse cx="70" cy="174" rx="5" ry="3.5" ${N}/>
-      </svg>`;
+  function _mmSetsFor(mode) {
+    if (!_muscleWindows.length) return {};
+    if (mode === 'avg') {
+      const sum = {};
+      _muscleWindows.forEach(w => {
+        Object.entries(MuscleMap.effectiveSets(w.exercises)).forEach(([k, v]) => { sum[k] = (sum[k] || 0) + v; });
+      });
+      Object.keys(sum).forEach(k => { sum[k] = sum[k] / _muscleWindows.length; });
+      return sum;
     }
-
-    return `
-      <svg viewBox="0 0 120 185" width="130" height="200" style="overflow:visible">
-        <circle cx="60" cy="13" r="9" ${N}/>
-        <rect x="55" y="21" width="10" height="7" rx="3" ${N}/>
-        <rect x="49" y="27" width="22" height="8" rx="4" class="mm-Espalda" ${M}/>
-        <ellipse cx="39" cy="37" rx="8.5" ry="6.5" class="mm-Hombro" ${M}/>
-        <ellipse cx="81" cy="37" rx="8.5" ry="6.5" class="mm-Hombro" ${M}/>
-        <rect x="45" y="36" width="14.5" height="26" rx="6" class="mm-Espalda" ${M}/>
-        <rect x="60.5" y="36" width="14.5" height="26" rx="6" class="mm-Espalda" ${M}/>
-        <ellipse cx="34" cy="57" rx="6" ry="10" class="mm-Triceps" ${M}/>
-        <ellipse cx="86" cy="57" rx="6" ry="10" class="mm-Triceps" ${M}/>
-        <ellipse cx="30" cy="79" rx="5" ry="10" ${N}/>
-        <ellipse cx="90" cy="79" rx="5" ry="10" ${N}/>
-        <rect x="51" y="64" width="18" height="13" rx="5" class="mm-Espalda" ${M}/>
-        <rect x="47" y="79" width="12.5" height="13" rx="6" ${N}/>
-        <rect x="60.5" y="79" width="12.5" height="13" rx="6" ${N}/>
-        <ellipse cx="52" cy="114" rx="8" ry="19" class="mm-Isquiotibiales" ${M}/>
-        <ellipse cx="68" cy="114" rx="8" ry="19" class="mm-Isquiotibiales" ${M}/>
-        <ellipse cx="51" cy="152" rx="6" ry="15" class="mm-Pantorrillas" ${M}/>
-        <ellipse cx="69" cy="152" rx="6" ry="15" class="mm-Pantorrillas" ${M}/>
-        <ellipse cx="50" cy="174" rx="5" ry="3.5" ${N}/>
-        <ellipse cx="70" cy="174" rx="5" ry="3.5" ${N}/>
-      </svg>`;
+    const idx = mode === 'w1' ? 1 : mode === 'w2' ? 2 : 0;
+    return MuscleMap.effectiveSets(_muscleWindows[idx] ? _muscleWindows[idx].exercises : {});
   }
 
-  function _paintMuscleMap() {
-    const wrap = document.getElementById('muscle-map-wrap');
-    if (!wrap || _volumeByGroup.length === 0) return;
+  // Contra qué se compara cada vista: 7 días → 7 días previos;
+  // 7 días previos → los 7 anteriores a esos; promedio → últimos 7 días
+  // contra el promedio (¿esta semana vas por arriba o por debajo?).
+  function _mmCompare() {
+    if (_muscleWindowMode === 'w0')  return { cur: _mmSetsFor('w0'), ref: _mmSetsFor('w1'), label: 'vs. 7 días previos' };
+    if (_muscleWindowMode === 'w1')  return { cur: _mmSetsFor('w1'), ref: _mmSetsFor('w2'), label: 'vs. los 7 días anteriores' };
+    return { cur: _mmSetsFor('w0'), ref: _mmSetsFor('avg'), label: 'últimos 7 días vs. tu promedio' };
+  }
 
-    // Volumen por grupo → volumen por región del cuerpo. "Calistenia"
-    // no es un músculo — el trabajo de Diego ahí es jalón (dominadas,
-    // australianas), así que se reparte: espalda 50%, bíceps 30%,
-    // core 20%. Ajustable si cambia su enfoque de calistenia.
-    const vol = {};
-    _volumeByGroup.forEach(g => {
-      if (g.group === 'Calistenia') {
-        vol['Espalda'] = (vol['Espalda'] || 0) + g.volume * 0.5;
-        vol['Biceps']  = (vol['Biceps']  || 0) + g.volume * 0.3;
-        vol['Core']    = (vol['Core']    || 0) + g.volume * 0.2;
-      } else if (g.group !== 'Cardio' && g.group !== 'Otro') {
-        vol[g.group] = (vol[g.group] || 0) + g.volume;
-      }
+  function _fmtSets(v) { return (Math.round(v * 10) / 10).toString(); }
+
+  function _renderMuscleMap() {
+    const front = document.getElementById('mm-front');
+    const back  = document.getElementById('mm-back');
+    if (!front || !back) return;
+    if (typeof BodyMuscles === 'undefined' || typeof MuscleMap === 'undefined') {
+      front.innerHTML = '<div style="font-size:11px;color:var(--text-3)">No se pudo cargar el mapa</div>';
+      return;
+    }
+
+    _muscleCharts.forEach(c => { try { c.destroy(); } catch(e) {} });
+    _muscleCharts = [];
+    front.innerHTML = ''; back.innerHTML = '';
+
+    const sets = _mmSetsFor(_muscleWindowMode);
+    const bodyState = MuscleMap.toBodyState(sets);
+    if (_selectedMuscleRegion && MuscleMap.REGIONS[_selectedMuscleRegion]) {
+      MuscleMap.REGIONS[_selectedMuscleRegion].ids.forEach(id => { bodyState[id] = { ...bodyState[id], selected: true }; });
+    }
+
+    const onMuscleClick = (id) => {
+      const region = MuscleMap.regionForId(id);
+      if (!region) return; // cabeza, rodillas, manos, etc.
+      Sounds.click();
+      _selectedMuscleRegion = _selectedMuscleRegion === region ? null : region;
+      _renderMuscleMap();
+    };
+
+    const common = { bodyState, onMuscleClick, enableTransitions: false };
+    _muscleCharts.push(new BodyMuscles.BodyChart(front, { ...common, view: BodyMuscles.ViewSide.FRONT, ariaLabel: 'Mapa muscular, vista frontal' }));
+    _muscleCharts.push(new BodyMuscles.BodyChart(back,  { ...common, view: BodyMuscles.ViewSide.BACK,  ariaLabel: 'Mapa muscular, vista trasera' }));
+    // La librería trae padding de 1rem pensado para mapas grandes; aquí
+    // van dos lado a lado en una tarjeta, así que se compacta.
+    [front, back].forEach(c => { const w = c.firstElementChild; if (w) w.style.padding = '4px'; });
+
+    // Pestañas
+    document.querySelectorAll('#mm-tabs [data-mm]').forEach(b => {
+      b.className = 'btn btn-sm ' + (b.dataset.mm === _muscleWindowMode ? 'btn-primary' : 'btn-secondary');
     });
 
-    const values = Object.values(vol);
-    if (values.length === 0) return;
-    const max = Math.max(...values);
-    const total = values.reduce((a, b) => a + b, 0);
+    _renderMuscleDetail();
+    _renderMuscleLow(sets);
+    _renderMuscleLegend();
+  }
 
-    Object.entries(vol).forEach(([group, v]) => {
-      const intensity = max > 0 ? v / max : 0;
-      const alpha = (0.15 + 0.75 * intensity).toFixed(2);
-      const pct = total > 0 ? Math.round((v / total) * 100) : 0;
-      wrap.querySelectorAll('.mm-' + group).forEach(el => {
-        el.setAttribute('fill', `rgba(0,255,135,${alpha})`);
-        el.innerHTML = `<title>${group}: ${Math.round(v)} kg (${pct}%)</title>`;
-      });
-    });
+  function _renderMuscleDetail() {
+    const el = document.getElementById('mm-detail');
+    if (!el) return;
+    if (!_selectedMuscleRegion) {
+      el.innerHTML = '<div style="font-size:11px;color:var(--text-3);text-align:center">Toca un músculo para ver su detalle y cómo va contra la semana anterior</div>';
+      return;
+    }
+    const r = MuscleMap.REGIONS[_selectedMuscleRegion];
+    const cmp = _mmCompare();
+    const shownSets = _mmSetsFor(_muscleWindowMode)[_selectedMuscleRegion] || 0;
+    const lvl = MuscleMap.level(shownSets);
+    const b = MuscleMap.band(lvl);
+    const cur = cmp.cur[_selectedMuscleRegion] || 0;
+    const ref = cmp.ref[_selectedMuscleRegion] || 0;
+    const diff = cur - ref;
+    const color = BodyMuscles.INTENSITY_COLORS[lvl];
+
+    // Qué ejercicios aportaron a este músculo en la ventana mostrada
+    // (en promedio se muestran los de los últimos 7 días)
+    const win = _muscleWindows[_muscleWindowMode === 'w1' ? 1 : 0];
+    const contrib = win ? Object.entries(win.exercises).map(([name, info]) => {
+      const w = MuscleMap.weightsFor(name, info.group);
+      const f = w && w[_selectedMuscleRegion];
+      return f ? { name, sets: info.sets, factor: f, eff: info.sets * f } : null;
+    }).filter(Boolean).sort((a, b2) => b2.eff - a.eff) : [];
+
+    el.innerHTML = `
+      <div style="background:var(--bg-input);border:1px solid var(--border);border-radius:10px;padding:12px 14px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <span style="width:10px;height:10px;border-radius:3px;background:${color};flex-shrink:0"></span>
+          <span style="font-weight:600;font-size:13px">${r.name}</span>
+          <span style="margin-left:auto;font-size:11px;color:var(--text-3)">nivel ${lvl}/10</span>
+        </div>
+        <div style="font-size:12px;color:var(--text-2)">${_fmtSets(shownSets)} series efectivas${_muscleWindowMode === 'avg' ? ' por semana (promedio)' : ''} · <b>${b.label}</b></div>
+        <div style="font-size:11px;color:var(--text-3);margin-top:2px">${b.desc}</div>
+        <div style="font-size:11px;margin-top:6px;color:${diff > 0.05 ? 'var(--success)' : diff < -0.05 ? 'var(--danger)' : 'var(--text-3)'}">
+          ${diff > 0.05 ? '↑' : diff < -0.05 ? '↓' : '='} ${_fmtSets(Math.abs(diff))} series ${cmp.label}
+        </div>
+        ${contrib.length ? `
+        <div style="font-size:10px;color:var(--text-4);margin-top:8px;margin-bottom:2px">De dónde vino${_muscleWindowMode === 'avg' ? ' (últimos 7 días)' : ''}:</div>
+        ${contrib.map(c => `<div style="font-size:11px;color:var(--text-3);display:flex;justify-content:space-between;gap:8px">
+          <span>${c.name}</span><span>${c.sets} series × ${c.factor} = ${_fmtSets(c.eff)}</span></div>`).join('')}` : ''}
+      </div>`;
+  }
+
+  function _renderMuscleLow(sets) {
+    const el = document.getElementById('mm-low');
+    if (!el) return;
+    const low = _MM_MAIN_REGIONS
+      .map(k => ({ k, v: sets[k] || 0 }))
+      .filter(x => MuscleMap.level(x.v) < 3)
+      .sort((a, b) => a.v - b.v);
+    if (!low.length) { el.innerHTML = ''; return; }
+    el.innerHTML = `<div style="font-size:11px;color:var(--text-3);line-height:1.5">
+      <b style="color:var(--warning)">Por debajo de mantenimiento:</b>
+      ${low.map(x => `${MuscleMap.REGIONS[x.k].name} (${_fmtSets(x.v)})`).join(' · ')}
+    </div>`;
+  }
+
+  function _renderMuscleLegend() {
+    const el = document.getElementById('mm-legend');
+    if (!el) return;
+    const swatch = { 0: 0, 1: 2, 3: 4, 5: 6, 8: 8, 10: 10 };
+    el.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:6px 12px;justify-content:center">
+      ${MuscleMap.BANDS.map(b => `
+        <span style="display:inline-flex;align-items:center;gap:4px;font-size:9px;color:var(--text-3)" title="${b.desc}">
+          <span style="width:9px;height:9px;border-radius:2px;background:${BodyMuscles.INTENSITY_COLORS[swatch[b.min]]}"></span>
+          ${b.min === b.max ? b.min : b.min + '–' + b.max} ${b.label}
+        </span>`).join('')}
+    </div>`;
+  }
+
+  function setMuscleWindow(mode) {
+    Sounds.click();
+    _muscleWindowMode = mode;
+    _renderMuscleMap();
   }
 
   // ── ACWR: TENDENCIA DE 6 SEMANAS ──────────────────────────────────────
@@ -1352,7 +1425,7 @@ const Metrics = (() => {
     }
   }
 
-  return { init, openCapture, saveCapture, openExerciseDetail, setExerciseFilter, setExerciseViewMode, showInsight };
+  return { init, openCapture, saveCapture, openExerciseDetail, setExerciseFilter, setExerciseViewMode, showInsight, setMuscleWindow };
 })();
 
 function initMetrics(container) { Metrics.init(container); }
