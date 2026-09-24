@@ -1438,10 +1438,16 @@ const Workout = (() => {
         Toast.warning('Sin conexión — guardado localmente. Se sincronizará solo.');
       } else {
         Sounds.sessionDone(); Haptics.done();
-        // Resumen INMEDIATO — la celebración de récord (si aplica) se
-        // dispara encima sin bloquear ni retrasar la pantalla de resumen.
+        // Resumen INMEDIATO — las celebraciones (si aplican) se disparan
+        // encima sin bloquear ni retrasar la pantalla de resumen. La
+        // dominada libre va primero y se espera a que termine antes del
+        // PR genérico, para que no se encimen dos modales de celebración
+        // si ambas cosas pasan en la misma sesión.
         _showSummary(payload, doneSets, totalSets, false);
-        RecordCelebration.checkStrength(payload);
+        (async () => {
+          await RecordCelebration.checkPullUpMilestone(payload);
+          RecordCelebration.checkStrength(payload);
+        })();
       }
     } catch(err) {
       if (btn) { btn.disabled = false; btn.innerHTML = skip ? 'Omitir' : 'Guardar sesión'; }

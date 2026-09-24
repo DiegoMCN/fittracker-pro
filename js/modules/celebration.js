@@ -54,6 +54,57 @@ const RecordCelebration = (() => {
     } catch(e) { /* silencioso — un fallo aquí no debe interrumpir el flujo de guardado */ }
   }
 
+  // ── DETECCIÓN — PRIMERA DOMINADA LIBRE (Fase 2) ──────────────────────
+  // Ejercicio de repeticiones a peso corporal, no de kg cargados — la
+  // detección de arriba (basada en loadKgs/assistKgs) nunca lo vería.
+  // Se revisa aparte, después de guardar, contra el backend: si ya se
+  // logró Y fue justo hoy, es la primera vez — celebración especial,
+  // más grande que un PR normal, porque es LA meta de la fase.
+  async function checkPullUpMilestone(payload) {
+    try {
+      const didAttempt = (payload.exercises || []).some(ex => ex.name === 'Dominada Libre (intento)');
+      if (!didAttempt) return;
+
+      const milestone = await API.getPullUpMilestone();
+      if (milestone.achieved && milestone.achievedDate === Utils.today()) {
+        showPullUpMilestone(milestone);
+      }
+    } catch(e) { /* silencioso — un fallo aquí no debe interrumpir el flujo de guardado */ }
+  }
+
+  function showPullUpMilestone(milestone) {
+    Sounds.newRecord(); Haptics.done();
+
+    const overlay = document.createElement('div');
+    overlay.style.cssText = `
+      position:fixed;inset:0;z-index:300;display:flex;align-items:center;justify-content:center;
+      background:rgba(8,8,15,0.92);backdrop-filter:blur(10px);cursor:pointer;
+      animation:fade-in 300ms forwards;padding:20px;
+    `;
+    overlay.innerHTML = `
+      <canvas id="confetti-canvas" style="position:fixed;inset:0;pointer-events:none"></canvas>
+      <div class="animate-bounce-in" style="text-align:center;max-width:400px;width:100%">
+        <div style="font-size:88px;margin-bottom:10px">🏆</div>
+        <div style="font-size:26px;font-weight:800;color:var(--accent);text-shadow:0 0 40px rgba(0,255,135,0.6);margin-bottom:6px">
+          ¡PRIMERA DOMINADA LIBRE!
+        </div>
+        <div style="font-size:13px;color:var(--text-2);margin-bottom:20px">
+          La meta central de Fase 2, lograda hoy — te costó ${milestone.attemptsToSuccess} intento${milestone.attemptsToSuccess === 1 ? '' : 's'}
+        </div>
+        <div class="card card-accent" style="text-align:left">
+          <div style="font-size:11px;color:var(--text-3)">Dominada Libre (intento)</div>
+          <div style="font-size:20px;font-weight:700;color:var(--accent)">${milestone.achievedReps} repetición${milestone.achievedReps === 1 ? '' : 'es'} sin asistencia</div>
+        </div>
+        <div style="font-size:11px;color:var(--text-4);margin-top:20px">Toca en cualquier lado para continuar</div>
+      </div>`;
+
+    overlay.addEventListener('click', () => overlay.remove());
+    document.body.appendChild(overlay);
+    _confetti(document.getElementById('confetti-canvas'));
+
+    setTimeout(() => overlay.remove(), 9000);
+  }
+
   // ── DETECCIÓN — CARDIO ───────────────────────────────────────────────
   async function checkCardio(stats) {
     try {
@@ -160,5 +211,5 @@ const RecordCelebration = (() => {
     loop();
   }
 
-  return { checkStrength, checkCardio };
+  return { checkStrength, checkCardio, checkPullUpMilestone };
 })();

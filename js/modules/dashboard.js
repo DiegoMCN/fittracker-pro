@@ -113,6 +113,41 @@ function _kmCarouselHTML(distanceStats, profile) {
     </div>`;
 }
 
+// Meta de "primera dominada libre" — Fase 2. Solo se muestra una vez
+// que ya hay al menos un intento registrado, para no ensuciar el
+// Dashboard antes de que empiece esa fase.
+function _pullUpMilestoneHTML(pullUp) {
+  if (!pullUp || !pullUp.attempts) return '';
+
+  if (pullUp.achieved) {
+    return `
+    <div class="card" style="margin-bottom:20px;border-color:rgba(0,255,135,0.35);background:linear-gradient(135deg, rgba(0,255,135,0.08), transparent)">
+      <div style="display:flex;align-items:center;gap:14px">
+        <div style="font-size:36px">🏆</div>
+        <div>
+          <div style="font-weight:800;font-size:15px;color:var(--accent)">¡Primera dominada libre lograda!</div>
+          <div style="font-size:11px;color:var(--text-3);margin-top:2px">
+            ${Utils.formatDate(pullUp.achievedDate)}
+            · te costó ${pullUp.attemptsToSuccess} intento${pullUp.attemptsToSuccess === 1 ? '' : 's'}
+            ${pullUp.achievedReps > 1 ? ` · ${pullUp.achievedReps} repeticiones esa vez` : ''}
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  return `
+    <div class="card" style="margin-bottom:20px">
+      <div style="display:flex;align-items:center;gap:14px">
+        <div style="font-size:32px">🎯</div>
+        <div style="flex:1">
+          <div style="font-weight:700;font-size:14px">Meta de Fase 2: primera dominada libre</div>
+          <div style="font-size:11px;color:var(--text-3);margin-top:2px">Intento #${pullUp.attempts} — todavía no, sigue así</div>
+        </div>
+      </div>
+    </div>`;
+}
+
 function Dashboard_onKmScroll(el) {
   const idx = Math.round(el.scrollLeft / el.clientWidth);
   el.parentElement.querySelectorAll('.km-dot').forEach((dot, i) => {
@@ -189,7 +224,7 @@ async function initDashboard(container) {
 
   // Se piden sin caché — recién guardaste una sesión y necesitas ver
   // el dato fresco, no uno de hace 5 minutos.
-  const [data, sesRes, recordsRes, metricsRes, cardioRes, streaksRes, overtrainingRes, insightsRes, profileRes] = await Promise.all([
+  const [data, sesRes, recordsRes, metricsRes, cardioRes, streaksRes, overtrainingRes, insightsRes, profileRes, pullUpRes] = await Promise.all([
     API.getDashboard(),
     API.getSessions(30),
     API.getPersonalRecords(),
@@ -199,6 +234,7 @@ async function initDashboard(container) {
     API.getOvertrainingStatus(),
     API.getAllInsights(),
     API.getProfile(),
+    API.getPullUpMilestone(),
   ]);
 
   // Sesiones reales de esta semana (Lun-Dom), para marcar los días
@@ -218,10 +254,10 @@ async function initDashboard(container) {
   const latestMetrics = metricsHistory.length ? metricsHistory[0] : null;
 
   Store.set({ dashboard: data });
-  _renderDashboard(container, data, doneDayNames, recordsRes, sesRes.sessions || [], latestMetrics, cardioRes.sessions || [], streaksRes, overtrainingRes, insightsRes.insights || {}, profileRes.profile || {});
+  _renderDashboard(container, data, doneDayNames, recordsRes, sesRes.sessions || [], latestMetrics, cardioRes.sessions || [], streaksRes, overtrainingRes, insightsRes.insights || {}, profileRes.profile || {}, pullUpRes);
 }
 
-function _renderDashboard(container, data, doneDayNames, records, allSessions, latestMetrics, allCardio, streaks, overtraining, insights, profile) {
+function _renderDashboard(container, data, doneDayNames, records, allSessions, latestMetrics, allCardio, streaks, overtraining, insights, profile, pullUp) {
   _dashboardInsights = insights || {};
   const today     = new Date().getDay();
   const nextSes   = CONFIG.WEEK_PLAN[today] || CONFIG.WEEK_PLAN[(today + 1) % 7];
@@ -343,6 +379,7 @@ function _renderDashboard(container, data, doneDayNames, records, allSessions, l
     </div>
   </div>
 
+  ${_pullUpMilestoneHTML(pullUp)}
   ${_kmCarouselHTML(data.distanceStats, profile)}
 
   <!-- Fila principal -->
