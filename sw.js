@@ -9,6 +9,17 @@
 
 const CACHE_VERSION = 'fittracker-v9';
 
+// El Cache API solo acepta esquemas http/https — una extensión de
+// Chrome instalada puede disparar solicitudes con esquema
+// "chrome-extension://" que terminan pasando por este fetch handler,
+// y cache.put() truena con esas ("Request scheme ... is unsupported").
+// No es nada que rompa la app — solo un intento de cachear algo que
+// nunca debió intentarse cachear.
+function _cachePut(req, res) {
+  if (!req.url.startsWith('http')) return;
+  caches.open(CACHE_VERSION).then(c => c.put(req, res)).catch(() => {});
+}
+
 const APP_SHELL = [
   './',
   './index.html',
@@ -67,6 +78,11 @@ self.addEventListener('fetch', (e) => {
   // la cola offline en JavaScript (offline.js), no el Service Worker.
   if (req.method !== 'GET') return;
 
+  // Solo esquemas http/https — una extensión de Chrome puede disparar
+  // solicitudes "chrome-extension://" que este handler ve pasar; no
+  // hay nada que cachear ahí, mejor ni intentar manejarlas.
+  if (!req.url.startsWith('http')) return;
+
   const url = new URL(req.url);
 
   // Apps Script (datos del Sheet): red primero, cae a la última copia
@@ -77,7 +93,7 @@ self.addEventListener('fetch', (e) => {
       fetch(req)
         .then(res => {
           const clone = res.clone();
-          caches.open(CACHE_VERSION).then(c => c.put(req, clone));
+          _cachePut(req, clone);
           return res;
         })
         .catch(() => caches.match(req))
@@ -90,7 +106,7 @@ self.addEventListener('fetch', (e) => {
     e.respondWith(
       caches.match(req).then(cached => cached || fetch(req).then(res => {
         const clone = res.clone();
-        caches.open(CACHE_VERSION).then(c => c.put(req, clone));
+        _cachePut(req, clone);
         return res;
       }))
     );
@@ -109,7 +125,7 @@ self.addEventListener('fetch', (e) => {
   e.respondWith(
     fetch(req).then(res => {
       const clone = res.clone();
-      caches.open(CACHE_VERSION).then(c => c.put(req, clone));
+      _cachePut(req, clone);
       return res;
     }).catch(() => caches.match(req))
   );
