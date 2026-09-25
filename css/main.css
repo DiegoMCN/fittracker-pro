@@ -95,6 +95,11 @@
   --transition-base:   250ms cubic-bezier(0.4,0,0.2,1);
   --transition-slow:   400ms cubic-bezier(0.4,0,0.2,1);
   --transition-spring: 500ms cubic-bezier(0.34,1.56,0.64,1);
+  /* "Premium ease" — la curva que usan las apps de iOS para cambios de
+     pestaña/contenido: desacelera fuerte, sin rebote. Distinta de
+     --transition-spring (esa SÍ rebota, se guarda para celebraciones
+     puntuales donde el exceso de energía se siente bien). */
+  --transition-premium: 280ms cubic-bezier(0.16,1,0.3,1);
 
   /* Sidebar */
   --sidebar-w: 240px;
@@ -114,6 +119,34 @@
 canvas, svg { max-width: 100%; }
 canvas { display: block; }
 html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+
+/* ── SENSACIÓN NATIVA — la diferencia entre "tiene blur" y que se
+   sienta hecho a mano. Sin esto, cualquier toque en iOS Safari deja
+   un flash gris feo, y los :hover se quedan "pegados" después de
+   tocar (no hay mouse en un teléfono para "salir" del hover). ── */
+html, body { -webkit-tap-highlight-color: transparent; }
+button, a, [onclick] { -webkit-tap-highlight-color: transparent; }
+* { -webkit-touch-callout: none; }
+body { overscroll-behavior-y: none; } /* sin esto, jalar de más en cualquier lista rebota TODA la página como si fuera una sola hoja larga */
+.page-content, .modal-body, .sidebar { -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+
+/* Feedback de presión universal — CUALQUIER elemento con onclick real
+   (no vacío, eso descarta las celdas del calendario/picker sin
+   actividad) se hunde un poco al tocarlo y regresa con resorte. Cubre
+   automáticamente cosas que .btn no toca: tarjetas de ejercicio,
+   celdas del calendario, filas del selector de día — sin tener que
+   tocar cada módulo uno por uno.
+   Los :hover quedan protegidos con "pointer:fine" — así solo aplican
+   con mouse de verdad, nunca se quedan pegados en pantalla táctil. */
+[onclick]:not([onclick=""]) {
+  transition: transform 120ms cubic-bezier(0.4,0,0.2,1);
+  -webkit-tap-highlight-color: transparent;
+}
+[onclick]:not([onclick=""]):active {
+  transform: scale(0.97);
+  transition: transform 80ms cubic-bezier(0.4,0,0.2,1);
+}
+
 body {
   font-family: 'Poppins', -apple-system, sans-serif;
   background: var(--bg-primary);
@@ -133,7 +166,6 @@ ul, ol { list-style: none; }
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--text-4); border-radius: var(--radius-full); }
-::-webkit-scrollbar-thumb:hover { background: var(--text-3); }
 
 /* ── LAYOUT ── */
 .app-shell {
@@ -193,10 +225,6 @@ ul, ol { list-style: none; }
   cursor: pointer;
   margin-bottom: 2px;
   position: relative;
-}
-.nav-item:hover {
-  color: var(--text-1);
-  background: var(--bg-card-hover);
 }
 .nav-item.active {
   color: var(--accent);
@@ -293,13 +321,16 @@ ul, ol { list-style: none; }
   border: 1px solid var(--border-card);
   border-radius: var(--radius-lg);
   padding: var(--space-5);
-  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast);
+  /* Sombra suave + un filo de luz de 1px arriba — la diferencia entre
+     "una caja con blur" y algo que de verdad parece tener volumen,
+     como si la luz del entorno le pegara por arriba. */
+  box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255,255,255,0.04);
   /* Mismo motivo — .card vive dentro de grid-2/3/4 y filas flex por
      toda la app; sin esto, su contenido puede negarse a encogerse y
      ensanchar la fila/columna completa más allá de la pantalla. */
   min-width: 0;
 }
-.card:hover { border-color: var(--border); }
 .card-accent {
   border-color: var(--border-accent);
   box-shadow: 0 0 0 1px var(--border-accent) inset, var(--shadow-accent);
@@ -307,10 +338,6 @@ ul, ol { list-style: none; }
 .nutri-option-card {
   cursor: pointer;
   transition: border-color 0.15s, transform 0.15s;
-}
-.nutri-option-card:hover {
-  border-color: var(--border-accent);
-  transform: translateY(-1px);
 }
 .card-glass {
   background: rgba(19,19,31,0.6);
@@ -351,12 +378,6 @@ ul, ol { list-style: none; }
   opacity: 0;
   transition: opacity var(--transition-base);
 }
-.metric-card:hover::before { opacity: 1; }
-.metric-card:hover {
-  border-color: var(--border);
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-md);
-}
 .metric-label { font-size: 11px; font-weight: 500; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: var(--space-2); }
 .metric-value { font-size: 28px; font-weight: 700; line-height: 1; color: var(--text-1); }
 .metric-value.accent { color: var(--accent); text-shadow: 0 0 20px rgba(0,255,135,0.4); }
@@ -378,11 +399,24 @@ ul, ol { list-style: none; }
   padding: var(--space-3) var(--space-5);
   border-radius: var(--radius-md);
   font-family: inherit; font-weight: 600; font-size: 13px;
-  transition: all var(--transition-fast);
+  transition: transform 120ms cubic-bezier(0.4,0,0.2,1), background 150ms, box-shadow 150ms, border-color 150ms, opacity 150ms;
   cursor: pointer;
   white-space: nowrap;
   position: relative;
   overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+}
+/* Presión real — se hunde de inmediato (80ms, sin resorte, así se
+   siente "sólido" al tocar) y regresa con resorte (350ms, con el
+   pequeño overshoot que ya definía --transition-spring) — es
+   exactamente el patrón de iOS: respuesta instantánea al bajar el
+   dedo, rebote suave al soltar. */
+.btn:active {
+  transform: scale(0.96);
+  transition: transform 80ms cubic-bezier(0.4,0,0.2,1);
+}
+.btn:not(:active) {
+  transition: transform var(--transition-spring), background 150ms, box-shadow 150ms, border-color 150ms, opacity 150ms;
 }
 .btn::after {
   content: '';
@@ -399,20 +433,11 @@ ul, ol { list-style: none; }
   color: var(--bg-primary);
   box-shadow: 0 0 20px rgba(0,255,135,0.2);
 }
-.btn-primary:hover {
-  background: var(--accent-dim);
-  box-shadow: 0 0 30px rgba(0,255,135,0.35);
-  transform: translateY(-1px);
-}
 
 .btn-secondary {
   background: var(--bg-card);
   color: var(--text-1);
   border: 1px solid var(--border);
-}
-.btn-secondary:hover {
-  border-color: var(--text-4);
-  background: var(--bg-card-hover);
 }
 
 .btn-ghost {
@@ -420,19 +445,11 @@ ul, ol { list-style: none; }
   color: var(--text-2);
   border: 1px solid transparent;
 }
-.btn-ghost:hover {
-  background: var(--bg-card);
-  color: var(--text-1);
-}
 
 .btn-danger {
   background: rgba(239,68,68,0.1);
   color: var(--danger);
   border: 1px solid rgba(239,68,68,0.2);
-}
-.btn-danger:hover {
-  background: rgba(239,68,68,0.2);
-  box-shadow: 0 0 20px rgba(239,68,68,0.2);
 }
 
 .btn-lg { padding: var(--space-4) var(--space-8); font-size: 15px; border-radius: var(--radius-lg); }
@@ -559,8 +576,8 @@ ul, ol { list-style: none; }
 .toast.error   { border-color: rgba(239,68,68,0.3); }
 .toast.warning { border-color: rgba(245,158,11,0.3); }
 @keyframes toast-in {
-  from { opacity: 0; transform: translateX(20px); }
-  to   { opacity: 1; transform: translateX(0); }
+  from { opacity: 0; transform: translateX(20px) scale(0.92); }
+  to   { opacity: 1; transform: translateX(0) scale(1); }
 }
 
 /* ── MODAL ── */
@@ -676,7 +693,6 @@ ul, ol { list-style: none; }
   font-size: 18px; cursor: pointer;
   transition: all var(--transition-fast);
 }
-.menu-toggle:hover { background: var(--bg-card-hover); }
 
 /* Overlay para cerrar sidebar en mobile */
 .sidebar-overlay {
@@ -688,6 +704,64 @@ ul, ol { list-style: none; }
 }
 
 /* ── RESPONSIVE ── */
+/* ── HOVER — SOLO CON MOUSE DE VERDAD ─────────────────────────────────────
+   Todas las reglas :hover del archivo viven aquí, consolidadas, en vez de
+   sueltas junto a cada componente — así ninguna se cuela sin la protección
+   de "pointer:fine". En una laptop se comportan exactamente igual que
+   antes; en el teléfono simplemente no existen, así que nunca se quedan
+   "pegadas" después de un toque (el problema #1 que delata una app web
+   mal adaptada a táctil). */
+@media (hover: hover) and (pointer: fine) {
+  ::-webkit-scrollbar-thumb:hover { background: var(--text-3); }
+
+  .nav-item:hover {
+    color: var(--text-1);
+    background: var(--bg-card-hover);
+  }
+
+  .card:hover { border-color: var(--border); }
+
+  .nutri-option-card:hover:not(:active) {
+    border-color: var(--border-accent);
+    transform: translateY(-1px);
+  }
+
+  .metric-card:hover::before { opacity: 1; }
+  .metric-card:hover:not(:active) {
+    border-color: var(--border);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-md);
+  }
+
+  .btn-primary:hover:not(:active) {
+    background: var(--accent-dim);
+    box-shadow: 0 0 30px rgba(0,255,135,0.35);
+    transform: translateY(-1px);
+  }
+
+  .btn-secondary:hover {
+    border-color: var(--text-4);
+    background: var(--bg-card-hover);
+  }
+
+  .btn-ghost:hover {
+    background: var(--bg-card);
+    color: var(--text-1);
+  }
+
+  .btn-danger:hover {
+    background: rgba(239,68,68,0.2);
+    box-shadow: 0 0 20px rgba(239,68,68,0.2);
+  }
+
+  .menu-toggle:hover { background: var(--bg-card-hover); }
+
+  /* Botones y navegación cobran vida extra con mouse — un toque de
+     "profundidad" que en táctil no aplica porque no hay cursor
+     flotando para insinuar que algo es interactivo antes de tocarlo. */
+  .btn:hover:not(:active) { transform: translateY(-1px); }
+}
+
 @media (max-width: 1024px) {
   .grid-4 { grid-template-columns: repeat(2, 1fr); }
   .grid-3 { grid-template-columns: repeat(2, 1fr); }
@@ -707,8 +781,35 @@ ul, ol { list-style: none; }
   .topbar { display: none; }
   .page-content { padding: var(--space-4); }
   .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
-  .modal { max-width: 100%; margin: 0; border-radius: var(--radius-xl) var(--radius-xl) 0 0; }
+  .modal { max-width: 100%; margin: 0; border-radius: var(--radius-xl) var(--radius-xl) 0 0; position: relative; padding-top: 14px; }
   .modal-overlay { align-items: flex-end; padding: 0; }
+  /* El "handle" de las hojas de iOS — esa barrita gris que insinúa
+     "esto se puede deslizar". No agrega gesto real de verdad (eso
+     necesitaría JS táctil en cada modal), pero el lenguaje visual por
+     sí solo ya comunica "esto es una hoja nativa", que es la mitad
+     de la sensación. */
+  .modal::before {
+    content: '';
+    position: absolute; top: 8px; left: 50%; transform: translateX(-50%);
+    width: 36px; height: 5px; border-radius: 3px;
+    background: rgba(255,255,255,0.22);
+    z-index: 2;
+  }
+  /* En escritorio el modal aparece centrado con un empujoncito chico
+     (scale+10px) — como hoja completa desde abajo, ese mismo
+     movimiento se ve tímido. Aquí sí sube desde fuera de la pantalla
+     por completo, que es como se comporta de verdad una hoja de iOS. */
+  .modal { animation-name: modal-in-sheet; }
+  @keyframes modal-in-sheet {
+    from { opacity: 0; transform: translateY(100%); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  /* La burbuja de info se queda centrada (ver comentario arriba de
+     .modal-overlay-info) — no debe deslizarse desde abajo como si
+     fuera una hoja, se ve descolocado con algo que no vive pegado al
+     borde inferior. */
+  .modal-overlay-info .modal { animation-name: modal-in; }
+  .modal-overlay-info .modal::before { display: none; }
   /* Respeta la isla dinámica / notch (arriba) y el home indicator (abajo)
      del iPhone — sin esto, el sidebar y las barras flotantes quedan
      tapados por encima/debajo de esas zonas del sistema. */
