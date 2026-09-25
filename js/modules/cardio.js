@@ -838,6 +838,7 @@ const Cardio = (() => {
       } else {
         Sounds.sessionDone(); Haptics.done();
         _showCardioSummary(payload, false, protocolDay);
+        RecordCelebration.checkNewAchievements(result.newAchievements);
         RecordCelebration.checkCardio(stats);
       }
     } catch(err) {

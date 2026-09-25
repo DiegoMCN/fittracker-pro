@@ -7,7 +7,7 @@
 // cada cambio de contenido dentro de un archivo que ya existía.
 // ═══════════════════════════════════════════
 
-const CACHE_VERSION = 'fittracker-v9';
+const CACHE_VERSION = 'fittracker-v10';
 
 // El Cache API solo acepta esquemas http/https — una extensión de
 // Chrome instalada puede disparar solicitudes con esquema
@@ -44,6 +44,7 @@ const APP_SHELL = [
   './js/modules/coach.js',
   './js/modules/nutricion.js',
   './js/modules/calendario.js',
+  './js/modules/wrapped.js',
   './manifest.json',
   './assets/icons/icon-192.png',
   './assets/icons/icon-512.png',

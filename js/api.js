@@ -231,6 +231,9 @@ const API = (() => {
       getWeeklyVolume: { weeks: [] },
       getMuscleWeeklySets: { windows: [] },
       getPullUpMilestone: { attempts: 0, achieved: false, achievedDate: null, achievedReps: null, attemptsToSuccess: null },
+      getAchievements: { achievements: [] },
+      getWrappedSummary: { period:'week', label:'Esta semana', totalSessions:0, totalVolume:0, totalKm:0, totalCalories:0, totalMinutes:0, diasActivos:0, currentStreak:0, prsInPeriod:0, achievementsInPeriod:[], phaseLabel:'' },
+      recordPREvent: { newlyAwarded: [] },
       getIntensityHeatmap: { days: [] },
       getCardioZoneDistribution: { zones: [], totalMinutes: 0, sessionsCounted: 0 },
       getSplitsAnalysis: { hasData: false },
@@ -330,6 +333,15 @@ const API = (() => {
 
     getPullUpMilestone: () =>
       _fetch({ action: 'getPullUpMilestone' }),
+
+    getAchievements: () =>
+      _fetch({ action: 'getAchievements' }),
+
+    getWrappedSummary: (period) =>
+      _fetch({ action: 'getWrappedSummary', period }),
+
+    recordPREvent: () =>
+      _fetch({ action: 'recordPREvent', method: 'POST' }, { useCache: false, retries: 0 }),
 
     getIntensityHeatmap: (days = 365) =>
       _fetch({ action: 'getIntensityHeatmap', days }),

@@ -4,6 +4,26 @@
 
 const RecordCelebration = (() => {
 
+  // ── COLA DE CELEBRACIONES — con PRs, dominada libre y logros nuevos
+  // pudiendo pasar en la MISMA sesión, esto evita que 2 modales se
+  // encimen. Cada función de celebración se agrega a la cola en vez de
+  // mostrarse directo; se muestran una por una, la siguiente aparece
+  // cuando Diego cierra la anterior.
+  let _queue = [];
+  let _showing = false;
+
+  function _enqueue(renderFn) {
+    _queue.push(renderFn);
+    if (!_showing) _showNext();
+  }
+
+  function _showNext() {
+    if (_queue.length === 0) { _showing = false; return; }
+    _showing = true;
+    const renderFn = _queue.shift();
+    renderFn(_showNext);
+  }
+
   // ── DETECCIÓN — FUERZA ────────────────────────────────────────────────
   async function checkStrength(payload) {
     try {
@@ -50,7 +70,13 @@ const RecordCelebration = (() => {
         }
       });
 
-      if (broken.length > 0) show(broken);
+      if (broken.length > 0) {
+        _enqueue(onDone => show(broken, onDone));
+        try {
+          const prRes = await API.recordPREvent();
+          (prRes.newlyAwarded || []).forEach(logro => _enqueue(onDone => showLogro(logro, onDone)));
+        } catch(e) {}
+      }
     } catch(e) { /* silencioso — un fallo aquí no debe interrumpir el flujo de guardado */ }
   }
 
@@ -67,12 +93,12 @@ const RecordCelebration = (() => {
 
       const milestone = await API.getPullUpMilestone();
       if (milestone.achieved && milestone.achievedDate === Utils.today()) {
-        showPullUpMilestone(milestone);
+        _enqueue(onDone => showPullUpMilestone(milestone, onDone));
       }
     } catch(e) { /* silencioso — un fallo aquí no debe interrumpir el flujo de guardado */ }
   }
 
-  function showPullUpMilestone(milestone) {
+  function showPullUpMilestone(milestone, onClose) {
     Sounds.newRecord(); Haptics.done();
 
     const overlay = document.createElement('div');
@@ -98,11 +124,45 @@ const RecordCelebration = (() => {
         <div style="font-size:11px;color:var(--text-4);margin-top:20px">Toca en cualquier lado para continuar</div>
       </div>`;
 
-    overlay.addEventListener('click', () => overlay.remove());
+    let _closed = false;
+    const _close = () => { if (_closed) return; _closed = true; overlay.remove(); if (onClose) onClose(); };
+
+    overlay.addEventListener('click', _close);
     document.body.appendChild(overlay);
     _confetti(document.getElementById('confetti-canvas'));
 
-    setTimeout(() => overlay.remove(), 9000);
+    setTimeout(_close, 9000);
+  }
+
+  // ── CELEBRACIÓN GENÉRICA DE LOGROS (racha, HIT, fase, acumulados) ────
+  // Más ligera que show()/showPullUpMilestone() — un logro de este
+  // tipo es agradable pero no tan grande como un PR o la dominada.
+  function showLogro(logro, onClose) {
+    Sounds.newRecord(); Haptics.done();
+
+    const overlay = document.createElement('div');
+    overlay.style.cssText = `
+      position:fixed;inset:0;z-index:300;display:flex;align-items:center;justify-content:center;
+      background:rgba(8,8,15,0.85);backdrop-filter:blur(6px);cursor:pointer;
+      animation:fade-in 300ms forwards;padding:20px;
+    `;
+    overlay.innerHTML = `
+      <canvas id="confetti-canvas" style="position:fixed;inset:0;pointer-events:none"></canvas>
+      <div class="animate-bounce-in" style="text-align:center;max-width:340px;width:100%">
+        <div style="font-size:56px;margin-bottom:8px">${logro.icon || '⭐'}</div>
+        <div style="font-size:11px;color:var(--text-3);letter-spacing:0.5px;text-transform:uppercase;margin-bottom:4px">Logro desbloqueado</div>
+        <div style="font-size:17px;font-weight:700;color:var(--accent)">${logro.detalle}</div>
+        <div style="font-size:11px;color:var(--text-4);margin-top:18px">Toca en cualquier lado para continuar</div>
+      </div>`;
+
+    let _closed = false;
+    const _close = () => { if (_closed) return; _closed = true; overlay.remove(); if (onClose) onClose(); };
+
+    overlay.addEventListener('click', _close);
+    document.body.appendChild(overlay);
+    _confetti(document.getElementById('confetti-canvas'));
+
+    setTimeout(_close, 5000);
   }
 
   // ── DETECCIÓN — CARDIO ───────────────────────────────────────────────
@@ -131,12 +191,18 @@ const RecordCelebration = (() => {
         });
       }
 
-      if (broken.length > 0) show(broken);
+      if (broken.length > 0) {
+        _enqueue(onDone => show(broken, onDone));
+        try {
+          const prRes = await API.recordPREvent();
+          (prRes.newlyAwarded || []).forEach(logro => _enqueue(onDone => showLogro(logro, onDone)));
+        } catch(e) {}
+      }
     } catch(e) { /* silencioso */ }
   }
 
   // ── OVERLAY VISUAL ────────────────────────────────────────────────────
-  function show(records) {
+  function show(records, onClose) {
     Sounds.newRecord(); Haptics.done();
 
     const overlay = document.createElement('div');
@@ -166,11 +232,14 @@ const RecordCelebration = (() => {
         <div style="font-size:11px;color:var(--text-4);margin-top:20px">Toca en cualquier lado para continuar</div>
       </div>`;
 
-    overlay.addEventListener('click', () => overlay.remove());
+    let _closed = false;
+    const _close = () => { if (_closed) return; _closed = true; overlay.remove(); if (onClose) onClose(); };
+
+    overlay.addEventListener('click', _close);
     document.body.appendChild(overlay);
     _confetti(document.getElementById('confetti-canvas'));
 
-    setTimeout(() => overlay.remove(), 7000);
+    setTimeout(_close, 7000);
   }
 
   // ── CONFETI (canvas puro, sin librerías) ─────────────────────────────
@@ -211,5 +280,13 @@ const RecordCelebration = (() => {
     loop();
   }
 
-  return { checkStrength, checkCardio, checkPullUpMilestone };
+  // Encola cada logro nuevo que haya venido en la respuesta de
+  // saveSession/saveCardio (racha, HIT, fase, sesiones/volumen
+  // acumulado, dominada libre — el de récord personal se maneja
+  // aparte, ver recordPREvent más arriba).
+  function checkNewAchievements(list) {
+    (list || []).forEach(logro => _enqueue(onDone => showLogro(logro, onDone)));
+  }
+
+  return { checkStrength, checkCardio, checkPullUpMilestone, checkNewAchievements };
 })();

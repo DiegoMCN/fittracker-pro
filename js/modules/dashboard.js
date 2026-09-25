@@ -148,6 +148,28 @@ function _pullUpMilestoneHTML(pullUp) {
     </div>`;
 }
 
+// Logros desbloqueados — fila de insignias con scroll horizontal, no
+// ensucia el Dashboard cuando todavía no hay ninguno (se oculta
+// entera). El detalle de cada uno sale al tocarlo.
+function _achievementsHTML(achievements) {
+  if (!achievements || !achievements.length) return '';
+  return `
+    <div class="card" style="margin-bottom:20px">
+      <div class="card-header">
+        <div class="card-title">⭐ Logros (${achievements.length})</div>
+      </div>
+      <div style="display:flex;gap:10px;overflow-x:auto;padding-bottom:4px">
+        ${achievements.map(a => `
+          <div onclick="Toast.success('${(a.detail || '').replace(/'/g, "\\'")}')" style="
+            flex-shrink:0;width:72px;text-align:center;cursor:pointer;
+            background:var(--bg-input);border:1px solid var(--border);border-radius:12px;padding:10px 6px">
+            <div style="font-size:26px">${a.icon}</div>
+            <div style="font-size:9px;color:var(--text-3);margin-top:4px">${Utils.formatDate(a.date)}</div>
+          </div>`).join('')}
+      </div>
+    </div>`;
+}
+
 function Dashboard_onKmScroll(el) {
   const idx = Math.round(el.scrollLeft / el.clientWidth);
   el.parentElement.querySelectorAll('.km-dot').forEach((dot, i) => {
@@ -224,7 +246,7 @@ async function initDashboard(container) {
 
   // Se piden sin caché — recién guardaste una sesión y necesitas ver
   // el dato fresco, no uno de hace 5 minutos.
-  const [data, sesRes, recordsRes, metricsRes, cardioRes, streaksRes, overtrainingRes, insightsRes, profileRes, pullUpRes] = await Promise.all([
+  const [data, sesRes, recordsRes, metricsRes, cardioRes, streaksRes, overtrainingRes, insightsRes, profileRes, pullUpRes, achievementsRes] = await Promise.all([
     API.getDashboard(),
     API.getSessions(30),
     API.getPersonalRecords(),
@@ -235,6 +257,7 @@ async function initDashboard(container) {
     API.getAllInsights(),
     API.getProfile(),
     API.getPullUpMilestone(),
+    API.getAchievements(),
   ]);
 
   // Sesiones reales de esta semana (Lun-Dom), para marcar los días
@@ -254,10 +277,10 @@ async function initDashboard(container) {
   const latestMetrics = metricsHistory.length ? metricsHistory[0] : null;
 
   Store.set({ dashboard: data });
-  _renderDashboard(container, data, doneDayNames, recordsRes, sesRes.sessions || [], latestMetrics, cardioRes.sessions || [], streaksRes, overtrainingRes, insightsRes.insights || {}, profileRes.profile || {}, pullUpRes);
+  _renderDashboard(container, data, doneDayNames, recordsRes, sesRes.sessions || [], latestMetrics, cardioRes.sessions || [], streaksRes, overtrainingRes, insightsRes.insights || {}, profileRes.profile || {}, pullUpRes, achievementsRes.achievements || []);
 }
 
-function _renderDashboard(container, data, doneDayNames, records, allSessions, latestMetrics, allCardio, streaks, overtraining, insights, profile, pullUp) {
+function _renderDashboard(container, data, doneDayNames, records, allSessions, latestMetrics, allCardio, streaks, overtraining, insights, profile, pullUp, achievements) {
   _dashboardInsights = insights || {};
   const today     = new Date().getDay();
   const nextSes   = CONFIG.WEEK_PLAN[today] || CONFIG.WEEK_PLAN[(today + 1) % 7];
@@ -379,6 +402,7 @@ function _renderDashboard(container, data, doneDayNames, records, allSessions, l
     </div>
   </div>
 
+  ${_achievementsHTML(achievements)}
   ${_pullUpMilestoneHTML(pullUp)}
   ${_kmCarouselHTML(data.distanceStats, profile)}
 

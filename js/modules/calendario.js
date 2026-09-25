@@ -8,17 +8,36 @@ const Calendario = (() => {
   let _cardio = [];
   let _viewDate = new Date(); // mes que se está mostrando
   let _usingMock = false;
+  let _phases = [];       // rangos de semana por fase (getProgramPhases)
+  let _dayTypeByDow = {};  // 0-6 -> {type, name, icon} — el tipo de día no cambia por fase
 
   const DOW = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
   const MONTH_NAMES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
 
   async function init(container) {
     container.innerHTML = `<div class="skeleton" style="height:500px;border-radius:16px"></div>`;
-    const [sesRes, cardioRes] = await Promise.all([API.getSessions(90), API.getCardio(60)]);
+    const [sesRes, cardioRes, phasesRes, planRes] = await Promise.all([
+      API.getSessions(120), API.getCardio(90), API.getProgramPhases(52), API.getWeekPlan(),
+    ]);
     _sessions = sesRes.sessions || [];
     _cardio = cardioRes.sessions || [];
     _usingMock = API.isMock();
+    _phases = phasesRes.phases || [];
+    _dayTypeByDow = {};
+    (planRes.plan || []).forEach(d => { _dayTypeByDow[d.dayOfWeek] = { type: d.type, name: d.name, icon: d.icon }; });
     render();
+  }
+
+  // Convierte una fecha a número de fase usando PROGRAM_START_DATE +
+  // los rangos de semana de getProgramPhases(). Fases "por definir"
+  // (pending) no cuentan — un día ahí se muestra sin badge de fase.
+  function _phaseForDate(dateStr) {
+    const start = new Date(CONFIG.PROGRAM_START_DATE + 'T00:00:00');
+    const d = new Date(dateStr + 'T00:00:00');
+    const diffDays = Math.floor((d - start) / 86400000);
+    if (diffDays < 0) return null;
+    const week = Math.floor(diffDays / 7) + 1;
+    return _phases.find(p => !p.pending && week >= p.startWeek && week <= p.endWeek) || null;
   }
 
   function changeMonth(delta) {
@@ -83,30 +102,60 @@ const Calendario = (() => {
               const dateObj = new Date(year, month, d);
               const dateStr = _fmtDate(dateObj);
               const isToday = dateStr === todayStr;
-              const hasStrength = _sessions.some(s => s.date === dateStr);
-              const hasCardio = _cardio.some(c => c.date === dateStr);
+              const daySessions = _sessions.filter(s => s.date === dateStr);
+              const dayCardio = _cardio.filter(c => c.date === dateStr);
+              const hasStrength = daySessions.length > 0;
+              const hasCardio = dayCardio.length > 0;
               const hasAny = hasStrength || hasCardio;
 
+              // Intensidad (0-1) para el mapa de calor — volumen de
+              // fuerza normalizado contra 3000kg, minutos de cardio
+              // contra 40min. Si hay ambos el mismo día, se suman
+              // (con tope en 1) — un día de doble sesión sí debe verse
+              // más intenso que uno solo.
+              const volScore = daySessions.reduce((s, x) => s + (x.volume || 0), 0) / 3000;
+              const cardioScore = dayCardio.reduce((s, x) => s + (x.duration || 0), 0) / 40;
+              const intensity = Math.min(1, volScore + cardioScore);
+
+              // Plan vs. real — el tipo de día (fuerza/mixta/cardio/
+              // descanso) no cambia entre fases, así que basta un solo
+              // getWeekPlan() para saber qué tocaba.
+              const dow = dateObj.getDay();
+              const planned = _dayTypeByDow[dow];
+              const wasRestDay = !planned || planned.type === 'rest';
+              const missed = !wasRestDay && !hasAny && dateStr < todayStr; // solo días ya pasados cuentan como "perdidos"
+              const bonus = wasRestDay && hasAny; // entrenaste en tu día de descanso — se marca en positivo
+
+              const phase = _phaseForDate(dateStr);
+
+              const heatBg = hasAny
+                ? `rgba(0, 255, 135, ${(0.10 + intensity * 0.35).toFixed(2)})`
+                : missed ? 'rgba(239,68,68,0.06)' : 'transparent';
+
               return `
-              <div onclick="${hasAny ? `Calendario.openDay('${dateStr}')` : ''}"
-                style="aspect-ratio:1;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+              <div onclick="${hasAny ? `Calendario.openDay('${dateStr}')` : ''}" title="${phase ? `Fase ${phase.number} — ${phase.name}` : ''}"
+                style="position:relative;aspect-ratio:1;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
                 cursor:${hasAny ? 'pointer' : 'default'};
-                background:${isToday ? 'var(--accent-glow)' : hasAny ? 'var(--bg-input)' : 'transparent'};
-                border:${isToday ? '1.5px solid var(--accent)' : '1px solid transparent'};
+                background:${isToday ? 'var(--accent-glow)' : heatBg};
+                border:${isToday ? '1.5px solid var(--accent)' : missed ? '1px dashed rgba(239,68,68,0.35)' : '1px solid transparent'};
                 transition:transform 0.1s"
                 ${hasAny ? `onmouseenter="this.style.transform='scale(1.05)'" onmouseleave="this.style.transform='scale(1)'"` : ''}>
-                <div style="font-size:11px;font-weight:${isToday ? '700' : '500'};color:${isToday ? 'var(--accent)' : hasAny ? 'var(--text-1)' : 'var(--text-4)'}">${d}</div>
-                <div style="display:flex;gap:2px;height:6px">
+                <div style="font-size:11px;font-weight:${isToday ? '700' : '500'};color:${isToday ? 'var(--accent)' : hasAny ? 'var(--text-1)' : missed ? 'var(--danger)' : 'var(--text-4)'}">${d}</div>
+                <div style="display:flex;gap:2px;height:6px;align-items:center">
                   ${hasStrength ? `<div style="width:5px;height:5px;border-radius:50%;background:var(--accent)"></div>` : ''}
                   ${hasCardio ? `<div style="width:5px;height:5px;border-radius:50%;background:var(--info)"></div>` : ''}
+                  ${bonus ? `<span style="font-size:7px">✨</span>` : ''}
+                  ${missed ? `<span style="font-size:7px;color:var(--danger)">·</span>` : ''}
                 </div>
               </div>`;
             }).join('')}
           </div>
 
-          <div style="display:flex;gap:16px;margin-top:16px;padding-top:16px;border-top:1px solid var(--border);font-size:10px;color:var(--text-3)">
+          <div style="display:flex;gap:14px;margin-top:16px;padding-top:16px;border-top:1px solid var(--border);font-size:9px;color:var(--text-3);flex-wrap:wrap">
             <div style="display:flex;align-items:center;gap:5px"><div style="width:6px;height:6px;border-radius:50%;background:var(--accent)"></div>Fuerza</div>
             <div style="display:flex;align-items:center;gap:5px"><div style="width:6px;height:6px;border-radius:50%;background:var(--info)"></div>Cardio</div>
+            <div style="display:flex;align-items:center;gap:5px">✨ Extra en descanso</div>
+            <div style="display:flex;align-items:center;gap:5px"><div style="width:6px;height:6px;border-radius:2px;border:1px dashed rgba(239,68,68,0.5)"></div>Día planeado sin registrar</div>
           </div>
         </div>
 

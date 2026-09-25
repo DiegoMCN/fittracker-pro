@@ -1446,6 +1446,7 @@ const Workout = (() => {
         _showSummary(payload, doneSets, totalSets, false);
         (async () => {
           await RecordCelebration.checkPullUpMilestone(payload);
+          RecordCelebration.checkNewAchievements(result.newAchievements);
           RecordCelebration.checkStrength(payload);
         })();
       }
