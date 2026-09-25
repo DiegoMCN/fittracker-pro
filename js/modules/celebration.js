@@ -104,12 +104,12 @@ const RecordCelebration = (() => {
     const overlay = document.createElement('div');
     overlay.style.cssText = `
       position:fixed;inset:0;z-index:300;display:flex;align-items:center;justify-content:center;
-      background:rgba(8,8,15,0.92);backdrop-filter:blur(10px);cursor:pointer;
+      background:rgba(8,8,15,0.85);backdrop-filter:blur(10px) saturate(140%);-webkit-backdrop-filter:blur(10px) saturate(140%);cursor:pointer;
       animation:fade-in 300ms forwards;padding:20px;
     `;
     overlay.innerHTML = `
       <canvas id="confetti-canvas" style="position:fixed;inset:0;pointer-events:none"></canvas>
-      <div class="animate-bounce-in" style="text-align:center;max-width:400px;width:100%">
+      <div class="animate-bounce-in celebration-glass" style="text-align:center;max-width:400px;width:100%">
         <div style="font-size:88px;margin-bottom:10px">🏆</div>
         <div style="font-size:26px;font-weight:800;color:var(--accent);text-shadow:0 0 40px rgba(0,255,135,0.6);margin-bottom:6px">
           ¡PRIMERA DOMINADA LIBRE!
@@ -143,12 +143,12 @@ const RecordCelebration = (() => {
     const overlay = document.createElement('div');
     overlay.style.cssText = `
       position:fixed;inset:0;z-index:300;display:flex;align-items:center;justify-content:center;
-      background:rgba(8,8,15,0.85);backdrop-filter:blur(6px);cursor:pointer;
+      background:rgba(8,8,15,0.8);backdrop-filter:blur(6px) saturate(140%);-webkit-backdrop-filter:blur(6px) saturate(140%);cursor:pointer;
       animation:fade-in 300ms forwards;padding:20px;
     `;
     overlay.innerHTML = `
       <canvas id="confetti-canvas" style="position:fixed;inset:0;pointer-events:none"></canvas>
-      <div class="animate-bounce-in" style="text-align:center;max-width:340px;width:100%">
+      <div class="animate-bounce-in celebration-glass" style="text-align:center;max-width:340px;width:100%">
         <div style="font-size:56px;margin-bottom:8px">${logro.icon || '⭐'}</div>
         <div style="font-size:11px;color:var(--text-3);letter-spacing:0.5px;text-transform:uppercase;margin-bottom:4px">Logro desbloqueado</div>
         <div style="font-size:17px;font-weight:700;color:var(--accent)">${logro.detalle}</div>
@@ -208,12 +208,12 @@ const RecordCelebration = (() => {
     const overlay = document.createElement('div');
     overlay.style.cssText = `
       position:fixed;inset:0;z-index:300;display:flex;align-items:center;justify-content:center;
-      background:rgba(8,8,15,0.88);backdrop-filter:blur(8px);cursor:pointer;
+      background:rgba(8,8,15,0.82);backdrop-filter:blur(8px) saturate(140%);-webkit-backdrop-filter:blur(8px) saturate(140%);cursor:pointer;
       animation:fade-in 300ms forwards;padding:20px;
     `;
     overlay.innerHTML = `
       <canvas id="confetti-canvas" style="position:fixed;inset:0;pointer-events:none"></canvas>
-      <div class="animate-bounce-in" style="text-align:center;max-width:380px;width:100%">
+      <div class="animate-bounce-in celebration-glass" style="text-align:center;max-width:380px;width:100%">
         <div style="font-size:72px;margin-bottom:10px">🏆</div>
         <div style="font-size:22px;font-weight:800;color:var(--accent);text-shadow:0 0 30px rgba(0,255,135,0.5);margin-bottom:4px">
           ¡Nuevo récord!

@@ -10,6 +10,12 @@ const Metrics = (() => {
   let _records = {};
   let _exerciseProgress = [];
   let _volumeByGroup = [];
+  // true SOLO en la carga inicial — setExerciseFilter/setExerciseViewMode
+  // también llaman render() completo (solo cambia una sección, pero no
+  // hay un render dirigido para esa parte sola), y sin esto CADA
+  // sección de la página volvería a entrar en cascada solo porque
+  // cambiaste el filtro de una gráfica al fondo.
+  let _shouldStagger = false;
   let _muscleWindows = [];      // ventanas de 7 días con series por ejercicio (getMuscleWeeklySets)
   let _muscleWindowMode = 'w0'; // w0 = últimos 7 días, w1 = 7 días previos, avg = promedio 4 semanas
   let _muscleCharts = [];       // instancias de BodyChart (frente y espalda)
@@ -54,6 +60,7 @@ const Metrics = (() => {
     _insights = insightsRes.insights || {};
     _usingMock = API.isMock();
 
+    _shouldStagger = true;
     render();
   }
 
@@ -85,7 +92,7 @@ const Metrics = (() => {
         </div>
 
         <!-- KPIs -->
-        <div class="grid-4" style="margin-bottom:24px">
+        <div class="grid-4 section" style="margin-bottom:24px">
           <div class="metric-card">
             <div class="metric-label">FC fuerza (tendencia)</div>
             <div class="metric-value" style="color:var(--danger)">${latestFC || '—'}<span class="metric-unit">bpm</span></div>
@@ -109,7 +116,7 @@ const Metrics = (() => {
         </div>
 
         <!-- Métricas corporales (velocidad, dominadas, cadencia, dead hang) -->
-        <div class="card" style="margin-bottom:24px">
+        <div class="card section" style="margin-bottom:24px">
           <div class="card-header">
             <div>
               <div class="card-title">Métricas corporales</div>
@@ -168,7 +175,7 @@ const Metrics = (() => {
         </div>
 
         <!-- Gráficas -->
-        <div class="grid-2" style="margin-bottom:24px">
+        <div class="grid-2 section" style="margin-bottom:24px">
           <div class="card">
             <div class="card-header">
               <div>
@@ -225,7 +232,7 @@ const Metrics = (() => {
         </div>
 
         <!-- Récords por ejercicio -->
-        <div class="card" style="margin-bottom:24px">
+        <div class="card section" style="margin-bottom:24px">
           <div class="card-header">
             <div class="card-title">🏆 Récords por ejercicio</div>
             <div class="card-subtitle">Mejor carga registrada</div>
@@ -237,7 +244,7 @@ const Metrics = (() => {
              solo de la sesión completa. Directamente ligado a la meta
              de 20km/h: un split suelto puede ser tu velocidad real. -->
         ${_bestSplit && _bestSplit.found ? `
-        <div class="card card-accent" style="margin-bottom:24px">
+        <div class="card card-accent section" style="margin-bottom:24px">
           <div class="card-header">
             <div class="card-title">⚡ Kilómetro más rápido</div>
             ${_infoBtn('record_km')}
@@ -258,7 +265,7 @@ const Metrics = (() => {
         <!-- Distribución de volumen por grupo muscular — sí es un "parte del
              todo" real, por eso aquí sí tiene sentido usar pastel/dona -->
         ${_volumeByGroup.length > 0 ? `
-        <div class="card" style="margin-bottom:24px">
+        <div class="card section" style="margin-bottom:24px">
           <div class="card-header">
             <div>
               <div class="card-title">🥧 Distribución de volumen</div>
@@ -274,7 +281,7 @@ const Metrics = (() => {
         <!-- Mapa muscular — librería body-muscles (fijada en js/vendor),
              68 zonas musculares agrupadas en 23 regiones. Intensidad =
              series efectivas por semana (ver js/muscle-map.js). -->
-        <div class="card" style="margin-bottom:24px">
+        <div class="card section" style="margin-bottom:24px">
           <div class="card-header">
             <div>
               <div class="card-title">🧍 Mapa muscular</div>
@@ -303,7 +310,7 @@ const Metrics = (() => {
 
         <!-- Progresión por ejercicio — una gráfica de línea por cada uno,
              filtrable por grupo para que no se sature la sección -->
-        <div class="card">
+        <div class="card section">
           <div class="card-header">
             <div>
               <div class="card-title">📈 Progresión por ejercicio</div>
@@ -449,6 +456,17 @@ const Metrics = (() => {
         </div>` : ''}
 
       </div>`;
+
+    // Cascada de entrada — SOLO en la carga inicial (ver _shouldStagger
+    // arriba). Mismo timing que ya calibramos en Dashboard: 90ms entre
+    // cada sección, 630ms de tope.
+    if (_shouldStagger) {
+      container.querySelectorAll('.section').forEach((el, i) => {
+        el.classList.add('stagger-in');
+        el.style.animationDelay = `${Math.min(i * 90, 630)}ms`;
+      });
+      _shouldStagger = false;
+    }
 
     setTimeout(_renderCharts, 100);
   }

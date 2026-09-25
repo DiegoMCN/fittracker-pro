@@ -15,6 +15,13 @@ const Workout = (() => {
   let viewingPhaseNumber = null;     // La fase que se está mostrando en el picker
   let planLocked = false;    // true si viewingPhaseNumber no es la fase activa
   let planDataByPhase = {};  // Cache del plan, una entrada por fase vista
+  // _rerender() reconstruye TODA la lista de ejercicios cada vez (no
+  // hay parches de DOM dirigidos) — sin esto, animar "la casilla que
+  // se acaba de marcar" animaría TODAS las casillas marcadas en cada
+  // interacción, no solo la de este toque. Se guarda cuál fue, se usa
+  // una sola vez al pintar, y se limpia — así solo esa una anima.
+  let _justCompletedSet = null; // { exIdx, sIdx } | null
+  let _sessionJustStarted = false; // true SOLO en el primer render tras iniciar sesión — dispara la cascada de tarjetas
 
   // ── CARGA DEL PLAN (desde Google Sheet vía Apps Script) ──────────────
   async function _loadPlan(phase) {
@@ -298,6 +305,7 @@ const Workout = (() => {
     WakeLock.request();
     if (elapsedInterval) clearInterval(elapsedInterval);
     elapsedInterval = setInterval(_tick, 1000);
+    _sessionJustStarted = true; // las tarjetas de ejercicio entran en cascada SOLO en este primer render
     _renderSession();
     Toast.success('¡Sesión iniciada! 💪');
   }
@@ -315,7 +323,7 @@ const Workout = (() => {
       <div style="max-width:720px;margin:0 auto;padding-bottom:100px">
 
         <!-- Header sesión -->
-        <div class="card card-glass" style="position:sticky;top:0;z-index:10;margin-bottom:20px;backdrop-filter:blur(20px)">
+        <div class="card card-glass" style="position:sticky;top:0;z-index:10;margin-bottom:20px">
           <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
             <div>
               <div style="font-weight:700;font-size:16px">${state.planName}</div>
@@ -357,6 +365,8 @@ const Workout = (() => {
     _renderRestWidget();
     _renderFloatingBar();
     _hydrateHistories();
+    _justCompletedSet = null; // ya se usó en este render — la próxima interacción no debe volver a animar esta misma casilla
+    _sessionJustStarted = false; // la cascada de tarjetas ya pasó — los renders siguientes (marcar series, etc.) no deben repetirla
   }
 
   const SUPERSET_COLORS = { A: '#7C3AED', B: '#06B6D4', C: '#F59E0B', D: '#EC4899', E: '#10B981' };
@@ -370,7 +380,7 @@ const Workout = (() => {
     const ssColor = ex.supersetGroup ? SUPERSET_COLORS[ex.supersetGroup] : null;
 
     return `
-    <div class="card ${allDone ? 'card-accent' : ''}" data-ex-idx="${exIdx}" style="transition:all 0.3s;${ssColor ? `border-left:3px solid ${ssColor}` : ''}">
+    <div class="card ${allDone ? 'card-accent' : ''} ${_sessionJustStarted ? 'stagger-in' : ''}" data-ex-idx="${exIdx}" style="transition:all 0.3s;${ssColor ? `border-left:3px solid ${ssColor}` : ''}${_sessionJustStarted ? `;animation-delay:${Math.min(exIdx * 90, 630)}ms` : ''}">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:${ex.collapsed ? '0' : '14px'}">
         <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;cursor:pointer" onclick="Workout.toggleCollapse(${exIdx})">
           <span style="font-size:16px;color:var(--text-3)">${ex.collapsed ? '▸' : '▾'}</span>
@@ -466,7 +476,7 @@ const Workout = (() => {
 
           <span style="font-size:10px;color:var(--text-4);margin-left:auto;white-space:nowrap">obj: ${set.repsTarget}</span>
 
-          <button onclick="Workout.toggleSetDone(${exIdx},${sIdx})" style="
+          <button onclick="Workout.toggleSetDone(${exIdx},${sIdx})" class="${_justCompletedSet && _justCompletedSet.exIdx === exIdx && _justCompletedSet.sIdx === sIdx ? 'set-just-completed' : ''}" style="
             width:30px;height:30px;border-radius:8px;flex-shrink:0;font-size:14px;
             background:${set.done ? 'var(--accent)' : 'var(--bg-card)'};
             color:${set.done ? 'var(--bg-primary)' : 'var(--text-3)'};
@@ -859,6 +869,9 @@ const Workout = (() => {
   function toggleSetDone(exIdx, sIdx) {
     const set = state.exercises[exIdx].sets[sIdx];
     set.done = !set.done;
+    // Solo anima al MARCAR (es la confirmación de "lo logré"), no al
+    // desmarcar — deshacer algo no necesita el mismo festejo visual.
+    _justCompletedSet = set.done ? { exIdx, sIdx } : null;
     if (set.done) { Sounds.serieDone(); Haptics.medium(); } else { Sounds.click(); }
     _rerender();
   }

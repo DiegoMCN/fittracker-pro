@@ -44,10 +44,17 @@ const Cardio = (() => {
   // ── INIT ──────────────────────────────────────────────────────────────
   function init(container) {
     if (state && state.started && !state.finished) { _renderActive(); return; }
+    _pickerShouldStagger = true;
     _renderPicker(container);
   }
 
   let _selectedHitDuration = null; // se fija al primer render, con la duración más cercana a "hoy"
+  // true SOLO en la carga inicial del picker — cambiar de pestaña de
+  // duración (10'/15'/25') también llama _renderPicker(), pero ahí
+  // NO debe re-escalonar: solo cambió qué niveles se ven dentro de la
+  // MISMA tarjeta, las demás categorías (Sprint, Zona 2) ni se
+  // movieron.
+  let _pickerShouldStagger = false;
 
   // Separa CONFIG.HIT_PROTOCOLS en categorías — por patrón de clave,
   // no por un campo nuevo en el Sheet, para no tener que tocar el
@@ -113,7 +120,7 @@ const Cardio = (() => {
       <div style="max-width:640px;margin:0 auto">
 
         ${durations.length > 0 ? `
-        <div class="card" style="margin-bottom:16px">
+        <div class="card section" style="margin-bottom:16px">
           <div class="card-header">
             <div>
               <div class="card-title">🔥 HIT por nivel</div>
@@ -131,7 +138,7 @@ const Cardio = (() => {
         </div>` : ''}
 
         ${sprint.length > 0 ? `
-        <div class="card" style="margin-bottom:16px">
+        <div class="card section" style="margin-bottom:16px">
           <div class="card-header">
             <div class="card-title">⚡ Sprint técnico</div>
           </div>
@@ -141,7 +148,7 @@ const Cardio = (() => {
         </div>` : ''}
 
         ${zona.length > 0 ? `
-        <div class="card" style="margin-bottom:16px">
+        <div class="card section" style="margin-bottom:16px">
           <div class="card-header">
             <div class="card-title">🧘 Zona 2 / Continuo</div>
           </div>
@@ -151,7 +158,7 @@ const Cardio = (() => {
         </div>` : ''}
 
         ${otros.length > 0 ? `
-        <div class="card" style="margin-bottom:16px">
+        <div class="card section" style="margin-bottom:16px">
           <div class="card-header">
             <div class="card-title">Otros protocolos</div>
           </div>
@@ -164,6 +171,14 @@ const Cardio = (() => {
           ⏱ Cronómetro libre (sin protocolo)
         </button>
       </div>`;
+
+    if (_pickerShouldStagger) {
+      container.querySelectorAll('.section').forEach((el, i) => {
+        el.classList.add('stagger-in');
+        el.style.animationDelay = `${Math.min(i * 90, 630)}ms`;
+      });
+      _pickerShouldStagger = false;
+    }
   }
 
   function selectHitDuration(duration) {
@@ -223,6 +238,7 @@ const Cardio = (() => {
   function backToPicker() {
     Sounds.click();
     state = null;
+    _pickerShouldStagger = true;
     _renderPicker(document.getElementById('page-content'));
   }
 
@@ -327,7 +343,7 @@ const Cardio = (() => {
         </div>
 
         <!-- Círculo grande de fase actual -->
-        <div style="position:relative;width:220px;height:220px;margin:0 auto 20px">
+        <div class="phase-pop" style="position:relative;width:220px;height:220px;margin:0 auto 20px;--phase-glow:${color}55">
           <svg width="220" height="220" style="transform:rotate(-90deg)">
             <circle cx="110" cy="110" r="90" stroke="var(--bg-input)" stroke-width="10" fill="none"/>
             <circle cx="110" cy="110" r="90" stroke="${color}" stroke-width="10" fill="none"
@@ -344,7 +360,7 @@ const Cardio = (() => {
           </div>
         </div>
 
-        <div id="phase-label" class="card" style="margin-bottom:16px;border-color:${color}44">
+        <div id="phase-label" class="card phase-pop" style="margin-bottom:16px;border-color:${color}44;--phase-glow:${color}55">
           <div style="font-weight:700;font-size:16px;color:${color}">${phase.label}</div>
           ${phase.speed !== '-' ? `<div style="font-size:13px;color:var(--text-3);margin-top:4px">Velocidad objetivo: ${phase.speed} km/h</div>` : ''}
         </div>

@@ -7,6 +7,11 @@ const History = (() => {
   let _sessions = [];
   let _cardio = [];
   let _filter = 'all'; // all | Fuerza | Cardio
+  // true SOLO cuando el render que sigue muestra una lista distinta de
+  // verdad (carga inicial, cambio de filtro) — expandir una tarjeta
+  // (toggleExpand) también llama render(), pero la lista no cambió,
+  // solo un detalle, así que ahí NO debe volver a escalonar todo.
+  let _shouldStagger = false;
   let _phaseFilter = 'all'; // all | valor exacto de "Fase" guardado en la sesión
   let _expandedId = null;
   let _exerciseDetailCache = {}; // { [fecha]: { loading, exercises } }
@@ -23,6 +28,7 @@ const History = (() => {
     _sessions = sesData.sessions || [];
     _cardio   = cardioData.sessions || [];
     _usingMock = API.isMock();
+    _shouldStagger = true;
     render();
   }
 
@@ -119,8 +125,8 @@ const History = (() => {
           <div style="text-align:center;padding:60px 20px;color:var(--text-3)">
             <div style="font-size:40px;margin-bottom:12px">📭</div>
             <div>Sin sesiones registradas todavía</div>
-          </div>` : dates.map(date => `
-          <div style="margin-bottom:20px">
+          </div>` : dates.map((date, i) => `
+          <div class="${_shouldStagger ? 'stagger-in' : ''}" style="margin-bottom:20px${_shouldStagger ? `;animation-delay:${Math.min(i * 90, 630)}ms` : ''}">
             <div style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;
               letter-spacing:.06em;margin-bottom:10px;padding-left:4px">
               ${Utils.formatDate(date)}
@@ -132,6 +138,7 @@ const History = (() => {
       </div>`;
 
     setTimeout(_renderSplitsPaceChart, 100);
+    _shouldStagger = false; // ya se usó — expandir una tarjeta u otros re-renders no deben repetir la cascada
   }
 
   function _sessionCard(s, cardId) {
@@ -380,8 +387,8 @@ const History = (() => {
       </div>`;
   }
 
-  function setFilter(f) { _filter = f; Sounds.click(); render(); }
-  function setPhaseFilter(p) { _phaseFilter = p; Sounds.click(); render(); }
+  function setFilter(f) { _filter = f; _shouldStagger = true; Sounds.click(); render(); }
+  function setPhaseFilter(p) { _phaseFilter = p; _shouldStagger = true; Sounds.click(); render(); }
 
   function toggleExpand(id, date, isCardio) {
     _expandedId = _expandedId === id ? null : id;

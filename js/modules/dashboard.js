@@ -64,7 +64,7 @@ function _kmCarouselHTML(distanceStats, profile) {
 
   if (homeLat == null || homeLng == null) {
     return `
-    <div class="card" style="margin-bottom:20px">
+    <div class="card section">
       <div class="card-header"><div class="card-title">🏃 Kilómetros corridos</div></div>
       <div style="font-size:12px;color:var(--text-3);line-height:1.6">
         Configura tu ciudad de origen en <b>Configuración</b> para ver cuánto equivalen en distancias reales tus kilómetros corridos.
@@ -81,7 +81,7 @@ function _kmCarouselHTML(distanceStats, profile) {
   ];
 
   return `
-    <div class="card" style="margin-bottom:20px;padding:0;overflow:hidden">
+    <div class="card section" style="padding:0;overflow:hidden">
       <div style="padding:16px 16px 4px 16px">
         <div class="card-title">🏃 Kilómetros corridos</div>
         <div class="card-subtitle">Desliza para ver hoy, la semana, el mes y el año — comparado contra ${homeCity || 'tu ciudad'}</div>
@@ -121,7 +121,7 @@ function _pullUpMilestoneHTML(pullUp) {
 
   if (pullUp.achieved) {
     return `
-    <div class="card" style="margin-bottom:20px;border-color:rgba(0,255,135,0.35);background:linear-gradient(135deg, rgba(0,255,135,0.08), transparent)">
+    <div class="card section" style="border-color:rgba(0,255,135,0.35);background:linear-gradient(135deg, rgba(0,255,135,0.08), transparent)">
       <div style="display:flex;align-items:center;gap:14px">
         <div style="font-size:36px">🏆</div>
         <div>
@@ -137,7 +137,7 @@ function _pullUpMilestoneHTML(pullUp) {
   }
 
   return `
-    <div class="card" style="margin-bottom:20px">
+    <div class="card section">
       <div style="display:flex;align-items:center;gap:14px">
         <div style="font-size:32px">🎯</div>
         <div style="flex:1">
@@ -154,7 +154,7 @@ function _pullUpMilestoneHTML(pullUp) {
 function _achievementsHTML(achievements) {
   if (!achievements || !achievements.length) return '';
   return `
-    <div class="card" style="margin-bottom:20px">
+    <div class="card section">
       <div class="card-header">
         <div class="card-title">⭐ Logros (${achievements.length})</div>
       </div>
@@ -710,6 +710,16 @@ function _renderDashboard(container, data, doneDayNames, records, allSessions, l
         </div>`).join('')}
     </div>
   </div>`;
+
+  // Entrada en cascada — cada .section aparece con un pequeño retraso
+  // creciente sobre la anterior, en vez de que todo el Dashboard
+  // aparezca de golpe al abrir la app. Tope en 400ms: si algún día hay
+  // muchas más secciones, que abrir la app no se sienta lento por
+  // esperar a que la última termine de aparecer.
+  container.querySelectorAll('.section').forEach((el, i) => {
+    el.classList.add('stagger-in');
+    el.style.animationDelay = `${Math.min(i * 60, 400)}ms`;
+  });
 
   // Renderizar chart FC tendencia — esperar a que el DOM esté pintado
   setTimeout(() => _renderFCChart(allSessions), 100);
