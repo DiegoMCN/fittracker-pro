@@ -498,12 +498,16 @@ const Router = (() => {
       // Ejecutar módulo
       if (_routes[page]) {
         content.style.opacity = '0';
-        content.style.transform = 'translateY(8px)';
+        content.style.transform = 'translateY(10px) scale(0.985)';
         _routes[page](content, params);
         requestAnimationFrame(() => {
-          content.style.transition = 'all 250ms cubic-bezier(0.4,0,0.2,1)';
+          // Misma familia de curva "ease-out premium" que usan las
+          // apps de iOS para cambiar de pestaña — desacelera fuerte
+          // sin rebotar, se siente "caro" sin la exageración de un
+          // resorte real (ese se guarda para celebraciones puntuales).
+          content.style.transition = 'opacity 280ms cubic-bezier(0.16,1,0.3,1), transform 280ms cubic-bezier(0.16,1,0.3,1)';
           content.style.opacity = '1';
-          content.style.transform = 'translateY(0)';
+          content.style.transform = 'translateY(0) scale(1)';
         });
       } else {
         content.innerHTML = `<div style="text-align:center;padding:60px;color:var(--text-3)">
