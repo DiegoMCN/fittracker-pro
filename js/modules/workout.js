@@ -1408,6 +1408,7 @@ const Workout = (() => {
 
     const payload = {
       date: Utils.today(),
+      startedAt: state.startedAt, // huella única para que el backend detecte reintentos duplicados de la cola offline
       day: state.dayName,
       type: 'Fuerza',
       week: CONFIG.CURRENT_PHASE.currentWeek,
@@ -1457,11 +1458,17 @@ const Workout = (() => {
         // PR genérico, para que no se encimen dos modales de celebración
         // si ambas cosas pasan en la misma sesión.
         _showSummary(payload, doneSets, totalSets, false);
-        (async () => {
-          await RecordCelebration.checkPullUpMilestone(payload);
-          RecordCelebration.checkNewAchievements(result.newAchievements);
-          RecordCelebration.checkStrength(payload);
-        })();
+        // Si el backend detectó que esto ya se había guardado antes (un
+        // reintento de la cola offline tras cerrar la app a medias), las
+        // celebraciones ya se mostraron en el guardado original — no
+        // repetirlas aquí.
+        if (!result.duplicate) {
+          (async () => {
+            await RecordCelebration.checkPullUpMilestone(payload);
+            RecordCelebration.checkNewAchievements(result.newAchievements);
+            RecordCelebration.checkStrength(payload);
+          })();
+        }
       }
     } catch(err) {
       if (btn) { btn.disabled = false; btn.innerHTML = skip ? 'Omitir' : 'Guardar sesión'; }

@@ -23,10 +23,11 @@ const Configuracion = (() => {
     const savedCity = _profile?.Ciudad_Origen || '';
     const savedLat  = _profile?.Ciudad_Lat;
     const savedLng  = _profile?.Ciudad_Lng;
+    const pendingCount = typeof OfflineQueue !== 'undefined' ? OfflineQueue.count() : 0;
 
     container.innerHTML = `
       <div style="max-width:520px;margin:0 auto">
-        <div class="card">
+        <div class="card stagger-in">
           <div class="card-header">
             <div>
               <div class="card-title">🏠 Ciudad de origen ("casa")</div>
@@ -54,6 +55,23 @@ const Configuracion = (() => {
           </button>
 
           <div id="cfg-geocode-result"></div>
+        </div>
+
+        <div class="card" style="margin-top:20px">
+          <div class="card-header">
+            <div>
+              <div class="card-title">🧹 Mantenimiento</div>
+              <div class="card-subtitle">Datos guardados en este teléfono que todavía no se han subido</div>
+            </div>
+          </div>
+          <div id="cfg-queue-status" style="font-size:12px;color:var(--text-3);margin-bottom:12px">
+            ${pendingCount > 0
+              ? `${pendingCount} elemento${pendingCount === 1 ? '' : 's'} esperando a subirse`
+              : 'No hay nada pendiente por subir ahora mismo'}
+          </div>
+          <button class="btn btn-secondary" style="width:100%" onclick="Configuracion.clearLocalData()">
+            🗑️ Borrar datos guardados localmente
+          </button>
         </div>
       </div>`;
   }
@@ -108,7 +126,23 @@ const Configuracion = (() => {
     }
   }
 
-  return { init, geocode, confirmSave };
+  // Escape manual — ver el comentario en OfflineQueue.clearAll()
+  // (offline.js). Confirma primero mostrando cuántos elementos hay,
+  // porque esto SÍ puede perder una sesión que aún no se subió.
+  function clearLocalData() {
+    const n = typeof OfflineQueue !== 'undefined' ? OfflineQueue.count() : 0;
+    const msg = n > 0
+      ? `Hay ${n} elemento${n === 1 ? '' : 's'} guardado${n === 1 ? '' : 's'} localmente que todavía no se ha${n === 1 ? '' : 'n'} subido. Si los borras, se pierden para siempre. ¿Continuar?`
+      : 'No hay nada pendiente, pero esto de todas formas limpia cualquier dato guardado localmente. ¿Continuar?';
+    if (!confirm(msg)) return;
+
+    Sounds.click();
+    if (typeof OfflineQueue !== 'undefined') OfflineQueue.clearAll();
+    Toast.success('Datos locales borrados');
+    _render(document.getElementById('page-content'));
+  }
+
+  return { init, geocode, confirmSave, clearLocalData };
 })();
 
 function initConfiguracion(container) { Configuracion.init(container); }

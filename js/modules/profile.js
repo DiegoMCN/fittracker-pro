@@ -5,6 +5,10 @@
 const Profile = (() => {
 
   let _profile = null;
+  // true SOLO en la carga inicial — guardar peso/composición/medidas
+  // también llama render(), pero es una confirmación de guardado, no
+  // una vista nueva.
+  let _shouldStagger = false;
   let _history = [];
   let _measurements = [];
   let _insights = {};
@@ -38,6 +42,7 @@ const Profile = (() => {
     _measurements = measRes.history || [];
     _insights = insightsRes.insights || {};
     _usingMock = API.isMock();
+    _shouldStagger = true;
     render();
   }
 
@@ -64,7 +69,7 @@ const Profile = (() => {
         <div class="grid-2" style="margin-bottom:24px">
 
           <!-- Datos básicos -->
-          <div class="card">
+          <div class="card section">
             <div class="card-header">
               <div class="card-title">Datos básicos</div>
               <button class="btn btn-ghost btn-sm" onclick="Profile.editBasics()">✏️ Editar</button>
@@ -91,7 +96,7 @@ const Profile = (() => {
           </div>
 
           <!-- Última composición -->
-          <div class="card">
+          <div class="card section">
             <div class="card-header">
               <div>
                 <div class="card-title">Última composición corporal</div>
@@ -122,7 +127,7 @@ const Profile = (() => {
         </div>
 
         <!-- Todos los indicadores -->
-        <div class="card" style="margin-bottom:24px">
+        <div class="card section" style="margin-bottom:24px">
           <div class="card-header">
             <div>
               <div class="card-title">Composición corporal completa</div>
@@ -154,7 +159,7 @@ const Profile = (() => {
 
         <!-- Gráfica de tendencia — peso y grasa corporal en el tiempo -->
         ${_history.length >= 2 ? `
-        <div class="card" style="margin-bottom:24px">
+        <div class="card section" style="margin-bottom:24px">
           <div class="card-header">
             <div>
               <div class="card-title">Tendencia</div>
@@ -170,7 +175,7 @@ const Profile = (() => {
 
         <!-- Historial -->
         ${_history.length > 0 ? `
-        <div class="card">
+        <div class="card section">
           <div class="card-header">
             <div class="card-title">Historial de mediciones</div>
             <div class="card-subtitle">${_history.length} registro${_history.length !== 1 ? 's' : ''}</div>
@@ -190,7 +195,7 @@ const Profile = (() => {
         </div>` : ''}
 
         <!-- Medidas con cinta métrica -->
-        <div class="card" style="margin-top:20px">
+        <div class="card section" style="margin-top:20px">
           <div class="card-header">
             <div>
               <div class="card-title">📏 Medidas corporales</div>
@@ -244,6 +249,14 @@ const Profile = (() => {
 
     setTimeout(_renderTrendChart, 100);
     setTimeout(_renderMeasurementsChart, 100);
+
+    if (_shouldStagger) {
+      container.querySelectorAll('.section').forEach((el, i) => {
+        el.classList.add('stagger-in');
+        el.style.animationDelay = `${Math.min(i * 90, 630)}ms`;
+      });
+      _shouldStagger = false;
+    }
   }
 
   // ── EDITAR DATOS BÁSICOS ──────────────────────────────────────────────

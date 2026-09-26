@@ -82,7 +82,7 @@ const Calendario = (() => {
           </div>
         </div>` : ''}
 
-        <div class="card" style="margin-bottom:20px">
+        <div class="card section" style="margin-bottom:20px">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
             <button class="btn btn-secondary btn-icon" onclick="Calendario.changeMonth(-1)">←</button>
             <div style="text-align:center">
@@ -159,7 +159,7 @@ const Calendario = (() => {
           </div>
         </div>
 
-        <div class="card">
+        <div class="card section">
           <div class="card-header"><div class="card-title">📊 Resumen de ${MONTH_NAMES[month]}</div></div>
           ${(() => {
             const monthPrefix = `${year}-${String(month+1).padStart(2,'0')}`;
@@ -189,6 +189,15 @@ const Calendario = (() => {
           })()}
         </div>
       </div>`;
+
+    // Cada render() aquí es una vista nueva de verdad (mes distinto),
+    // así que no hace falta la bandera de "solo una vez" — a
+    // diferencia de otros módulos, abrir un día (openDay) no pasa
+    // por render(), usa su propio modal.
+    container.querySelectorAll('.section').forEach((el, i) => {
+      el.classList.add('stagger-in');
+      el.style.animationDelay = `${Math.min(i * 90, 630)}ms`;
+    });
   }
 
   function openDay(dateStr) {

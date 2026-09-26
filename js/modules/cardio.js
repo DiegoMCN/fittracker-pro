@@ -818,6 +818,7 @@ const Cardio = (() => {
 
     const payload = {
       date: Utils.today(),
+      startedAt: state.startedAt, // huella única para que el backend detecte reintentos duplicados de la cola offline
       week: CONFIG.CURRENT_PHASE.currentWeek,
       phase: CONFIG.CURRENT_PHASE.name,
       type: state.protocol.name,
@@ -854,8 +855,12 @@ const Cardio = (() => {
       } else {
         Sounds.sessionDone(); Haptics.done();
         _showCardioSummary(payload, false, protocolDay);
-        RecordCelebration.checkNewAchievements(result.newAchievements);
-        RecordCelebration.checkCardio(stats);
+        // Igual que en workout.js — un duplicado detectado por el
+        // backend ya tuvo su celebración en el guardado original.
+        if (!result.duplicate) {
+          RecordCelebration.checkNewAchievements(result.newAchievements);
+          RecordCelebration.checkCardio(stats);
+        }
       }
     } catch(err) {
       Sounds.error();

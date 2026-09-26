@@ -9,6 +9,10 @@ const Nutricion = (() => {
   const MEAL_ICONS = { desayuno: '☀️', comida: '🍽️', snack1: '🍎', cena: '🌙' };
 
   let _tab = 'hoy';
+  // true SOLO en carga inicial y cambio de pestaña — editar/guardar una
+  // comida o marca también llama render(), pero eso es un detalle, no
+  // una vista nueva.
+  let _shouldStagger = false;
   let _mealLog = [];
   let _brands = [];
   let _usingMock = false;
@@ -28,10 +32,11 @@ const Nutricion = (() => {
     _brands = brandsRes.brands || [];
     _plan = planRes;
     _usingMock = API.isMock();
+    _shouldStagger = true;
     render();
   }
 
-  function setTab(tab) { _tab = tab; render(); }
+  function setTab(tab) { _tab = tab; _shouldStagger = true; render(); }
 
   function render() {
     const container = document.getElementById('page-content');
@@ -65,7 +70,7 @@ const Nutricion = (() => {
 
     return `
       <!-- Recomendaciones generales — arriba de todo, siempre visibles -->
-      <div class="card card-accent" style="margin-bottom:20px">
+      <div class="card card-accent section" style="margin-bottom:20px">
         <div class="card-header"><div class="card-title">💡 Recomendaciones generales</div></div>
         <div style="display:flex;flex-direction:column;gap:8px">
           ${np.generalRecommendations.map(r => `
@@ -77,7 +82,7 @@ const Nutricion = (() => {
 
       <div style="font-size:11px;color:var(--text-3);margin-bottom:16px">${Utils.formatDate(today)}</div>
 
-      <div style="display:flex;flex-direction:column;gap:22px;margin-bottom:24px">
+      <div class="section" style="display:flex;flex-direction:column;gap:22px;margin-bottom:24px">
         ${MEAL_KEYS.map(key => {
           const label = MEAL_LABELS[key];
           const logged = todayLog.find(m => m.comida === label);
@@ -175,7 +180,7 @@ const Nutricion = (() => {
         </div>`;
       }).join('')}
 
-      <div class="card">
+      <div class="card section">
         <div class="card-header">
           <div>
             <div class="card-title">🔄 Grupos de alimentos equivalentes</div>
@@ -204,6 +209,14 @@ const Nutricion = (() => {
           </details>`).join('')}
       </div>
     `;
+
+    if (_shouldStagger) {
+      container.querySelectorAll('.section').forEach((el, i) => {
+        el.classList.add('stagger-in');
+        el.style.animationDelay = `${Math.min(i * 90, 630)}ms`;
+      });
+      _shouldStagger = false;
+    }
   }
 
   function _equivIcon(grupo) {
