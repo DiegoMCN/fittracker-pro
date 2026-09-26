@@ -711,19 +711,26 @@ function _renderDashboard(container, data, doneDayNames, records, allSessions, l
     </div>
   </div>`;
 
-  // Entrada en cascada — cada .section aparece con un pequeño retraso
-  // creciente sobre la anterior, en vez de que todo el Dashboard
-  // aparezca de golpe al abrir la app. Tope en 400ms: si algún día hay
-  // muchas más secciones, que abrir la app no se sienta lento por
-  // esperar a que la última termine de aparecer.
+  // Entrada en cascada — cada .section aparece con un retraso creciente
+  // sobre la anterior. 90ms entre cada una (antes 60ms, se sentía más
+  // como un parpadeo que como una cascada) y tope en 630ms — con la
+  // animación de 550ms cada una, la cascada completa dura ~1.2s: se
+  // alcanza a apreciar sin que abrir la app se sienta lento.
   container.querySelectorAll('.section').forEach((el, i) => {
     el.classList.add('stagger-in');
-    el.style.animationDelay = `${Math.min(i * 60, 400)}ms`;
+    el.style.animationDelay = `${Math.min(i * 90, 630)}ms`;
   });
 
   // Renderizar chart FC tendencia — esperar a que el DOM esté pintado
   setTimeout(() => _renderFCChart(allSessions), 100);
   setTimeout(() => _initKmMaps(), 100);
+
+  // Pull-to-refresh — mismo efecto que el botón de sincronizar de la
+  // barra lateral, pero con el gesto nativo de "jalar para refrescar".
+  Gestures.enablePullToRefresh(container, async () => {
+    API.clearCache();
+    await initDashboard(container);
+  });
 }
 
 // Construye la lista de récords reales — si no hay datos suficientes

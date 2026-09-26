@@ -188,7 +188,7 @@ const Workout = (() => {
           <div style="font-size:11px;color:var(--text-3);line-height:1.5">Esta fase ya no está activa — solo la puedes consultar. Para entrenar, cambia a la fase actual arriba.</div>
         </div>` : ''}
 
-        <div class="card" style="margin-bottom:20px">
+        <div class="card" id="phase-swipe-zone" style="margin-bottom:20px">
           <div class="card-header">
             <div>
               <div class="card-title">¿Qué día quieres entrenar?
@@ -232,6 +232,18 @@ const Workout = (() => {
           ✏️ Empezar sesión libre (sin plan base)
         </button>` : ''}
       </div>`;
+
+    // Swipe entre pestañas de fase — acotado a la tarjeta del
+    // selector de día (no todo el contenedor), para no chocar con el
+    // scroll horizontal propio de la fila de pestañas si algún día
+    // hay muchas fases.
+    if (showTabs) {
+      const idx = realPhases.findIndex(p => p.number === viewingPhaseNumber);
+      Gestures.onSwipe(document.getElementById('phase-swipe-zone'), {
+        onLeft:  () => { if (idx < realPhases.length - 1) switchPhase(realPhases[idx + 1].number, container); },
+        onRight: () => { if (idx > 0) switchPhase(realPhases[idx - 1].number, container); },
+      });
+    }
   }
 
   function lockedDayTap() {

@@ -89,22 +89,25 @@ const Cardio = (() => {
     const maxEffort = p.phases.some(ph => ph.effort === 'max') ? 'max' : p.phases.some(ph => ph.effort === 'z2') ? 'z2' : 'moderate';
     return `
       <div onclick="Cardio.selectProtocol('${key}')" style="
-        display:flex;align-items:center;gap:${compact ? '10px' : '14px'};padding:${compact ? '10px 12px' : '16px'};border-radius:12px;cursor:pointer;
+        display:flex;flex-direction:column;gap:${compact ? '6px' : '8px'};padding:${compact ? '10px 12px' : '16px'};border-radius:12px;cursor:pointer;
         background:${isToday ? 'var(--accent-glow)' : 'var(--bg-input)'};
         border:1px solid ${isToday ? 'var(--border-accent)' : 'var(--border)'};
         transition:all 0.15s"
         onmouseenter="this.style.borderColor='var(--text-4)'"
         onmouseleave="this.style.borderColor='${isToday ? 'var(--border-accent)' : 'var(--border)'}'">
-        <div style="width:${compact ? '36px' : '44px'};height:${compact ? '36px' : '44px'};border-radius:10px;background:${EFFORT_COLOR[maxEffort]}22;
-          display:flex;align-items:center;justify-content:center;font-size:${compact ? '16px' : '20px'};flex-shrink:0">
-          ${maxEffort === 'max' ? '🔥' : maxEffort === 'z2' ? '🧘' : '⚡'}
+        <div style="display:flex;align-items:center;gap:${compact ? '10px' : '14px'}">
+          <div style="width:${compact ? '36px' : '44px'};height:${compact ? '36px' : '44px'};border-radius:10px;background:${EFFORT_COLOR[maxEffort]}22;
+            display:flex;align-items:center;justify-content:center;font-size:${compact ? '16px' : '20px'};flex-shrink:0">
+            ${maxEffort === 'max' ? '🔥' : maxEffort === 'z2' ? '🧘' : '⚡'}
+          </div>
+          <div style="flex:1">
+            <div style="font-weight:600;font-size:${compact ? '13px' : '14px'}">${p.name}</div>
+            <div style="font-size:11px;color:var(--text-3)">${p.phases.length} fases · ~${totalMin} min total</div>
+          </div>
+          ${isToday ? '<span style="font-size:10px;background:var(--accent);color:var(--bg-primary);padding:2px 8px;border-radius:99px;font-weight:700">HOY</span>' : ''}
+          <span style="color:var(--text-4)">→</span>
         </div>
-        <div style="flex:1">
-          <div style="font-weight:600;font-size:${compact ? '13px' : '14px'}">${p.name}</div>
-          <div style="font-size:11px;color:var(--text-3)">${p.phases.length} fases · ~${totalMin} min total</div>
-        </div>
-        ${isToday ? '<span style="font-size:10px;background:var(--accent);color:var(--bg-primary);padding:2px 8px;border-radius:99px;font-weight:700">HOY</span>' : ''}
-        <span style="color:var(--text-4)">→</span>
+        ${p.notes ? `<div style="font-size:11px;color:var(--text-3);background:var(--bg-card);border-radius:8px;padding:8px 10px;line-height:1.5">💡 ${p.notes}</div>` : ''}
       </div>`;
   }
 

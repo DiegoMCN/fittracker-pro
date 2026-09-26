@@ -236,6 +236,22 @@ const Calendario = (() => {
         </div>
       </div>`;
     document.body.appendChild(overlay);
+
+    // Swipe para moverse al día anterior/siguiente sin cerrar y volver
+    // a abrir el modal a mano — desliza sobre el modal mismo, no sobre
+    // el overlay completo (así no interfiere con tocar fuera para
+    // cerrar).
+    const modalEl = overlay.querySelector('.modal');
+    Gestures.onSwipe(modalEl, {
+      onLeft:  () => { overlay.remove(); openDay(_shiftDate(dateStr, 1)); },
+      onRight: () => { overlay.remove(); openDay(_shiftDate(dateStr, -1)); },
+    });
+  }
+
+  function _shiftDate(dateStr, deltaDays) {
+    const d = new Date(dateStr + 'T00:00:00');
+    d.setDate(d.getDate() + deltaDays);
+    return _fmtDate(d);
   }
 
   return { init, changeMonth, goToday, openDay };

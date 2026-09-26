@@ -266,8 +266,17 @@ const Coach = (() => {
         Toast.success('Consejo generado 🤖');
         render();
       } else if (res.duplicate) {
-        Toast.warning('Ya hay una solicitud en curso — espera a que termine antes de volver a pedir.');
-        if (btn) { btn.disabled = false; btn.innerHTML = '🎯 Generar consejo de hoy'; }
+        Toast.warning(res.message || 'Ya se generó un consejo hace poco — espera unos minutos antes de volver a pedir.');
+        // El candado del backend dura 5 minutos — se deja el botón
+        // deshabilitado ese mismo tiempo en vez de reactivarlo de
+        // inmediato, para no invitar a tocarlo otra vez sabiendo que
+        // solo va a rebotar contra el mismo enfriamiento.
+        if (btn) {
+          btn.innerHTML = '⏳ Espera unos minutos...';
+          setTimeout(() => {
+            if (btn) { btn.disabled = false; btn.innerHTML = '🎯 Generar consejo de hoy'; }
+          }, 5 * 60 * 1000);
+        }
       } else {
         Toast.warning('No se pudo generar el consejo — revisa el log de Apps Script (Ejecuciones) para ver la causa exacta: puede ser la API key, cuota agotada, o un error de la API');
         if (btn) { btn.disabled = false; btn.innerHTML = '🎯 Generar consejo de hoy'; }
