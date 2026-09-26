@@ -26,6 +26,18 @@ const OfflineQueue = (() => {
 
   function list()  { return _get(); }
   function count() { return _get().length; }
+
+  // Botón manual de "borrar datos locales" en Configuración — un
+  // escape a mano por si algo se queda atorado en la cola y el
+  // candado del backend (Timestamp único, ver saveSession/saveCardio)
+  // no aplica por algún motivo que no anticipamos. Se pierde
+  // cualquier sesión guardada localmente que aún no se haya
+  // subido — por eso Configuración pide confirmación antes de llamar
+  // esto, mostrando cuántas hay pendientes.
+  function clearAll() {
+    _set([]);
+    _updateBadge();
+  }
   function remove(id) { _set(_get().filter(x => x.id !== id)); _updateBadge(); }
 
   // Intenta enviar todo lo pendiente. No usa la cola de retry normal de
@@ -68,7 +80,7 @@ const OfflineQueue = (() => {
     }
   }
 
-  return { add, list, count, remove, flush, updateBadge: _updateBadge };
+  return { add, list, count, remove, flush, clearAll, updateBadge: _updateBadge };
 })();
 
 // ── AUTO-SYNC ──────────────────────────────────────────────────────────
