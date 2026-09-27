@@ -35,6 +35,20 @@ const Gestures = (() => {
   }
 
   // ── PULL-TO-REFRESH ──────────────────────────────────────────────────
+  // Misma fórmula de "resistencia de liga" que usa UIScrollView en iOS
+  // (la que hace que jalar una lista nativa se sienta cada vez más
+  // "dura" mientras más jalas, en vez de moverse 1:1 con el dedo):
+  //   resistido = (distancia × techo × constante) / (techo + constante × distancia)
+  // Conforme "distancia" crece, el resultado se acerca a "techo" pero
+  // nunca lo pasa — así entre más jalas, menos avanza el indicador por
+  // cada pixel de dedo, exactamente como tensar la cuerda de un arco.
+  // constante=0.55 es el valor que usa Apple mismo.
+  const RUBBER_BAND_CEILING = 80;
+  const RUBBER_BAND_CONST = 0.55;
+  function _rubberBand(distance) {
+    return (distance * RUBBER_BAND_CEILING * RUBBER_BAND_CONST) / (RUBBER_BAND_CEILING + RUBBER_BAND_CONST * distance);
+  }
+
   // Solo se activa si el jalón empieza con el contenedor pegado arriba
   // del todo (scrollTop === 0) — si no, es scroll normal hacia abajo
   // dentro del contenido, no una intención de refrescar. Necesita
@@ -63,7 +77,6 @@ const Gestures = (() => {
           position:absolute; top:-46px; left:0; right:0; height:46px;
           display:flex; align-items:center; justify-content:center;
           color:var(--accent); font-size:20px; opacity:0; pointer-events:none;
-          transition:opacity 0.15s;
         `;
         ind.textContent = '↓';
         scrollContainer.prepend(ind);
@@ -77,7 +90,11 @@ const Gestures = (() => {
     scrollContainer._ptrEnabled = true;
 
     let startY = 0, pulling = false, dist = 0;
-    const TRIGGER = 65, MAX_PULL = 90;
+    // TRIGGER es en pixeles YA CON RESISTENCIA (visuales, no los que
+    // de verdad recorrió el dedo) — con la fórmula de arriba, jalar
+    // 50px visuales requiere mover el dedo real bastante más que eso,
+    // así que ya no dispara con "apenas y hago hacia abajo".
+    const TRIGGER = 50;
 
     scrollContainer.addEventListener('touchstart', (e) => {
       if (scrollContainer.scrollTop > 0) { pulling = false; return; }
@@ -85,17 +102,21 @@ const Gestures = (() => {
       pulling = true;
       dist = 0;
       ensureIndicator(); // por si el render anterior lo destruyó y no ha vuelto a jalar desde entonces
+      // Sin transición mientras se jala — tiene que seguir al dedo en
+      // tiempo real, 1 a 1 con cada evento de touchmove. La animación
+      // se agrega solo al soltar (abajo), nunca durante el jalón.
+      scrollContainer._ptrIndicator.style.transition = 'none';
     }, { passive: true });
 
     scrollContainer.addEventListener('touchmove', (e) => {
       if (!pulling) return;
-      dist = e.touches[0].clientY - startY;
-      if (dist <= 0) { pulling = false; scrollContainer._ptrIndicator.style.opacity = '0'; return; }
+      const rawDist = e.touches[0].clientY - startY;
+      if (rawDist <= 0) { pulling = false; scrollContainer._ptrIndicator.style.opacity = '0'; return; }
       e.preventDefault(); // aquí sí — es el jalón que queremos controlar nosotros, no el navegador
-      const clamped = Math.min(dist, MAX_PULL);
+      dist = _rubberBand(rawDist); // esta es la distancia YA resistida — la que de verdad se usa para pintar y para el umbral
       const progress = Math.min(dist / TRIGGER, 1);
       const ind = scrollContainer._ptrIndicator;
-      ind.style.transform = `translateY(${clamped}px) rotate(${progress * 180}deg)`;
+      ind.style.transform = `translateY(${dist}px) rotate(${progress * 180}deg)`;
       ind.style.opacity = String(progress);
     }, { passive: false });
 
@@ -103,8 +124,11 @@ const Gestures = (() => {
       if (!pulling) return;
       pulling = false;
       const ind = scrollContainer._ptrIndicator;
+      // Resorte real al soltar — la misma curva con rebote que ya usa
+      // el resto de la app (--transition-spring), no un salto seco a 0.
+      ind.style.transition = `transform var(--transition-spring), opacity var(--transition-spring)`;
       if (dist >= TRIGGER) {
-        ind.style.transform = 'translateY(50px)';
+        ind.style.transform = 'translateY(46px)';
         ind.textContent = '↻';
         ind.style.animation = 'spin 0.6s linear infinite';
         Haptics.medium();

@@ -226,6 +226,8 @@ const API = (() => {
       getSessionExercises: { exercises: [] },
       getStreaks: { currentStreak: 0, longestStreak: 0, weeklyTrained: 0, weeklyPlanned: 5, totalActiveDays: 0 },
       getOvertrainingStatus: { level: 'bien', flags: [] },
+      getReadinessScore: { score: 70, level: 'alto', reasons: [], daysSinceLast: null },
+      getGoalProjections: { goals: {}, targets: {} },
       getCardioSplits: { splits: [] },
       getTrainingLoad: { acute: 0, chronic: 0, acwr: null, zone: 'sin_datos', history: [] },
       getWeeklyVolume: { weeks: [] },
@@ -318,6 +320,12 @@ const API = (() => {
 
     getOvertrainingStatus: () =>
       _fetch({ action: 'getOvertrainingStatus' }),
+
+    getReadinessScore: () =>
+      _fetch({ action: 'getReadinessScore' }),
+
+    getGoalProjections: () =>
+      _fetch({ action: 'getGoalProjections' }),
 
     getCardioSplits: (date) =>
       _fetch({ action: 'getCardioSplits', date }),
