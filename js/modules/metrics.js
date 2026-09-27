@@ -10,6 +10,7 @@ const Metrics = (() => {
   let _records = {};
   let _exerciseProgress = [];
   let _volumeByGroup = [];
+  let _goalProjections = { goals: {}, targets: {} };
   // true SOLO en la carga inicial — setExerciseFilter/setExerciseViewMode
   // también llaman render() completo (solo cambia una sección, pero no
   // hay un render dirigido para esa parte sola), y sin esto CADA
@@ -39,10 +40,10 @@ const Metrics = (() => {
         ${[1,2].map(() => `<div class="skeleton" style="height:280px;border-radius:16px"></div>`).join('')}
       </div>`;
 
-    const [sesRes, cardioRes, metricsRes, progressRes, loadRes, weeklyVolRes, heatmapRes, zonesRes, bestSplitRes, insightsRes, muscleRes] = await Promise.all([
+    const [sesRes, cardioRes, metricsRes, progressRes, loadRes, weeklyVolRes, heatmapRes, zonesRes, bestSplitRes, insightsRes, muscleRes, projectionsRes] = await Promise.all([
       API.getSessions(50), API.getCardio(50), API.getMetrics(), API.getExerciseProgress(),
       API.getTrainingLoad(), API.getWeeklyVolume(12), API.getIntensityHeatmap(365), API.getCardioZoneDistribution(60),
-      API.getBestSplitEver(), API.getAllInsights(), API.getMuscleWeeklySets(4),
+      API.getBestSplitEver(), API.getAllInsights(), API.getMuscleWeeklySets(4), API.getGoalProjections(),
     ]);
 
     _sessions = (sesRes.sessions || []).slice().reverse(); // orden cronológico
@@ -58,6 +59,7 @@ const Metrics = (() => {
     _cardioZones = zonesRes;
     _bestSplit = bestSplitRes;
     _insights = insightsRes.insights || {};
+    _goalProjections = projectionsRes || { goals: {}, targets: {} };
     _usingMock = API.isMock();
 
     _shouldStagger = true;
@@ -231,6 +233,41 @@ const Metrics = (() => {
           </div>
         </div>
 
+        <!-- Proyección de metas — a tu propio ritmo de mejora, no una
+             fórmula genérica; ver _linearProjection en 10_Proyeccion.gs -->
+        <div class="card section" style="margin-bottom:24px">
+          <div class="card-header">
+            <div>
+              <div class="card-title">🔮 Proyección de metas</div>
+              <div class="card-subtitle">A tu ritmo de mejora hasta ahora — no una fecha genérica</div>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            ${Object.entries(_goalProjections.targets || {}).map(([key, t]) => {
+              const g = (_goalProjections.goals || {})[key] || {};
+              let statusHTML;
+              if (g.reached) {
+                statusHTML = `<span style="color:var(--accent);font-weight:700">🎉 ¡Ya la lograste!</span>`;
+              } else if (g.projectable) {
+                statusHTML = `<span style="color:var(--accent)">A este ritmo, la alcanzas el <strong>${Utils.formatDate(g.projectedDate)}</strong>${g.confidence === 'media' ? ' <span style="color:var(--text-4)">(tendencia con algo de variación)</span>' : ''}</span>`;
+              } else {
+                statusHTML = `<span style="color:var(--text-4)">${g.reason || 'Sin suficiente historial todavía'}</span>`;
+              }
+              return `
+              <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;background:var(--bg-input);border-radius:10px">
+                <div style="flex:1;min-width:0">
+                  <div style="font-size:12px;font-weight:600">${t.label}</div>
+                  <div style="font-size:10px;margin-top:2px">${statusHTML}</div>
+                </div>
+                <div style="text-align:right;flex-shrink:0">
+                  <div style="font-size:13px;font-weight:700">${g.current != null ? Utils.formatNum(g.current, 1) : '—'}<span style="font-size:9px;color:var(--text-3)">${t.unit}</span></div>
+                  <div style="font-size:9px;color:var(--text-3)">meta: ${t.target}${t.unit}</div>
+                </div>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>
+
         <!-- Récords por ejercicio -->
         <div class="card section" style="margin-bottom:24px">
           <div class="card-header">
@@ -341,11 +378,11 @@ const Metrics = (() => {
                   ? Math.round(((lastPoint.oneRM - firstPoint.oneRM) / firstPoint.oneRM) * 1000) / 10
                   : ex.changePct;
                 return `
-                <div class="card" style="background:var(--bg-input);border-color:transparent">
+                <div class="card" style="background:var(--bg-input);border-color:${ex.plateau ? 'rgba(245,158,11,0.35)' : 'transparent'}">
                   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
                     <div style="min-width:0">
                       <div style="font-size:12px;font-weight:600;color:var(--text-1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${ex.name}</div>
-                      <div style="font-size:9px;color:var(--text-3)">${ex.sessions} sesiones</div>
+                      <div style="font-size:9px;color:var(--text-3)">${ex.sessions} sesiones${ex.plateau ? ` · <span style="color:#F59E0B;font-weight:600">🔻 meseta (${ex.plateau.sessions} sesiones sin subir)</span>` : ''}</div>
                     </div>
                     <div style="text-align:right;flex-shrink:0">
                       <div style="font-size:13px;font-weight:700;color:var(--text-1)">${Utils.formatNum(displayVal, 1)}<span style="font-size:9px;color:var(--text-3)">kg</span></div>
@@ -550,7 +587,7 @@ const Metrics = (() => {
     exercise_progress: { title: '📈 Progresión por ejercicio', desc: 'El peso (o 1RM estimado) de cada ejercicio a través de tus sesiones — toca cualquier mini-gráfica para ver el detalle completo de ese ejercicio.' },
     volumen_distribucion: { title: '🥧 Distribución de volumen', desc: 'De qué grupo muscular viene tu volumen total — te dice si algún grupo está recibiendo mucho más (o menos) trabajo que los demás.', insightKey: 'volumen_distribucion' },
     mapa_muscular: { title: '🧍 Mapa muscular', desc: 'Cada serie completada suma a los músculos que trabaja: 1 serie al principal, 0.5 a los secundarios. El nivel (0-10) es la suma de la semana dividida entre 2. Referencias: 3-4 = mantenimiento (6-9 series), 5-7 = zona productiva (10-15 series), 8-9 = productiva alta, 10 = 20+ series, vigila la recuperación. Toca un músculo para ver de qué ejercicios vino y cómo va contra la semana anterior.', insightKey: 'mapa_muscular' },
-    acwr: { title: '⚖️ Carga de entrenamiento (ACWR)', desc: 'Compara tu volumen de esta semana contra tu promedio de las últimas 4 — fuera del rango 0.8-1.3 es zona de riesgo real de lesión, con respaldo de ciencia del deporte.' },
+    acwr: { title: '⚖️ Carga de entrenamiento (ACWR)', desc: 'Compara tu carga aguda (últimos días, con más peso a lo más reciente) contra tu carga crónica (últimas semanas) usando EWMA — el método que la evidencia actual respalda más que el promedio simple. Fuera del rango 0.8-1.3 es zona de riesgo real de lesión.' },
     volumen_semanal: { title: '📊 Volumen semanal', desc: 'Tu volumen total por semana — la vista clásica de periodización, para ver si vas en fase de acumulación o de descarga.' },
     mapa_calor: { title: '🗓️ Intensidad del último año', desc: 'Un cuadrito por día, más oscuro entre más entrenaste — la vista completa de qué tan consistente has sido en el año.' },
     zonas_cardio: { title: '💓 Distribución de zonas de cardio', desc: 'Cuánto tiempo total has pasado en cada zona de frecuencia cardíaca — te dice si tu cardio es mayormente base aeróbica o puro esfuerzo alto.' },

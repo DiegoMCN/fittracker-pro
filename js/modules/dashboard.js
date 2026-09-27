@@ -116,6 +116,30 @@ function _kmCarouselHTML(distanceStats, profile) {
 // Meta de "primera dominada libre" — Fase 2. Solo se muestra una vez
 // que ya hay al menos un intento registrado, para no ensuciar el
 // Dashboard antes de que empiece esa fase.
+// Puntaje de "listo para entrenar" — siempre con sus razones visibles
+// (nunca un número solo sin explicar), y sin alarmar de más: incluso
+// en "bajo" es información, no una orden de no entrenar hoy.
+function _readinessHTML(readiness) {
+  if (!readiness) return '';
+  const cfg = {
+    alto:  { color: 'var(--accent)',  emoji: '🟢', label: 'Alto' },
+    medio: { color: '#F59E0B',        emoji: '🟡', label: 'Medio' },
+    bajo:  { color: '#EF4444',        emoji: '🔴', label: 'Bajo' },
+  }[readiness.level] || { color: 'var(--text-3)', emoji: '⚪', label: '—' };
+
+  return `
+    <div class="card section" style="border-color:${cfg.color}44">
+      <div style="display:flex;align-items:center;gap:14px">
+        <div style="font-size:32px">${cfg.emoji}</div>
+        <div style="flex:1">
+          <div style="font-weight:700;font-size:14px">Listo para entrenar: ${cfg.label}</div>
+          <div style="font-size:11px;color:var(--text-3);margin-top:2px">${readiness.reasons.join(' · ')}</div>
+        </div>
+        <div style="font-size:24px;font-weight:800;color:${cfg.color}">${readiness.score}</div>
+      </div>
+    </div>`;
+}
+
 function _pullUpMilestoneHTML(pullUp) {
   if (!pullUp || !pullUp.attempts) return '';
 
@@ -246,7 +270,7 @@ async function initDashboard(container) {
 
   // Se piden sin caché — recién guardaste una sesión y necesitas ver
   // el dato fresco, no uno de hace 5 minutos.
-  const [data, sesRes, recordsRes, metricsRes, cardioRes, streaksRes, overtrainingRes, insightsRes, profileRes, pullUpRes, achievementsRes] = await Promise.all([
+  const [data, sesRes, recordsRes, metricsRes, cardioRes, streaksRes, overtrainingRes, insightsRes, profileRes, pullUpRes, achievementsRes, readinessRes] = await Promise.all([
     API.getDashboard(),
     API.getSessions(30),
     API.getPersonalRecords(),
@@ -258,6 +282,7 @@ async function initDashboard(container) {
     API.getProfile(),
     API.getPullUpMilestone(),
     API.getAchievements(),
+    API.getReadinessScore(),
   ]);
 
   // Sesiones reales de esta semana (Lun-Dom), para marcar los días
@@ -277,10 +302,10 @@ async function initDashboard(container) {
   const latestMetrics = metricsHistory.length ? metricsHistory[0] : null;
 
   Store.set({ dashboard: data });
-  _renderDashboard(container, data, doneDayNames, recordsRes, sesRes.sessions || [], latestMetrics, cardioRes.sessions || [], streaksRes, overtrainingRes, insightsRes.insights || {}, profileRes.profile || {}, pullUpRes, achievementsRes.achievements || []);
+  _renderDashboard(container, data, doneDayNames, recordsRes, sesRes.sessions || [], latestMetrics, cardioRes.sessions || [], streaksRes, overtrainingRes, insightsRes.insights || {}, profileRes.profile || {}, pullUpRes, achievementsRes.achievements || [], readinessRes);
 }
 
-function _renderDashboard(container, data, doneDayNames, records, allSessions, latestMetrics, allCardio, streaks, overtraining, insights, profile, pullUp, achievements) {
+function _renderDashboard(container, data, doneDayNames, records, allSessions, latestMetrics, allCardio, streaks, overtraining, insights, profile, pullUp, achievements, readiness) {
   _dashboardInsights = insights || {};
   const today     = new Date().getDay();
   const nextSes   = CONFIG.WEEK_PLAN[today] || CONFIG.WEEK_PLAN[(today + 1) % 7];
@@ -313,6 +338,8 @@ function _renderDashboard(container, data, doneDayNames, records, allSessions, l
       <button class="btn btn-secondary btn-icon btn-lg" onclick="Router.navigate('plan')" title="Ver plan">📅</button>
     </div>
   </div>
+
+  ${_readinessHTML(readiness)}
 
   <!-- Consejo del Coach IA — resumen corto de solo lectura, se genera
        únicamente con el botón del módulo Coach IA -->

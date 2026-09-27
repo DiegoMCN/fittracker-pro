@@ -857,7 +857,7 @@ const Cardio = (() => {
         _showCardioSummary(payload, true, protocolDay);
       } else {
         Sounds.sessionDone(); Haptics.done();
-        _showCardioSummary(payload, false, protocolDay);
+        _showCardioSummary(payload, false, protocolDay, result.weather);
         // Igual que en workout.js — un duplicado detectado por el
         // backend ya tuvo su celebración en el guardado original.
         if (!result.duplicate) {
@@ -876,7 +876,7 @@ const Cardio = (() => {
     state = null;
   }
 
-  function _showCardioSummary(payload, queued, protocolDay) {
+  function _showCardioSummary(payload, queued, protocolDay, weather) {
     const container = document.getElementById('page-content');
     if (!container) return;
 
@@ -884,7 +884,7 @@ const Cardio = (() => {
       <div style="max-width:480px;margin:60px auto;text-align:center" class="animate-bounce-in">
         <div style="font-size:64px;margin-bottom:16px">${queued ? '📥' : '🏁'}</div>
         <h2 style="font-size:22px;font-weight:800;margin-bottom:6px">${queued ? 'Guardado localmente' : '¡Cardio completado!'}</h2>
-        <p style="color:var(--text-3);font-size:13px;margin-bottom:${queued ? '8px' : '28px'}">${payload.type} · ${Utils.formatDuration(payload.duration)}</p>
+        <p style="color:var(--text-3);font-size:13px;margin-bottom:${queued ? '8px' : '28px'}">${payload.type} · ${Utils.formatDuration(payload.duration)}${weather ? ` · ${weather.tempC}°C / ${weather.humidityPct}% humedad` : ''}</p>
         ${queued ? `<p style="color:var(--warning);font-size:11px;margin-bottom:28px">⏳ Se sincronizará con tu Sheet automáticamente cuando vuelva la conexión</p>` : ''}
 
         <div class="grid-2" style="margin-bottom:28px">
