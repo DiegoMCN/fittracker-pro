@@ -37,7 +37,7 @@ const History = (() => {
     const fromCardio = _cardio.map(c => ({
       date: c.date, type: 'Cardio', duration: c.duration, fcAvg: c.fcAvg, fcPeak: c.fcPeak,
       calories: c.caloriasActivas, calTotal: c.caloriasTotales, paceProm: c.paceProm,
-      effort: c.effort || null, volume: null, notes: c.notes, _kind: 'cardio',
+      effort: c.effort || null, sleep: c.sleep || null, volume: null, notes: c.notes, _kind: 'cardio',
       distance: c.distance, cadAvg: c.cadAvg, cadPeak: c.cadPeak, cadPeakVal: c.cadPeak,
       velMax: c.velMax, fcPost1: c.fcPost1, fcPost2: c.fcPost2, rec2min: c.rec2min,
       zone1: c.zone1, zone2: c.zone2, zone3: c.zone3, zone4: c.zone4, zone5: c.zone5,
@@ -640,9 +640,15 @@ const History = (() => {
             <div class="input-group" style="flex:1"><label class="input-label">Zona 5</label><input class="input" id="ce-z5" value="${s.zone5 || ''}"></div>
           </div>
 
-          <div class="input-group">
-            <label class="input-label">Esfuerzo percibido (1-10)</label>
-            <input class="input" type="number" min="1" max="10" id="ce-effort" value="${s.effort || ''}" placeholder="Cómo se sintió — es la base de tu carga">
+          <div class="input-row">
+            <div class="input-group" style="flex:1">
+              <label class="input-label">Esfuerzo percibido (1-10)</label>
+              <input class="input" type="number" min="1" max="10" id="ce-effort" value="${s.effort || ''}" placeholder="Base de tu carga">
+            </div>
+            <div class="input-group" style="flex:1">
+              <label class="input-label">¿Cómo dormiste? (1-10)</label>
+              <input class="input" type="number" min="1" max="10" id="ce-sleep" value="${s.sleep || ''}" placeholder="Opcional">
+            </div>
           </div>
 
           <div id="ce-splits-section"></div>
@@ -765,7 +771,7 @@ const History = (() => {
       zone1: val('ce-z1'), zone2: val('ce-z2'), zone3: val('ce-z3'), zone4: val('ce-z4'), zone5: val('ce-z5'),
       caloriasActivas: val('ce-cal-active'), caloriasTotales: val('ce-cal-total'), paceProm: val('ce-pace'),
       splits: _collectCardioEditSplits(),
-      effort: val('ce-effort'),
+      effort: val('ce-effort'), sleep: val('ce-sleep'),
       notes: val('ce-notes'),
     };
 

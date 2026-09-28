@@ -1281,13 +1281,16 @@ const Workout = (() => {
       if (!confirm('No has marcado ninguna serie como completada. ¿Terminar de todas formas?')) return;
     }
 
-    _renderStatsForm(doneSets, totalSets);
+    RecoveryTimer.start({
+      onComplete: (vals) => _renderStatsForm(doneSets, totalSets, vals),
+      onSkip: () => _renderStatsForm(doneSets, totalSets, null),
+    });
   }
 
   // ── CAPTURA DE DATOS DEL RELOJ (calorías, FC, esfuerzo) ────────────────
   // Se pide ANTES de guardar — así el registro queda completo desde el
   // inicio y el dashboard no muestra "0 kcal" ni "—/10" de esfuerzo.
-  function _renderStatsForm(doneSets, totalSets) {
+  function _renderStatsForm(doneSets, totalSets, recovery) {
     const container = document.getElementById('page-content');
     if (!container) return;
 
@@ -1327,6 +1330,12 @@ const Workout = (() => {
                 <input class="input" type="number" id="ws-effort" min="1" max="10" placeholder="7">
               </div>
               <div class="input-group" style="flex:1">
+                <label class="input-label">¿Cómo dormiste? (1-10)</label>
+                <input class="input" type="number" id="ws-sleep" min="1" max="10" placeholder="8">
+              </div>
+            </div>
+            <div class="input-row">
+              <div class="input-group" style="flex:1">
                 <label class="input-label">Peso corporal (opcional)</label>
                 <input class="input" type="number" step="0.1" id="ws-weight" placeholder="kg">
               </div>
@@ -1339,10 +1348,10 @@ const Workout = (() => {
         </div>
 
         <button class="btn btn-ghost btn-sm" style="width:100%;margin-top:10px" onclick="Workout.toggleAdvancedStats()">
-          <span id="ws-advanced-arrow">▸</span> Zonas de FC y recuperación (opcional)
+          <span id="ws-advanced-arrow">${recovery ? "▾" : "▸"}</span> Zonas de FC y recuperación (opcional)
         </button>
 
-        <div id="ws-advanced-block" style="display:none">
+        <div id="ws-advanced-block" style="display:${recovery ? "block" : "none"}">
           <div class="card" style="margin-top:10px">
             <div style="font-size:11px;color:var(--text-3);margin-bottom:12px">
               Del reloj: pantalla "Heart Rate" del entrenamiento → tiempo en cada zona y FC post-esfuerzo a 0/1/2 min.
@@ -1382,15 +1391,15 @@ const Workout = (() => {
             <div class="input-row">
               <div class="input-group" style="flex:1">
                 <label class="input-label">Al terminar</label>
-                <input class="input" type="number" id="ws-fcpost0" placeholder="bpm">
+                <input class="input" type="number" id="ws-fcpost0" placeholder="bpm" value="${recovery?.fcPost0 || ''}">
               </div>
               <div class="input-group" style="flex:1">
                 <label class="input-label">1 min después</label>
-                <input class="input" type="number" id="ws-fcpost1" placeholder="bpm">
+                <input class="input" type="number" id="ws-fcpost1" placeholder="bpm" value="${recovery?.fcPost1 || ''}">
               </div>
               <div class="input-group" style="flex:1">
                 <label class="input-label">2 min después</label>
-                <input class="input" type="number" id="ws-fcpost2" placeholder="bpm">
+                <input class="input" type="number" id="ws-fcpost2" placeholder="bpm" value="${recovery?.fcPost2 || ''}">
               </div>
             </div>
           </div>
@@ -1424,7 +1433,7 @@ const Workout = (() => {
     const stats = skip ? {} : {
       kcalAct: val('ws-kcalact'), kcalTot: val('ws-kcaltot'),
       fcAvg: val('ws-fcavg'), fcPeak: val('ws-fcpeak'), fcMin: val('ws-fcmin'),
-      effort: val('ws-effort'), weight: val('ws-weight'), comment: val('ws-comment'),
+      effort: val('ws-effort'), sleep: val('ws-sleep'), weight: val('ws-weight'), comment: val('ws-comment'),
       zone1: val('ws-z1'), zone2: val('ws-z2'), zone3: val('ws-z3'), zone4: val('ws-z4'), zone5: val('ws-z5'),
       fcPost0: val('ws-fcpost0'), fcPost1: val('ws-fcpost1'), fcPost2: val('ws-fcpost2'),
     };
@@ -1451,7 +1460,7 @@ const Workout = (() => {
       notes: state.planName,
       kcalAct: stats.kcalAct || '', kcalTot: stats.kcalTot || '',
       fcAvg: stats.fcAvg || '', fcPeak: stats.fcPeak || '', fcMin: stats.fcMin || '',
-      effort: stats.effort || '', weight: stats.weight || '',
+      effort: stats.effort || '', sleep: stats.sleep || '', weight: stats.weight || '',
       zone1: stats.zone1 || '', zone2: stats.zone2 || '', zone3: stats.zone3 || '',
       zone4: stats.zone4 || '', zone5: stats.zone5 || '',
       fcPost0: stats.fcPost0 || '', fcPost1: stats.fcPost1 || '', fcPost2: stats.fcPost2 || '',

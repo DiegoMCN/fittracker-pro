@@ -315,7 +315,10 @@ const Cardio = (() => {
     state.finished = true;
     Sounds.sessionDone(); Haptics.done();
     WakeLock.release();
-    _renderStatsForm();
+    RecoveryTimer.start({
+      onComplete: (vals) => _renderStatsForm(vals),
+      onSkip: () => _renderStatsForm(null),
+    });
   }
 
   // ── RENDER SESIÓN ACTIVA ─────────────────────────────────────────────
@@ -546,7 +549,7 @@ const Cardio = (() => {
   function hasActiveSession() { return !!(state && state.started && !state.finished); }
 
   // ── FORMULARIO POST-SESIÓN (datos del Apple Watch) ────────────────────
-  function _renderStatsForm() {
+  function _renderStatsForm(recovery) {
     const container = document.getElementById('page-content');
     if (!container) return;
 
@@ -563,8 +566,15 @@ const Cardio = (() => {
             <div class="card-title">¿Qué tan duro se sintió?</div>
             <div class="card-subtitle">Esfuerzo percibido del 1 (muy fácil) al 10 (máximo). Es lo que la app usa para medir tu carga de entrenamiento — el reloj no lo sabe, solo tú.</div>
           </div>
-          <div class="input-group">
-            <input class="input" type="number" id="cs-effort" min="1" max="10" placeholder="7">
+          <div class="input-row">
+            <div class="input-group" style="flex:1">
+              <label class="input-label">Esfuerzo (1-10)</label>
+              <input class="input" type="number" id="cs-effort" min="1" max="10" placeholder="7">
+            </div>
+            <div class="input-group" style="flex:1">
+              <label class="input-label">¿Cómo dormiste? (1-10)</label>
+              <input class="input" type="number" id="cs-sleep" min="1" max="10" placeholder="8">
+            </div>
           </div>
         </div>
 
@@ -587,15 +597,15 @@ const Cardio = (() => {
             <div class="input-row">
               <div class="input-group" style="flex:1">
                 <label class="input-label">FC al terminar</label>
-                <input class="input" type="number" id="cs-fcpost0" placeholder="bpm">
+                <input class="input" type="number" id="cs-fcpost0" placeholder="bpm" value="${recovery?.fcPost0 || ''}">
               </div>
               <div class="input-group" style="flex:1">
                 <label class="input-label">FC post 1 min</label>
-                <input class="input" type="number" id="cs-fcpost1" placeholder="bpm">
+                <input class="input" type="number" id="cs-fcpost1" placeholder="bpm" value="${recovery?.fcPost1 || ''}">
               </div>
               <div class="input-group" style="flex:1">
                 <label class="input-label">FC post 2 min</label>
-                <input class="input" type="number" id="cs-fcpost2" placeholder="bpm">
+                <input class="input" type="number" id="cs-fcpost2" placeholder="bpm" value="${recovery?.fcPost2 || ''}">
               </div>
             </div>
             <div style="font-size:10px;color:var(--text-3);margin-top:4px">Tiempo en cada zona (mm:ss) — pantalla "Heart Rate" del reloj</div>
@@ -809,7 +819,7 @@ const Cardio = (() => {
       if (estimated > 0) distance = estimated;
     }
     _saveCardioSession({
-      effort: val('cs-effort'),
+      effort: val('cs-effort'), sleep: val('cs-sleep'),
       fcAvg: val('cs-fcavg'), fcPeak: val('cs-fcpeak'),
       fcPost0: val('cs-fcpost0'), fcPost1: val('cs-fcpost1'), fcPost2: val('cs-fcpost2'),
       zone1: val('cs-z1'), zone2: val('cs-z2'), zone3: val('cs-z3'), zone4: val('cs-z4'), zone5: val('cs-z5'),
@@ -839,7 +849,7 @@ const Cardio = (() => {
       protocol: state.protocolKey,
       duration,
       distance: stats.distance || '',
-      effort: stats.effort || '',
+      effort: stats.effort || '', sleep: stats.sleep || '',
       fcAvg: stats.fcAvg || '', fcPeak: stats.fcPeak || '',
       fcPost1: stats.fcPost1 || '', fcPost2: stats.fcPost2 || '',
       rec2min,
