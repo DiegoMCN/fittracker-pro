@@ -84,6 +84,15 @@ const WakeLock = (() => {
 
 // ── UTILS ─────────────────────────────────────────────────────────────────
 const Utils = {
+  // Escapa texto libre (las notas que escribe Diego, el tip de la IA)
+  // antes de meterlo en HTML — sin esto una comilla o un "<" rompería
+  // la tarjeta del ejercicio, y algo como <img onerror=...> se ejecutaría.
+  escapeHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  },
+
   // El Coach IA regresa texto con formato Markdown simple (headers,
   // **negritas**, listas, líneas ---). Esto lo convierte a HTML seguro
   // para mostrarlo bien en vez de los símbolos literales.
