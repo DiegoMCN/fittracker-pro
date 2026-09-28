@@ -402,32 +402,7 @@ const Metrics = (() => {
         </div>
 
         <!-- Carga de entrenamiento (ACWR) -->
-        ${_trainingLoad && _trainingLoad.acwr !== null ? `
-        <div class="card section" style="${_trainingLoad.zone === 'riesgo' ? 'border-color:rgba(239,68,68,0.4)' : _trainingLoad.zone === 'bajo' ? 'border-color:rgba(245,158,11,0.4)' : ''}">
-          <div class="card-header">
-            <div>
-              <div class="card-title">⚖️ Carga de entrenamiento (ACWR)</div>
-              <div class="card-subtitle">Volumen reciente vs. tu promedio de 4 semanas — métrica real de ciencia del deporte</div>
-            </div>
-            ${_infoBtn('acwr')}
-          </div>
-          <div style="display:flex;align-items:center;gap:20px;margin-bottom:16px">
-            <div style="text-align:center;flex-shrink:0">
-              <div style="font-size:32px;font-weight:800;color:${_trainingLoad.zone === 'riesgo' ? 'var(--danger)' : _trainingLoad.zone === 'bajo' ? 'var(--warning)' : 'var(--success)'}">${_trainingLoad.acwr}</div>
-              <div style="font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em">${_trainingLoad.zone === 'riesgo' ? 'Riesgo' : _trainingLoad.zone === 'bajo' ? 'Bajo' : 'Óptimo'}</div>
-            </div>
-            <div style="flex:1;font-size:11px;color:var(--text-3);line-height:1.6">
-              ${_trainingLoad.zone === 'riesgo'
-                ? `Tu carga de esta semana (${_trainingLoad.acute}kg) está muy por encima de tu promedio reciente (${_trainingLoad.chronic}kg). El rango sano es 0.8-1.3 — considera una semana más ligera.`
-                : _trainingLoad.zone === 'bajo'
-                ? `Tu carga de esta semana (${_trainingLoad.acute}kg) está por debajo de tu promedio (${_trainingLoad.chronic}kg) — normal en una semana de descarga.`
-                : `Tu carga de esta semana (${_trainingLoad.acute}kg) está en el rango sano frente a tu promedio (${_trainingLoad.chronic}kg).`}
-            </div>
-          </div>
-          <div style="position:relative;height:100px;width:100%;overflow:hidden">
-            <canvas id="acwr-trend-chart"></canvas>
-          </div>
-        </div>` : ''}
+        ${_acwrCardHTML()}
 
         <!-- Volumen semanal -->
         ${_weeklyVolume.length > 0 ? `
@@ -570,6 +545,55 @@ const Metrics = (() => {
   // Botón (ℹ️) que abre la interpretación del Coach para esa gráfica —
   // texto que ya viene guardado de IA_INSIGHTS, generado junto con el
   // consejo del día para no gastar solicitudes extra.
+  // Tarjeta del ACWR. Cuatro estados: "base en construcción" (menos de 4
+  // semanas de historial — el número sale alto por construcción y NO se
+  // presenta como riesgo ni se muestra como cifra), y luego bajo /
+  // óptimo / riesgo. Incluye de dónde salen los datos: cuántas sesiones
+  // tienen esfuerzo registrado por ti y cuántas estimado.
+  function _acwrCardHTML() {
+    const t = _trainingLoad;
+    if (!t || t.acwr === null) return '';
+    const q = t.quality || { sessions: 0, estimated: 0, excluded: 0 };
+    const state = t.baselineBuilding ? 'construyendo' : t.zone;
+    const color = { construyendo: 'var(--text-3)', riesgo: 'var(--danger)', bajo: 'var(--warning)', optimo: 'var(--success)' }[state] || 'var(--success)';
+    const label = { construyendo: 'Base en construcción', riesgo: 'Riesgo', bajo: 'Bajo', optimo: 'Óptimo' }[state] || 'Óptimo';
+    const border = state === 'riesgo' ? 'border-color:rgba(239,68,68,0.4)' : state === 'bajo' ? 'border-color:rgba(245,158,11,0.4)' : '';
+    const fmt = (n) => Number(n).toLocaleString('es-MX');
+    const text = {
+      construyendo: `Llevas ${t.baselineDays} días entrenando. El ACWR compara tu última semana contra las 3 anteriores, así que necesita al menos 4 semanas de historial: antes de eso sale alto simplemente porque tu base todavía no existe, no porque te estés pasando.`,
+      riesgo: `Tu última semana (${fmt(t.acute)} UA) está muy por encima del promedio de las 3 anteriores (${fmt(t.chronic)} UA). El rango sano es 0.8-1.3 — considera una semana más ligera.`,
+      bajo: `Tu última semana (${fmt(t.acute)} UA) está por debajo del promedio de las 3 anteriores (${fmt(t.chronic)} UA) — normal en una semana de descarga.`,
+      optimo: `Tu última semana (${fmt(t.acute)} UA) está en el rango sano frente al promedio de las 3 anteriores (${fmt(t.chronic)} UA).`,
+    }[state];
+    const quality = q.sessions > 0
+      ? `Basado en ${q.sessions} sesiones de las últimas 4 semanas` +
+        (q.estimated === 0 && q.excluded === 0 ? ', todas con tu esfuerzo registrado' : '') +
+        (q.estimated ? ` · ${q.estimated} con esfuerzo estimado (registra cómo se sintió cada sesión y se afina)` : '') +
+        (q.excluded ? ` · ${q.excluded} sin datos suficientes` : '') + '. UA = esfuerzo (1-10) × minutos.'
+      : '';
+    return `
+        <div class="card section" style="${border}">
+          <div class="card-header">
+            <div>
+              <div class="card-title">⚖️ Carga de entrenamiento (ACWR)</div>
+              <div class="card-subtitle">Esfuerzo × minutos de fuerza y cardio — tu última semana vs. las 3 anteriores</div>
+            </div>
+            ${_infoBtn('acwr')}
+          </div>
+          <div style="display:flex;align-items:center;gap:20px;margin-bottom:${quality ? '10px' : '16px'}">
+            <div style="text-align:center;flex-shrink:0;min-width:64px">
+              <div style="font-size:32px;font-weight:800;color:${color}">${t.baselineBuilding ? '—' : t.acwr}</div>
+              <div style="font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em">${label}</div>
+            </div>
+            <div style="flex:1;font-size:11px;color:var(--text-3);line-height:1.6">${text}</div>
+          </div>
+          ${quality ? `<div style="font-size:10px;color:var(--text-4);line-height:1.5;margin-bottom:16px">${quality}</div>` : ''}
+          <div style="position:relative;height:100px;width:100%;overflow:hidden">
+            <canvas id="acwr-trend-chart"></canvas>
+          </div>
+        </div>`;
+  }
+
   function _infoBtn(key) {
     return `<button class="btn btn-ghost btn-icon" style="width:26px;height:26px;font-size:13px;flex-shrink:0" onclick="Metrics.showInsight('${key}')" title="Ver qué muestra esta gráfica">ℹ️</button>`;
   }
@@ -587,7 +611,7 @@ const Metrics = (() => {
     exercise_progress: { title: '📈 Progresión por ejercicio', desc: 'El peso (o 1RM estimado) de cada ejercicio a través de tus sesiones — toca cualquier mini-gráfica para ver el detalle completo de ese ejercicio.' },
     volumen_distribucion: { title: '🥧 Distribución de volumen', desc: 'De qué grupo muscular viene tu volumen total — te dice si algún grupo está recibiendo mucho más (o menos) trabajo que los demás.', insightKey: 'volumen_distribucion' },
     mapa_muscular: { title: '🧍 Mapa muscular', desc: 'Cada serie completada suma a los músculos que trabaja: 1 serie al principal, 0.5 a los secundarios. El nivel (0-10) es la suma de la semana dividida entre 2. Referencias: 3-4 = mantenimiento (6-9 series), 5-7 = zona productiva (10-15 series), 8-9 = productiva alta, 10 = 20+ series, vigila la recuperación. Toca un músculo para ver de qué ejercicios vino y cómo va contra la semana anterior.', insightKey: 'mapa_muscular' },
-    acwr: { title: '⚖️ Carga de entrenamiento (ACWR)', desc: 'Compara tu carga aguda (últimos días, con más peso a lo más reciente) contra tu carga crónica (últimas semanas) usando EWMA — el método que la evidencia actual respalda más que el promedio simple. Fuera del rango 0.8-1.3 es zona de riesgo real de lesión.' },
+    acwr: { title: '⚖️ Carga de entrenamiento (ACWR)', desc: 'Compara la carga de tu última semana completa contra el promedio semanal de las 3 semanas anteriores. La carga de cada sesión es tu esfuerzo percibido (1-10) × los minutos, en fuerza Y cardio. Fuera del rango 0.8-1.3 es zona de riesgo de lesión. Necesita 4 semanas de historial para ser confiable: al empezar sale alto porque tu base todavía no existe.' },
     volumen_semanal: { title: '📊 Volumen semanal', desc: 'Tu volumen total por semana — la vista clásica de periodización, para ver si vas en fase de acumulación o de descarga.' },
     mapa_calor: { title: '🗓️ Intensidad del último año', desc: 'Un cuadrito por día, más oscuro entre más entrenaste — la vista completa de qué tan consistente has sido en el año.' },
     zonas_cardio: { title: '💓 Distribución de zonas de cardio', desc: 'Cuánto tiempo total has pasado en cada zona de frecuencia cardíaca — te dice si tu cardio es mayormente base aeróbica o puro esfuerzo alto.' },

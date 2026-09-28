@@ -560,6 +560,16 @@ const Cardio = (() => {
 
         <div class="card">
           <div class="card-header">
+            <div class="card-title">¿Qué tan duro se sintió?</div>
+            <div class="card-subtitle">Esfuerzo percibido del 1 (muy fácil) al 10 (máximo). Es lo que la app usa para medir tu carga de entrenamiento — el reloj no lo sabe, solo tú.</div>
+          </div>
+          <div class="input-group">
+            <input class="input" type="number" id="cs-effort" min="1" max="10" placeholder="7">
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
             <div class="card-title">Datos del Apple Watch</div>
             <div class="card-subtitle">Captura lo que veas en el reloj — opcional pero recomendado</div>
           </div>
@@ -799,6 +809,7 @@ const Cardio = (() => {
       if (estimated > 0) distance = estimated;
     }
     _saveCardioSession({
+      effort: val('cs-effort'),
       fcAvg: val('cs-fcavg'), fcPeak: val('cs-fcpeak'),
       fcPost0: val('cs-fcpost0'), fcPost1: val('cs-fcpost1'), fcPost2: val('cs-fcpost2'),
       zone1: val('cs-z1'), zone2: val('cs-z2'), zone3: val('cs-z3'), zone4: val('cs-z4'), zone5: val('cs-z5'),
@@ -828,6 +839,7 @@ const Cardio = (() => {
       protocol: state.protocolKey,
       duration,
       distance: stats.distance || '',
+      effort: stats.effort || '',
       fcAvg: stats.fcAvg || '', fcPeak: stats.fcPeak || '',
       fcPost1: stats.fcPost1 || '', fcPost2: stats.fcPost2 || '',
       rec2min,

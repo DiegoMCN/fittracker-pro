@@ -8,6 +8,7 @@ const Workout = (() => {
   let state = null;          // Sesión activa (persiste entre navegaciones)
   let planData = null;       // Cache del plan semanal (desde el Sheet)
   let catalogData = null;    // Cache de EJERCICIOS — lectura DIRECTA, sin cruce con PLAN_SEMANAL
+  let userNotesData = {};    // Última nota que Diego escribió de cada ejercicio (viene de REGISTRO_FUERZA vía getExercises)
   let elapsedInterval = null;
   let restInterval = null;
   let allPhases = [];        // Todas las fases del programa (para las pestañas)
@@ -67,13 +68,19 @@ const Workout = (() => {
     try {
       const res = await API.getExercises();
       catalogData = {};
+      userNotesData = res.userNotes || {};
       (res.exercises || []).forEach(e => {
         if (e.Nombre) catalogData[_normalizeExName(e.Nombre)] = e;
       });
     } catch(e) {
       catalogData = {};
+      userNotesData = {};
     }
     return catalogData;
+  }
+
+  function _lastUserNoteFor(name) {
+    return userNotesData[_normalizeExName(name)] || null;
   }
 
   function _normalizeExName(s) {
@@ -109,7 +116,9 @@ const Workout = (() => {
         group: ex.group,
         // Lectura DIRECTA de EJERCICIOS (catalogData), sin pasar por
         // el cruce que hace getWeekPlan() con PLAN_SEMANAL.
-        notes: (catalogData && catalogData[_normalizeExName(ex.name)]?.Notas) || '',
+        notes: (catalogData && catalogData[_normalizeExName(ex.name)]?.Notas) || '', // tip del Coach (lo escribe la IA)
+        lastUserNote: _lastUserNoteFor(ex.name), // la última nota de Diego sobre este ejercicio, con fecha
+        userNote: '',                            // la nota que escribe HOY — se guarda junto con la sesión
         photoUrl: ex.photoUrl || '',
         videoUrl: ex.videoUrl || '',
         instructions: ex.instructions || '',
@@ -431,7 +440,8 @@ const Workout = (() => {
           ${ex.instructions ? `<div style="padding:8px 10px;font-size:11px;color:var(--text-2);line-height:1.4">${ex.instructions}</div>` : ''}
         </div>
 
-        ${ex.notes ? `<div style="font-size:11px;color:var(--text-3);background:var(--bg-input);border-radius:8px;padding:8px 10px;margin-bottom:12px;line-height:1.5">💡 ${ex.notes}</div>` : ''}
+        ${ex.notes ? `<div style="font-size:11px;color:var(--text-3);background:var(--bg-input);border-radius:8px;padding:8px 10px;margin-bottom:${ex.lastUserNote ? '8px' : '12px'};line-height:1.5"><span style="font-weight:600;color:var(--text-2)">💡 Tip del Coach</span><br>${Utils.escapeHtml(ex.notes)}</div>` : ''}
+        ${ex.lastUserNote ? `<div style="font-size:11px;color:var(--text-3);background:var(--bg-input);border-left:3px solid var(--info);border-radius:8px;padding:8px 10px;margin-bottom:12px;line-height:1.5"><span style="font-weight:600;color:var(--text-2)">📝 Tu nota (${Utils.formatDate(ex.lastUserNote.date)})</span><br>${Utils.escapeHtml(ex.lastUserNote.text)}</div>` : ''}
 
         ${ex.group !== 'Core' && ex.group !== 'Cardio' ? `
         <div data-hist-name="${ex.name}" style="background:var(--bg-input);border-radius:8px;padding:10px 12px;margin-bottom:12px">
@@ -443,6 +453,11 @@ const Workout = (() => {
         </div>
 
         <button class="btn btn-ghost btn-sm" style="margin-top:10px;width:100%" onclick="Workout.addSet(${exIdx})">+ Agregar serie</button>
+
+        ${!previewMode ? `
+        <textarea class="input" rows="2" maxlength="300" oninput="Workout.updateExNote(${exIdx}, this.value)"
+          placeholder="Tu nota de este ejercicio (opcional) — ej. el hombro molestó, agarre más ancho..."
+          style="margin-top:10px;width:100%;font-size:12px;resize:none;line-height:1.4">${Utils.escapeHtml(ex.userNote)}</textarea>` : ''}
       ` : ''}
     </div>`;
   }
@@ -645,6 +660,12 @@ const Workout = (() => {
 
   function updateSet(exIdx, sIdx, field, value) {
     state.exercises[exIdx].sets[sIdx][field] = value;
+  }
+
+  // Solo guarda en el estado — SIN re-render: reconstruir la lista en cada
+  // tecla le quitaría el foco al campo mientras Diego escribe.
+  function updateExNote(exIdx, value) {
+    state.exercises[exIdx].userNote = value;
   }
 
   // Cambiar PC↔kg↔lbs sí necesita re-render completo (aparece/desaparece
@@ -1164,7 +1185,7 @@ const Workout = (() => {
 
     const catalogNote = (catalogData && catalogData[_normalizeExName(name)]?.Notas) || '';
     state.exercises.push({
-      id: Utils.uid(), name, group, notes: catalogNote, collapsed: false, supersetGroup: null,
+      id: Utils.uid(), name, group, notes: catalogNote, lastUserNote: _lastUserNoteFor(name), userNote: '', collapsed: false, supersetGroup: null,
       sets: Array.from({ length: sets }, () => ({ repsTarget: reps, reps: '', kg: '', unit, kind: _defaultKind(name), done: false })),
     });
 
@@ -1436,7 +1457,7 @@ const Workout = (() => {
       fcPost0: stats.fcPost0 || '', fcPost1: stats.fcPost1 || '', fcPost2: stats.fcPost2 || '',
       comment: stats.comment || '',
       exercises: state.exercises.map(ex => ({
-        name: ex.name, group: ex.group, supersetGroup: ex.supersetGroup || '',
+        name: ex.name, group: ex.group, supersetGroup: ex.supersetGroup || '', userNote: ex.userNote || '',
         sets: ex.sets.filter(s => s.done).map(s => ({
           repsReal: s.reps, kg: s.kg, unit: s.unit, kind: s.kind, repsObj: s.repsTarget
         }))
@@ -1538,7 +1559,7 @@ const Workout = (() => {
   }
 
   return {
-    init, selectDay, backToPicker, startSession, toggleCollapse, updateSet, changeUnit, setKind, refreshKgHint, toggleSetDone, addSet, removeSet,
+    init, selectDay, backToPicker, startSession, toggleCollapse, updateSet, updateExNote, changeUnit, setKind, refreshKgHint, toggleSetDone, addSet, removeSet,
     removeExercise, addExercise, confirmAddExercise, startRest, addRestTime,
     skipRest, customRest, finishSession, saveFinalSession, toggleAdvancedStats, discardSession, cleanup, onRouteChange,
     quickStartDay, toggleSupersetPicker, linkSuperset,
