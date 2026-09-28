@@ -29,6 +29,7 @@ const APP_SHELL = [
   './js/utils.js',
   './js/offline.js',
   './js/gestures.js',
+  './js/recovery-timer.js',
   './js/modules/celebration.js',
   './js/modules/dashboard.js',
   './js/modules/workout.js',
