@@ -8,6 +8,7 @@ const Exercises = (() => {
   let _filter = 'all';
   let _search = '';
   let _usingMock = false;
+  let _shouldStagger = false; // true solo en la carga inicial y al cambiar de filtro — NO al escribir en el buscador, que re-renderiza en cada tecla y se vería parpadeante si recascadeara cada vez
 
   async function init(container) {
     container.innerHTML = `
@@ -18,6 +19,7 @@ const Exercises = (() => {
     const res = await API.getExercises();
     _exercises = res.exercises || [];
     _usingMock = API.isMock();
+    _shouldStagger = true;
     render();
   }
 
@@ -74,6 +76,9 @@ const Exercises = (() => {
         </div>`}
 
       </div>`;
+
+    if (_shouldStagger) Motion.staggerIn(container.querySelectorAll('.exercise-card'));
+    _shouldStagger = false;
   }
 
   function _exerciseCard(ex) {
@@ -84,10 +89,8 @@ const Exercises = (() => {
     const hasVideo = ex.Video_URL && ex.Video_URL.trim();
 
     return `
-    <div class="card" style="padding:0;overflow:hidden;cursor:pointer;transition:all 0.2s"
-      onclick="Exercises.openDetail('${ex.ID}')"
-      onmouseenter="this.style.transform='translateY(-2px)';this.style.boxShadow='var(--shadow-md)'"
-      onmouseleave="this.style.transform='';this.style.boxShadow=''">
+    <div class="card exercise-card" style="padding:0;overflow:hidden;cursor:pointer"
+      onclick="Exercises.openDetail('${ex.ID}')">
 
       <div style="height:140px;background:var(--bg-input);position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden">
         ${hasPhoto
@@ -110,7 +113,7 @@ const Exercises = (() => {
     </div>`;
   }
 
-  function setFilter(g) { _filter = g; Sounds.click(); render(); }
+  function setFilter(g) { _filter = g; _shouldStagger = true; Sounds.click(); render(); }
   function setSearch(v) { _search = v; render(); _focusSearch(); }
   function _focusSearch() {
     requestAnimationFrame(() => {
@@ -135,7 +138,7 @@ const Exercises = (() => {
       <div class="modal" style="max-width:520px">
         <div class="modal-header">
           <div class="modal-title">${ex.Nombre}</div>
-          <button class="btn btn-ghost btn-icon" onclick="this.closest('.modal-overlay').remove()">✕</button>
+          <button class="btn btn-ghost btn-icon" onclick="Motion.closeModal(this.closest('.modal-overlay'))">✕</button>
         </div>
         <div class="modal-body">
           ${embedVideo
@@ -166,7 +169,7 @@ const Exercises = (() => {
             </div>` : ''}
         </div>
         <div class="modal-footer">
-          <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cerrar</button>
+          <button class="btn btn-secondary" onclick="Motion.closeModal(this.closest('.modal-overlay'))">Cerrar</button>
           <button class="btn btn-primary" onclick="Exercises.openEditor('${ex.ID}')">✏️ Editar</button>
         </div>
       </div>`;
@@ -186,7 +189,7 @@ const Exercises = (() => {
   // ── EDITOR (crear / editar) ──────────────────────────────────────────
   function openEditor(id) {
     const ex = id ? _exercises.find(e => e.ID === id) : null;
-    document.querySelector('.modal-overlay')?.remove();
+    Motion.closeModal(document.querySelector('.modal-overlay'));
 
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay';
@@ -194,7 +197,7 @@ const Exercises = (() => {
       <div class="modal" style="max-width:480px">
         <div class="modal-header">
           <div class="modal-title">${ex ? '✏️ Editar' : '+ Nuevo'} ejercicio</div>
-          <button class="btn btn-ghost btn-icon" onclick="this.closest('.modal-overlay').remove()">✕</button>
+          <button class="btn btn-ghost btn-icon" onclick="Motion.closeModal(this.closest('.modal-overlay'))">✕</button>
         </div>
         <div class="modal-body" style="display:flex;flex-direction:column;gap:12px">
           <div class="input-group">
@@ -238,7 +241,7 @@ const Exercises = (() => {
           </div>
         </div>
         <div class="modal-footer">
-          <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancelar</button>
+          <button class="btn btn-secondary" onclick="Motion.closeModal(this.closest('.modal-overlay'))">Cancelar</button>
           <button class="btn btn-primary" id="ed-save-btn" onclick="Exercises.save(${ex ? `'${ex.ID}'` : 'null'})">Guardar</button>
         </div>
       </div>`;
@@ -273,7 +276,7 @@ const Exercises = (() => {
     try {
       const result = await API.saveExercise(payload);
       API.clearCache();
-      document.querySelector('.modal-overlay')?.remove();
+      Motion.closeModal(document.querySelector('.modal-overlay'));
       if (result.queued) {
         Sounds.click(); Haptics.medium();
         Toast.warning('Sin conexión — guardado localmente, se sincronizará solo');

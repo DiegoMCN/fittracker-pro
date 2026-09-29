@@ -211,10 +211,7 @@ const Nutricion = (() => {
     `;
 
     if (_shouldStagger) {
-      container.querySelectorAll('.section').forEach((el, i) => {
-        el.classList.add('stagger-in');
-        el.style.animationDelay = `${Math.min(i * 90, 630)}ms`;
-      });
+      Motion.staggerIn(container.querySelectorAll('.section'));
       _shouldStagger = false;
     }
   }
@@ -280,7 +277,7 @@ const Nutricion = (() => {
       <div class="modal" style="max-width:460px">
         <div class="modal-header">
           <div class="modal-title">${MEAL_ICONS[mealKey]} ${label}${isCustom ? '' : ` — Opción ${optionId}`}</div>
-          <button class="btn btn-ghost btn-icon" onclick="this.closest('.modal-overlay').remove()">✕</button>
+          <button class="btn btn-ghost btn-icon" onclick="Motion.closeModal(this.closest('.modal-overlay'))">✕</button>
         </div>
         <div class="modal-body" style="display:flex;flex-direction:column;gap:12px">
           ${!isCustom ? `
@@ -304,7 +301,7 @@ const Nutricion = (() => {
           </div>
         </div>
         <div class="modal-footer">
-          <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancelar</button>
+          <button class="btn btn-secondary" onclick="Motion.closeModal(this.closest('.modal-overlay'))">Cancelar</button>
           <button class="btn btn-primary" id="ml-save-btn" onclick="Nutricion.saveMealLog('${mealKey}', '${label}', '${optionId}')">Guardar</button>
         </div>
       </div>`;
@@ -374,7 +371,7 @@ const Nutricion = (() => {
 
       const result = await API.saveMealLog(payload);
       API.clearCache();
-      document.querySelector('.modal-overlay')?.remove();
+      Motion.closeModal(document.querySelector('.modal-overlay'));
 
       if (result.queued) {
         Sounds.click(); Haptics.medium();
@@ -408,7 +405,7 @@ const Nutricion = (() => {
       <div class="modal" style="max-width:420px">
         <div class="modal-header">
           <div class="modal-title">🏷️ Nueva marca — ${category}</div>
-          <button class="btn btn-ghost btn-icon" onclick="this.closest('.modal-overlay').remove()">✕</button>
+          <button class="btn btn-ghost btn-icon" onclick="Motion.closeModal(this.closest('.modal-overlay'))">✕</button>
         </div>
         <div class="modal-body" style="display:flex;flex-direction:column;gap:12px">
           <div class="input-group">
@@ -425,7 +422,7 @@ const Nutricion = (() => {
           </div>
         </div>
         <div class="modal-footer">
-          <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancelar</button>
+          <button class="btn btn-secondary" onclick="Motion.closeModal(this.closest('.modal-overlay'))">Cancelar</button>
           <button class="btn btn-primary" id="mb-save-btn" onclick="Nutricion.saveBrand('${category.replace(/'/g,"\\'")}')">Guardar</button>
         </div>
       </div>`;
@@ -449,7 +446,7 @@ const Nutricion = (() => {
     try {
       const result = await API.saveBrandChoice(payload);
       API.clearCache();
-      document.querySelector('.modal-overlay')?.remove();
+      Motion.closeModal(document.querySelector('.modal-overlay'));
       if (result.queued) {
         Sounds.click(); Haptics.medium();
         Toast.warning('Sin conexión — se sincronizará solo');

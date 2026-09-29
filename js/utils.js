@@ -317,7 +317,7 @@ const Utils = {
       <div class="modal">
         <div class="modal-header">
           <div class="modal-title">${title}</div>
-          <button class="btn btn-ghost btn-icon" onclick="this.closest('.modal-overlay').remove()">✕</button>
+          <button class="btn btn-ghost btn-icon" onclick="Motion.closeModal(this.closest('.modal-overlay'))">✕</button>
         </div>
         <div class="modal-body">${bodyHtml}</div>
       </div>`;
@@ -424,14 +424,24 @@ const Toast = {
       <div style="flex:1">
         <div style="font-weight:600;font-size:13px;color:var(--text-1)">${message}</div>
       </div>
-      <button onclick="this.closest('.toast').remove()" style="background:none;color:var(--text-3);font-size:16px;padding:4px">✕</button>
+      <button onclick="Toast.dismiss(this.closest('.toast'))" style="background:none;color:var(--text-3);font-size:16px;padding:4px">✕</button>
     `;
     this._getContainer().prepend(el);
     if (type === 'record') { Sounds.newRecord(); Haptics.done(); }
     if (type === 'success') { Sounds.serieDone(); Haptics.success(); }
-    setTimeout(() => el.style.cssText += 'opacity:0;transform:translateX(20px);transition:all 0.3s', duration);
-    setTimeout(() => el.remove(), duration + 350);
+    Motion.toastIn(el);
+    setTimeout(() => this.dismiss(el), duration);
     return el;
+  },
+
+  // Salida animada — usada tanto por el botón ✕ como por el
+  // auto-cierre. Antes cada uno tenía su propia forma de desaparecer
+  // (una con transición CSS inline, la otra con setTimeout+remove);
+  // ahora las dos pasan por Motion, un solo lugar.
+  dismiss(el) {
+    if (!el || el._dismissing) return;
+    el._dismissing = true;
+    Motion.toastOut(el, () => el.remove());
   },
 
   success(msg, d) { return this.show(msg, 'success', d); },
@@ -506,18 +516,8 @@ const Router = (() => {
 
       // Ejecutar módulo
       if (_routes[page]) {
-        content.style.opacity = '0';
-        content.style.transform = 'translateY(10px) scale(0.985)';
         _routes[page](content, params);
-        requestAnimationFrame(() => {
-          // Misma familia de curva "ease-out premium" que usan las
-          // apps de iOS para cambiar de pestaña — desacelera fuerte
-          // sin rebotar, se siente "caro" sin la exageración de un
-          // resorte real (ese se guarda para celebraciones puntuales).
-          content.style.transition = 'opacity 280ms cubic-bezier(0.16,1,0.3,1), transform 280ms cubic-bezier(0.16,1,0.3,1)';
-          content.style.opacity = '1';
-          content.style.transform = 'translateY(0) scale(1)';
-        });
+        Motion.pageIn(content);
       } else {
         content.innerHTML = `<div style="text-align:center;padding:60px;color:var(--text-3)">
           <div style="font-size:48px;margin-bottom:16px">🚧</div>

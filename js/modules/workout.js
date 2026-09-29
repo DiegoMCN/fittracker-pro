@@ -9,6 +9,7 @@ const Workout = (() => {
   let planData = null;       // Cache del plan semanal (desde el Sheet)
   let catalogData = null;    // Cache de EJERCICIOS — lectura DIRECTA, sin cruce con PLAN_SEMANAL
   let userNotesData = {};    // Última nota que Diego escribió de cada ejercicio (viene de REGISTRO_FUERZA vía getExercises)
+  let _lastSessionShare = null; // datos para armar la tarjeta de "Compartir esta sesión" — se genera solo si Diego la pide
   let elapsedInterval = null;
   let restInterval = null;
   let allPhases = [];        // Todas las fases del programa (para las pestañas)
@@ -386,7 +387,9 @@ const Workout = (() => {
     _renderRestWidget();
     _renderFloatingBar();
     _hydrateHistories();
+    if (_justCompletedSet) Motion.setPop(container.querySelector('.set-just-completed'));
     _justCompletedSet = null; // ya se usó en este render — la próxima interacción no debe volver a animar esta misma casilla
+    if (_sessionJustStarted) Motion.staggerIn(container.querySelectorAll('.stagger-in'));
     _sessionJustStarted = false; // la cascada de tarjetas ya pasó — los renders siguientes (marcar series, etc.) no deben repetirla
   }
 
@@ -401,7 +404,7 @@ const Workout = (() => {
     const ssColor = ex.supersetGroup ? SUPERSET_COLORS[ex.supersetGroup] : null;
 
     return `
-    <div class="card ${allDone ? 'card-accent' : ''} ${_sessionJustStarted ? 'stagger-in' : ''}" data-ex-idx="${exIdx}" style="transition:all 0.3s;${ssColor ? `border-left:3px solid ${ssColor}` : ''}${_sessionJustStarted ? `;animation-delay:${Math.min(exIdx * 90, 630)}ms` : ''}">
+    <div class="card ${allDone ? 'card-accent' : ''} ${_sessionJustStarted ? 'stagger-in' : ''}" data-ex-idx="${exIdx}" style="transition:all 0.3s;${ssColor ? `border-left:3px solid ${ssColor}` : ''}">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:${ex.collapsed ? '0' : '14px'}">
         <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;cursor:pointer" onclick="Workout.toggleCollapse(${exIdx})">
           <span style="font-size:16px;color:var(--text-3)">${ex.collapsed ? '▸' : '▾'}</span>
@@ -954,7 +957,7 @@ const Workout = (() => {
       <div class="modal" style="max-width:420px">
         <div class="modal-header">
           <div class="modal-title">🧮 ${ex.name}</div>
-          <button class="btn btn-ghost btn-icon" onclick="this.closest('.modal-overlay').remove()">✕</button>
+          <button class="btn btn-ghost btn-icon" onclick="Motion.closeModal(this.closest('.modal-overlay'))">✕</button>
         </div>
         <div class="modal-body">
           <div class="input-row" style="margin-bottom:16px">
@@ -1089,7 +1092,7 @@ const Workout = (() => {
       <div class="modal" style="max-width:420px">
         <div class="modal-header">
           <div class="modal-title">🔗 Ligar "${ex.name}" con...</div>
-          <button class="btn btn-ghost btn-icon" onclick="this.closest('.modal-overlay').remove()">✕</button>
+          <button class="btn btn-ghost btn-icon" onclick="Motion.closeModal(this.closest('.modal-overlay'))">✕</button>
         </div>
         <div class="modal-body" style="display:flex;flex-direction:column;gap:8px">
           <p style="font-size:11px;color:var(--text-3)">Se van a mostrar conectados como Superset — sigues registrando cada serie normal, solo queda claro que van seguidas.</p>
@@ -1112,7 +1115,7 @@ const Workout = (() => {
     state.exercises[exIdxA].supersetGroup = letter;
     state.exercises[exIdxB].supersetGroup = letter;
 
-    document.querySelector('.modal-overlay')?.remove();
+    Motion.closeModal(document.querySelector('.modal-overlay'));
     Sounds.serieDone(); Haptics.success();
     Toast.success(`Superset ${letter} creado 🔗`);
     _rerender();
@@ -1132,7 +1135,7 @@ const Workout = (() => {
       <div class="modal" style="max-width:420px">
         <div class="modal-header">
           <div class="modal-title">+ Agregar ejercicio</div>
-          <button class="btn btn-ghost btn-icon" onclick="this.closest('.modal-overlay').remove()">✕</button>
+          <button class="btn btn-ghost btn-icon" onclick="Motion.closeModal(this.closest('.modal-overlay'))">✕</button>
         </div>
         <div class="modal-body" style="display:flex;flex-direction:column;gap:14px">
           <div class="input-group">
@@ -1166,7 +1169,7 @@ const Workout = (() => {
           </div>
         </div>
         <div class="modal-footer">
-          <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancelar</button>
+          <button class="btn btn-secondary" onclick="Motion.closeModal(this.closest('.modal-overlay'))">Cancelar</button>
           <button class="btn btn-primary" onclick="Workout.confirmAddExercise()">Agregar</button>
         </div>
       </div>`;
@@ -1189,7 +1192,7 @@ const Workout = (() => {
       sets: Array.from({ length: sets }, () => ({ repsTarget: reps, reps: '', kg: '', unit, kind: _defaultKind(name), done: false })),
     });
 
-    document.querySelector('.modal-overlay')?.remove();
+    Motion.closeModal(document.querySelector('.modal-overlay'));
     Sounds.serieDone();
     Toast.success(`"${name}" agregado a la sesión`);
     _rerender();
@@ -1490,7 +1493,7 @@ const Workout = (() => {
 
       if (result.queued) {
         Sounds.click(); Haptics.medium();
-        _showSummary(payload, doneSets, totalSets, true);
+        _showSummary(payload, doneSets, totalSets, true, []);
         Toast.warning('Sin conexión — guardado localmente. Se sincronizará solo.');
       } else {
         Sounds.sessionDone(); Haptics.done();
@@ -1499,7 +1502,7 @@ const Workout = (() => {
         // dominada libre va primero y se espera a que termine antes del
         // PR genérico, para que no se encimen dos modales de celebración
         // si ambas cosas pasan en la misma sesión.
-        _showSummary(payload, doneSets, totalSets, false);
+        _showSummary(payload, doneSets, totalSets, false, result.newAchievements || []);
         // Si el backend detectó que esto ya se había guardado antes (un
         // reintento de la cola offline tras cerrar la app a medias), las
         // celebraciones ya se mostraron en el guardado original — no
@@ -1521,7 +1524,7 @@ const Workout = (() => {
     }
   }
 
-  function _showSummary(payload, doneSets, totalSets, queued) {
+  function _showSummary(payload, doneSets, totalSets, queued, achievements) {
     const container = document.getElementById('page-content');
     container.innerHTML = `
       <div style="max-width:480px;margin:60px auto;text-align:center" class="animate-bounce-in">
@@ -1551,11 +1554,37 @@ const Workout = (() => {
           </div>` : ''}
         </div>
 
-        <div style="display:flex;gap:10px">
+        <div style="display:flex;gap:10px;margin-bottom:10px">
           <button class="btn btn-secondary" style="flex:1" onclick="Router.navigate('history')">Ver bitácora</button>
           <button class="btn btn-primary" style="flex:1" onclick="Router.navigate('dashboard')">Ir al Dashboard</button>
         </div>
+        <button class="btn btn-ghost btn-sm" style="width:100%" onclick="Workout.shareSession()">📸 Compartir esta sesión</button>
       </div>`;
+
+    // Guarda lo necesario para armar la tarjeta cuando Diego toque
+    // "Compartir" — no se genera la imagen de una vez porque html2canvas
+    // no es gratis (tarda) y la mayoría de las veces nadie la pide.
+    _lastSessionShare = { payload, doneSets, totalSets, achievements };
+  }
+
+  function shareSession() {
+    if (!_lastSessionShare) return;
+    const { payload, doneSets, totalSets, achievements } = _lastSessionShare;
+    SessionShare.generate({
+      kind: 'Fuerza',
+      title: payload.notes || 'Entrenamiento de fuerza',
+      date: payload.date,
+      durationMin: payload.duration,
+      hero: { value: Utils.formatNum(payload.volume), unit: 'kg', label: 'Volumen total' },
+      stats: [
+        { icon: '✅', value: `${doneSets}/${totalSets}`, label: 'Series', color: '#00FF87' },
+        payload.effort ? { icon: '💥', value: `${payload.effort}/10`, label: 'Esfuerzo', color: '#EAB308' } : null,
+        payload.fcAvg ? { icon: '❤️', value: payload.fcAvg, label: 'FC promedio', color: '#EF4444' } : null,
+        payload.kcalAct ? { icon: '🔥', value: payload.kcalAct, label: 'Kcal activas', color: '#F97316' } : null,
+      ].filter(Boolean),
+      achievements: achievements || [],
+      weather: null,
+    });
   }
 
   // Llamado desde Cardio al terminar un HIT que tiene ejercicios de
@@ -1571,7 +1600,7 @@ const Workout = (() => {
     init, selectDay, backToPicker, startSession, toggleCollapse, updateSet, updateExNote, changeUnit, setKind, refreshKgHint, toggleSetDone, addSet, removeSet,
     removeExercise, addExercise, confirmAddExercise, startRest, addRestTime,
     skipRest, customRest, finishSession, saveFinalSession, toggleAdvancedStats, discardSession, cleanup, onRouteChange,
-    quickStartDay, toggleSupersetPicker, linkSuperset,
+    quickStartDay, toggleSupersetPicker, linkSuperset, shareSession,
     openCalculators, setCalcTab, recalcCalculators,
     switchPhase, lockedDayTap,
     hasActiveSession: () => !!(state && state.started && !state.finished),

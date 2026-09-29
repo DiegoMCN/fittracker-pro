@@ -151,7 +151,7 @@ const Plan = (() => {
       <div class="modal" style="max-width:380px">
         <div class="modal-header">
           <div class="modal-title">✓ Registrar "${info.name}"</div>
-          <button class="btn btn-ghost btn-icon" onclick="this.closest('.modal-overlay').remove()">✕</button>
+          <button class="btn btn-ghost btn-icon" onclick="Motion.closeModal(this.closest('.modal-overlay'))">✕</button>
         </div>
         <div class="modal-body" style="display:flex;flex-direction:column;gap:14px">
           <p style="font-size:12px;color:var(--text-3)">Registro rápido sin detalle de ejercicios — se guarda directo en tu Sheet. Para registrar pesos y series usa "Entrenar" en su lugar.</p>
@@ -171,7 +171,7 @@ const Plan = (() => {
           </div>
         </div>
         <div class="modal-footer">
-          <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancelar</button>
+          <button class="btn btn-secondary" onclick="Motion.closeModal(this.closest('.modal-overlay'))">Cancelar</button>
           <button class="btn btn-primary" id="ql-save-btn" onclick="Plan.confirmQuickLog(${day})">Guardar en Sheet</button>
         </div>
       </div>`;
@@ -212,7 +212,7 @@ const Plan = (() => {
         Sounds.serieDone(); Haptics.success();
         Toast.success(`"${info.name}" registrado`);
       }
-      document.querySelector('.modal-overlay')?.remove();
+      Motion.closeModal(document.querySelector('.modal-overlay'));
       _weekSessions.push(payload);
       render();
     } catch(err) {

@@ -22,11 +22,11 @@ const Wrapped = (() => {
       <div class="modal" style="max-width:340px">
         <div class="modal-header">
           <div class="modal-title">📸 Resumen para compartir</div>
-          <button class="btn btn-ghost btn-icon" onclick="this.closest('.modal-overlay').remove()">✕</button>
+          <button class="btn btn-ghost btn-icon" onclick="Motion.closeModal(this.closest('.modal-overlay'))">✕</button>
         </div>
         <div class="modal-body" style="display:flex;flex-direction:column;gap:8px">
           ${Object.entries(PERIOD_LABELS).map(([key, label]) => `
-            <button class="btn btn-secondary" style="width:100%;justify-content:flex-start" onclick="this.closest('.modal-overlay').remove();Wrapped.generate('${key}')">${label}</button>`).join('')}
+            <button class="btn btn-secondary" style="width:100%;justify-content:flex-start" onclick="Motion.closeModal(this.closest('.modal-overlay'));Wrapped.generate('${key}')">${label}</button>`).join('')}
         </div>
       </div>`;
     document.body.appendChild(overlay);
@@ -133,7 +133,7 @@ const Wrapped = (() => {
       <div class="modal" style="max-width:380px">
         <div class="modal-header">
           <div class="modal-title">Tu resumen — ${data.label}</div>
-          <button class="btn btn-ghost btn-icon" onclick="this.closest('.modal-overlay').remove()">✕</button>
+          <button class="btn btn-ghost btn-icon" onclick="Motion.closeModal(this.closest('.modal-overlay'))">✕</button>
         </div>
         <div class="modal-body" style="text-align:center">
           <img src="${dataUrl}" style="width:100%;border-radius:16px;box-shadow:0 8px 30px rgba(0,0,0,0.4)">

@@ -251,10 +251,7 @@ const Profile = (() => {
     setTimeout(_renderMeasurementsChart, 100);
 
     if (_shouldStagger) {
-      container.querySelectorAll('.section').forEach((el, i) => {
-        el.classList.add('stagger-in');
-        el.style.animationDelay = `${Math.min(i * 90, 630)}ms`;
-      });
+      Motion.staggerIn(container.querySelectorAll('.section'));
       _shouldStagger = false;
     }
   }
@@ -339,7 +336,7 @@ const Profile = (() => {
       <div class="modal" style="max-width:400px">
         <div class="modal-header">
           <div class="modal-title">✏️ Datos básicos</div>
-          <button class="btn btn-ghost btn-icon" onclick="this.closest('.modal-overlay').remove()">✕</button>
+          <button class="btn btn-ghost btn-icon" onclick="Motion.closeModal(this.closest('.modal-overlay'))">✕</button>
         </div>
         <div class="modal-body" style="display:flex;flex-direction:column;gap:14px">
           <div class="input-row">
@@ -367,7 +364,7 @@ const Profile = (() => {
           </div>
         </div>
         <div class="modal-footer">
-          <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancelar</button>
+          <button class="btn btn-secondary" onclick="Motion.closeModal(this.closest('.modal-overlay'))">Cancelar</button>
           <button class="btn btn-primary" id="pf-save-btn" onclick="Profile.saveBasics()">Guardar</button>
         </div>
       </div>`;
@@ -393,7 +390,7 @@ const Profile = (() => {
       const result = await API.saveProfile(payload);
       API.clearCache();
       Router.invalidateAll(); // lo que acabas de guardar puede afectar varios módulos (Dashboard, Métricas, etc.)
-      document.querySelector('.modal-overlay')?.remove();
+      Motion.closeModal(document.querySelector('.modal-overlay'));
       if (result.queued) {
         Sounds.click(); Haptics.medium();
         Toast.warning('Sin conexión — guardado localmente, se sincronizará solo');
@@ -421,7 +418,7 @@ const Profile = (() => {
       <div class="modal" style="max-width:480px">
         <div class="modal-header">
           <div class="modal-title">📊 Nueva medición</div>
-          <button class="btn btn-ghost btn-icon" onclick="this.closest('.modal-overlay').remove()">✕</button>
+          <button class="btn btn-ghost btn-icon" onclick="Motion.closeModal(this.closest('.modal-overlay'))">✕</button>
         </div>
         <div class="modal-body" style="display:flex;flex-direction:column;gap:12px">
           <p style="font-size:11px;color:var(--text-3)">Captura lo que te dé tu báscula inteligente. El IMC se calcula solo si dejas peso y ya tienes tu altura en el perfil.</p>
@@ -491,7 +488,7 @@ const Profile = (() => {
           </div>
         </div>
         <div class="modal-footer">
-          <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancelar</button>
+          <button class="btn btn-secondary" onclick="Motion.closeModal(this.closest('.modal-overlay'))">Cancelar</button>
           <button class="btn btn-primary" id="bc-save-btn" onclick="Profile.saveComposition()">Guardar en Sheet</button>
         </div>
       </div>`;
@@ -533,7 +530,7 @@ const Profile = (() => {
       const result = await API.saveBodyComposition(payload);
       API.clearCache();
       Router.invalidateAll(); // lo que acabas de guardar puede afectar varios módulos (Dashboard, Métricas, etc.)
-      document.querySelector('.modal-overlay')?.remove();
+      Motion.closeModal(document.querySelector('.modal-overlay'));
       if (result.queued) {
         Sounds.click(); Haptics.medium();
         Toast.warning('Sin conexión — guardado localmente, se sincronizará solo');
@@ -688,7 +685,7 @@ const Profile = (() => {
       <div class="modal" style="max-width:460px">
         <div class="modal-header">
           <div class="modal-title">📏 Nueva medida</div>
-          <button class="btn btn-ghost btn-icon" onclick="this.closest('.modal-overlay').remove()">✕</button>
+          <button class="btn btn-ghost btn-icon" onclick="Motion.closeModal(this.closest('.modal-overlay'))">✕</button>
         </div>
         <div class="modal-body" style="display:flex;flex-direction:column;gap:12px">
           <p style="font-size:11px;color:var(--text-3)">Todo en centímetros. Llena solo lo que midas hoy — no es necesario todo cada vez.</p>
@@ -709,7 +706,7 @@ const Profile = (() => {
           <div class="input-group"><label class="input-label">Notas (opcional)</label><input class="input" id="me-notes"></div>
         </div>
         <div class="modal-footer">
-          <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancelar</button>
+          <button class="btn btn-secondary" onclick="Motion.closeModal(this.closest('.modal-overlay'))">Cancelar</button>
           <button class="btn btn-primary" id="me-save-btn" onclick="Profile.saveMeasurements()">Guardar</button>
         </div>
       </div>`;
@@ -737,7 +734,7 @@ const Profile = (() => {
       const result = await API.saveMeasurements(payload);
       API.clearCache();
       Router.invalidateAll(); // lo que acabas de guardar puede afectar varios módulos (Dashboard, Métricas, etc.)
-      document.querySelector('.modal-overlay')?.remove();
+      Motion.closeModal(document.querySelector('.modal-overlay'));
       if (result.queued) {
         Sounds.click(); Haptics.medium();
         Toast.warning('Sin conexión — se sincronizará solo');

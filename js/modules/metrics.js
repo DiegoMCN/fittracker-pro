@@ -473,10 +473,7 @@ const Metrics = (() => {
     // arriba). Mismo timing que ya calibramos en Dashboard: 90ms entre
     // cada sección, 630ms de tope.
     if (_shouldStagger) {
-      container.querySelectorAll('.section').forEach((el, i) => {
-        el.classList.add('stagger-in');
-        el.style.animationDelay = `${Math.min(i * 90, 630)}ms`;
-      });
+      Motion.staggerIn(container.querySelectorAll('.section'));
       _shouldStagger = false;
     }
 
@@ -998,10 +995,6 @@ const Metrics = (() => {
       return;
     }
 
-    _muscleCharts.forEach(c => { try { c.destroy(); } catch(e) {} });
-    _muscleCharts = [];
-    front.innerHTML = ''; back.innerHTML = '';
-
     const sets = _mmSetsFor(_muscleWindowMode);
     const bodyState = MuscleMap.toBodyState(sets);
     if (_selectedMuscleRegion && MuscleMap.REGIONS[_selectedMuscleRegion]) {
@@ -1016,12 +1009,35 @@ const Metrics = (() => {
       _renderMuscleMap();
     };
 
-    const common = { bodyState, onMuscleClick, enableTransitions: false };
-    _muscleCharts.push(new BodyMuscles.BodyChart(front, { ...common, view: BodyMuscles.ViewSide.FRONT, ariaLabel: 'Mapa muscular, vista frontal' }));
-    _muscleCharts.push(new BodyMuscles.BodyChart(back,  { ...common, view: BodyMuscles.ViewSide.BACK,  ariaLabel: 'Mapa muscular, vista trasera' }));
-    // La librería trae padding de 1rem pensado para mapas grandes; aquí
-    // van dos lado a lado en una tarjeta, así que se compacta.
-    [front, back].forEach(c => { const w = c.firstElementChild; if (w) w.style.padding = '4px'; });
+    // ¿Los contenedores YA tienen un mapa dibujado adentro? Antes esto
+    // siempre destruía y creaba de cero en cada interacción (cambiar
+    // pestaña, seleccionar un músculo) — con enableTransitions:false a
+    // propósito, porque un elemento recién creado no tiene "de dónde"
+    // partir una transición de color. Ahora, si el contenedor ya tiene
+    // el mapa (mismo nodo del DOM, no uno nuevo de un re-render de
+    // toda la pantalla), se usa update() — la librería solo cambia el
+    // color de cada músculo en el MISMO elemento, y con
+    // enableTransitions:true el cambio de color se ve suave, no un
+    // salto. Se revisa el DOM real (front.firstElementChild), no una
+    // bandera en memoria: si Métricas completo se volvió a pintar,
+    // estos divs son nuevos aunque _muscleCharts todavía tenga las
+    // instancias viejas apuntando a nodos ya desconectados.
+    const alreadyBuilt = front.firstElementChild && _muscleCharts.length === 2;
+
+    if (alreadyBuilt) {
+      _muscleCharts[0].update({ bodyState, onMuscleClick });
+      _muscleCharts[1].update({ bodyState, onMuscleClick });
+    } else {
+      _muscleCharts.forEach(c => { try { c.destroy(); } catch(e) {} });
+      _muscleCharts = [];
+      front.innerHTML = ''; back.innerHTML = '';
+      const common = { bodyState, onMuscleClick, enableTransitions: true };
+      _muscleCharts.push(new BodyMuscles.BodyChart(front, { ...common, view: BodyMuscles.ViewSide.FRONT, ariaLabel: 'Mapa muscular, vista frontal' }));
+      _muscleCharts.push(new BodyMuscles.BodyChart(back,  { ...common, view: BodyMuscles.ViewSide.BACK,  ariaLabel: 'Mapa muscular, vista trasera' }));
+      // La librería trae padding de 1rem pensado para mapas grandes; aquí
+      // van dos lado a lado en una tarjeta, así que se compacta.
+      [front, back].forEach(c => { const w = c.firstElementChild; if (w) w.style.padding = '4px'; });
+    }
 
     // Pestañas
     document.querySelectorAll('#mm-tabs [data-mm]').forEach(b => {
@@ -1337,7 +1353,7 @@ const Metrics = (() => {
       <div class="modal" style="max-width:440px">
         <div class="modal-header">
           <div class="modal-title">📈 Registrar métricas clave</div>
-          <button class="btn btn-ghost btn-icon" onclick="this.closest('.modal-overlay').remove()">✕</button>
+          <button class="btn btn-ghost btn-icon" onclick="Motion.closeModal(this.closest('.modal-overlay'))">✕</button>
         </div>
         <div class="modal-body" style="display:flex;flex-direction:column;gap:12px">
           <p style="font-size:11px;color:var(--text-3)">Todo es opcional — llena solo lo que tengas medido hoy.</p>
@@ -1373,7 +1389,7 @@ const Metrics = (() => {
           </div>
         </div>
         <div class="modal-footer">
-          <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancelar</button>
+          <button class="btn btn-secondary" onclick="Motion.closeModal(this.closest('.modal-overlay'))">Cancelar</button>
           <button class="btn btn-primary" id="mc-save-btn" onclick="Metrics.saveCapture()">Guardar en Sheet</button>
         </div>
       </div>`;
@@ -1403,7 +1419,7 @@ const Metrics = (() => {
     try {
       const result = await API.saveMetrics(payload);
       API.clearCache();
-      document.querySelector('.modal-overlay')?.remove();
+      Motion.closeModal(document.querySelector('.modal-overlay'));
       if (result.queued) {
         Sounds.click(); Haptics.medium();
         Toast.warning('Sin conexión — guardado localmente, se sincronizará solo');
@@ -1439,7 +1455,7 @@ const Metrics = (() => {
       <div class="modal" style="max-width:520px">
         <div class="modal-header">
           <div class="modal-title">${name}</div>
-          <button class="btn btn-ghost btn-icon" onclick="this.closest('.modal-overlay').remove()">✕</button>
+          <button class="btn btn-ghost btn-icon" onclick="Motion.closeModal(this.closest('.modal-overlay'))">✕</button>
         </div>
         <div class="modal-body">
           <div style="position:relative;height:220px;width:100%;overflow:hidden" id="ex-detail-chart-wrap">

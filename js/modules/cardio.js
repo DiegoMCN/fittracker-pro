@@ -6,6 +6,7 @@ const Cardio = (() => {
 
   let state = null;
   let tickInterval = null;
+  let _lastSessionShare = null; // datos para "Compartir esta sesión" — se genera solo si Diego la pide
   let metronomeInterval = null;
 
   const EFFORT_COLOR = { easy: 'var(--z2)', moderate: 'var(--z3)', max: 'var(--z5)', z2: 'var(--z2)' };
@@ -176,10 +177,7 @@ const Cardio = (() => {
       </div>`;
 
     if (_pickerShouldStagger) {
-      container.querySelectorAll('.section').forEach((el, i) => {
-        el.classList.add('stagger-in');
-        el.style.animationDelay = `${Math.min(i * 90, 630)}ms`;
-      });
+      Motion.staggerIn(container.querySelectorAll('.section'));
       _pickerShouldStagger = false;
     }
   }
@@ -543,6 +541,8 @@ const Cardio = (() => {
       </div>
       <button class="btn btn-primary btn-sm" onclick="Router.navigate('cardio')">Volver →</button>
     `;
+
+    container.querySelectorAll('.phase-pop').forEach(el => Motion.phasePop(el, `${color}55`));
   }
 
   function onRouteChange() { _renderFloatingBar(); }
@@ -876,10 +876,10 @@ const Cardio = (() => {
       if (result.queued) {
         Sounds.click(); Haptics.medium();
         Toast.warning('Sin conexión — guardado localmente. Se sincronizará solo.');
-        _showCardioSummary(payload, true, protocolDay);
+        _showCardioSummary(payload, true, protocolDay, null, []);
       } else {
         Sounds.sessionDone(); Haptics.done();
-        _showCardioSummary(payload, false, protocolDay, result.weather);
+        _showCardioSummary(payload, false, protocolDay, result.weather, result.newAchievements || []);
         // Igual que en workout.js — un duplicado detectado por el
         // backend ya tuvo su celebración en el guardado original.
         if (!result.duplicate) {
@@ -898,7 +898,7 @@ const Cardio = (() => {
     state = null;
   }
 
-  function _showCardioSummary(payload, queued, protocolDay, weather) {
+  function _showCardioSummary(payload, queued, protocolDay, weather, achievements) {
     const container = document.getElementById('page-content');
     if (!container) return;
 
@@ -937,17 +937,42 @@ const Cardio = (() => {
           💪 Continuar con la parte de fuerza →
         </button>` : ''}
 
-        <div style="display:flex;gap:10px">
+        <div style="display:flex;gap:10px;margin-bottom:10px">
           <button class="btn btn-secondary" style="flex:1" onclick="Router.navigate('history')">Ver bitácora</button>
           <button class="btn btn-primary" style="flex:1" onclick="Router.navigate('dashboard')">Ir al Dashboard</button>
         </div>
+        <button class="btn btn-ghost btn-sm" style="width:100%" onclick="Cardio.shareSession()">📸 Compartir esta sesión</button>
       </div>`;
+
+    _lastSessionShare = { payload, weather, achievements };
+  }
+
+  function shareSession() {
+    if (!_lastSessionShare) return;
+    const { payload, weather, achievements } = _lastSessionShare;
+    SessionShare.generate({
+      kind: 'HIT',
+      title: payload.type || 'Cardio',
+      date: payload.date,
+      durationMin: payload.duration,
+      hero: payload.distance
+        ? { value: payload.distance, unit: 'km', label: 'Distancia recorrida' }
+        : { value: Utils.formatDuration(payload.duration), unit: '', label: 'Tiempo total' },
+      stats: [
+        payload.fcAvg ? { icon: '❤️', value: payload.fcAvg, label: 'FC promedio', color: '#EF4444' } : null,
+        (payload.rec2min !== '' && payload.rec2min !== undefined) ? { icon: '💚', value: payload.rec2min, label: 'Recup. 2min', color: '#00FF87' } : null,
+        payload.cadAvg ? { icon: '👟', value: payload.cadAvg, label: 'Cadencia', color: '#7C3AED' } : null,
+        payload.effort ? { icon: '💥', value: `${payload.effort}/10`, label: 'Esfuerzo', color: '#EAB308' } : null,
+      ].filter(Boolean),
+      achievements: achievements || [],
+      weather: weather || null,
+    });
   }
 
   return {
     init, selectProtocol, selectHitDuration, backToPicker, startProtocol, togglePause, skipPhase,
     discardSession, onRouteChange, hasActiveSession, skipStats, saveStats,
-    toggleMetronome, adjustMetronome, renderSplitInputs,
+    toggleMetronome, adjustMetronome, renderSplitInputs, shareSession,
   };
 })();
 

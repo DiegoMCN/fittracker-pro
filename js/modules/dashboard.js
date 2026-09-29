@@ -743,10 +743,7 @@ function _renderDashboard(container, data, doneDayNames, records, allSessions, l
   // como un parpadeo que como una cascada) y tope en 630ms — con la
   // animación de 550ms cada una, la cascada completa dura ~1.2s: se
   // alcanza a apreciar sin que abrir la app se sienta lento.
-  container.querySelectorAll('.section').forEach((el, i) => {
-    el.classList.add('stagger-in');
-    el.style.animationDelay = `${Math.min(i * 90, 630)}ms`;
-  });
+  Motion.staggerIn(container.querySelectorAll('.section'));
 
   // Renderizar chart FC tendencia — esperar a que el DOM esté pintado
   setTimeout(() => _renderFCChart(allSessions), 100);

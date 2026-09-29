@@ -133,13 +133,11 @@ const Calendario = (() => {
                 : missed ? 'rgba(239,68,68,0.06)' : 'transparent';
 
               return `
-              <div onclick="${hasAny ? `Calendario.openDay('${dateStr}')` : ''}" title="${phase ? `Fase ${phase.number} — ${phase.name}` : ''}"
+              <div class="${hasAny ? 'calendar-day-active' : ''}" onclick="${hasAny ? `Calendario.openDay('${dateStr}')` : ''}" title="${phase ? `Fase ${phase.number} — ${phase.name}` : ''}"
                 style="position:relative;aspect-ratio:1;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
                 cursor:${hasAny ? 'pointer' : 'default'};
                 background:${isToday ? 'var(--accent-glow)' : heatBg};
-                border:${isToday ? '1.5px solid var(--accent)' : missed ? '1px dashed rgba(239,68,68,0.35)' : '1px solid transparent'};
-                transition:transform 0.1s"
-                ${hasAny ? `onmouseenter="this.style.transform='scale(1.05)'" onmouseleave="this.style.transform='scale(1)'"` : ''}>
+                border:${isToday ? '1.5px solid var(--accent)' : missed ? '1px dashed rgba(239,68,68,0.35)' : '1px solid transparent'}">
                 <div style="font-size:11px;font-weight:${isToday ? '700' : '500'};color:${isToday ? 'var(--accent)' : hasAny ? 'var(--text-1)' : missed ? 'var(--danger)' : 'var(--text-4)'}">${d}</div>
                 <div style="display:flex;gap:2px;height:6px;align-items:center">
                   ${hasStrength ? `<div style="width:5px;height:5px;border-radius:50%;background:var(--accent)"></div>` : ''}
@@ -194,10 +192,7 @@ const Calendario = (() => {
     // así que no hace falta la bandera de "solo una vez" — a
     // diferencia de otros módulos, abrir un día (openDay) no pasa
     // por render(), usa su propio modal.
-    container.querySelectorAll('.section').forEach((el, i) => {
-      el.classList.add('stagger-in');
-      el.style.animationDelay = `${Math.min(i * 90, 630)}ms`;
-    });
+    Motion.staggerIn(container.querySelectorAll('.section'));
   }
 
   function openDay(dateStr) {
@@ -211,7 +206,7 @@ const Calendario = (() => {
       <div class="modal" style="max-width:440px">
         <div class="modal-header">
           <div class="modal-title">${Utils.formatDate(dateStr)}</div>
-          <button class="btn btn-ghost btn-icon" onclick="this.closest('.modal-overlay').remove()">✕</button>
+          <button class="btn btn-ghost btn-icon" onclick="Motion.closeModal(this.closest('.modal-overlay'))">✕</button>
         </div>
         <div class="modal-body" style="display:flex;flex-direction:column;gap:10px">
           ${daySessions.map(s => `
@@ -243,8 +238,8 @@ const Calendario = (() => {
     // cerrar).
     const modalEl = overlay.querySelector('.modal');
     Gestures.onSwipe(modalEl, {
-      onLeft:  () => { overlay.remove(); openDay(_shiftDate(dateStr, 1)); },
-      onRight: () => { overlay.remove(); openDay(_shiftDate(dateStr, -1)); },
+      onLeft:  () => { Motion.closeModal(overlay); openDay(_shiftDate(dateStr, 1)); },
+      onRight: () => { Motion.closeModal(overlay); openDay(_shiftDate(dateStr, -1)); },
     });
   }
 

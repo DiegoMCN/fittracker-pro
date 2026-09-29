@@ -83,6 +83,13 @@
   --radius-2xl: 32px;
   --radius-full: 9999px;
 
+  /* Radio de tarjetas — separado de --radius-lg a propósito: hoy
+     comparten el mismo valor (16px) por coincidencia, pero
+     --radius-lg también lo usan los botones grandes (.btn-lg), que NO
+     deben cambiar de forma si el futuro panel ajusta "qué tan
+     redondeadas son las tarjetas". */
+  --card-radius: 16px;
+
   /* Sombras */
   --shadow-sm:  0 2px 8px rgba(0,0,0,0.3);
   --shadow-md:  0 4px 20px rgba(0,0,0,0.4);
@@ -104,6 +111,23 @@
   /* Sidebar */
   --sidebar-w: 240px;
   --topbar-h:  60px;
+
+  /* Vidrio (glassmorphism) — nombrados por PARA QUÉ se usan, no por su
+     valor, para que un futuro panel de ajustes pueda escalarlos juntos
+     (una sola perilla de "intensidad") sin perder sus diferencias
+     relativas: la celebración siempre debe verse más vívida que una
+     tarjeta normal, el topbar siempre más discreto que un modal, etc.
+     Antes estas 6 combinaciones vivían sueltas en 7 sitios del CSS. */
+  --glass-nav-blur:          20px;   /* .topbar — persistente, sin saturación extra */
+  --glass-light-blur:        4px;    /* .sidebar-overlay — el toque más ligero */
+  --glass-overlay-blur:      8px;
+  --glass-overlay-saturate:  120%;   /* .modal-overlay — el fondo DETRÁS del modal, no el vidrio en sí */
+  --glass-card-blur:         24px;
+  --glass-card-saturate:     150%;   /* .card-glass y .modal comparten este — la superficie de vidrio "estándar" */
+  --glass-header-blur:       20px;
+  --glass-header-saturate:   150%;   /* .modal-header — un poco menos blur que el modal, tiene que tapar bien el scroll debajo */
+  --glass-celebration-blur:      24px;
+  --glass-celebration-saturate:  160%; /* .celebration-glass — la más vívida, a propósito: un logro se siente especial */
 }
 
 /* ── RESET ── */
@@ -139,13 +163,12 @@ body { overscroll-behavior-y: none; } /* sin esto, jalar de más en cualquier li
    Los :hover quedan protegidos con "pointer:fine" — así solo aplican
    con mouse de verdad, nunca se quedan pegados en pantalla táctil. */
 [onclick]:not([onclick=""]) {
-  transition: transform 120ms cubic-bezier(0.4,0,0.2,1);
   -webkit-tap-highlight-color: transparent;
 }
-[onclick]:not([onclick=""]):active {
-  transform: scale(0.97);
-  transition: transform 80ms cubic-bezier(0.4,0,0.2,1);
-}
+/* El toque (press/release) de esto ya no es CSS — lo maneja Motion
+   (js/motion.js, Fase 1 de la migración a GSAP): un solo listener
+   delegado para toda la app, con las mismas curvas que aquí, en vez de
+   esta regla universal repetida por todos lados. */
 
 body {
   font-family: 'Poppins', -apple-system, sans-serif;
@@ -298,7 +321,7 @@ ul, ol { list-style: none; }
   background: var(--bg-secondary);
   position: sticky; top: 0;
   z-index: 50;
-  backdrop-filter: blur(20px);
+  backdrop-filter: blur(var(--glass-nav-blur));
 }
 .topbar-title { font-weight: 700; font-size: 18px; }
 .topbar-subtitle { font-size: 12px; color: var(--text-3); font-weight: 400; }
@@ -319,7 +342,7 @@ ul, ol { list-style: none; }
 .card {
   background: var(--bg-card);
   border: 1px solid var(--border-card);
-  border-radius: var(--radius-lg);
+  border-radius: var(--card-radius);
   padding: var(--space-5);
   transition: border-color var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast);
   /* Sombra suave + un filo de luz de 1px arriba — la diferencia entre
@@ -339,12 +362,34 @@ ul, ol { list-style: none; }
   cursor: pointer;
   transition: border-color 0.15s, transform 0.15s;
 }
+
+/* Tarjeta del catálogo de ejercicios — mismo patrón que
+   .nutri-option-card arriba. Reemplaza los onmouseenter/onmouseleave
+   en línea que tenía antes: esos disparaban por JS en cualquier
+   dispositivo, incluido táctil, donde un tap puede dejar el "hover"
+   pegado (el navegador dispara mouseenter sin su mouseleave
+   correspondiente) — la tarjeta se quedaba levantada hasta el
+   siguiente toque en otro lado. Con :hover dentro de
+   "(hover:hover) and (pointer:fine)" eso ya no puede pasar: en
+   táctil la regla no existe. */
+.exercise-card {
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+/* Celda del día en Calendario — mismo arreglo que .exercise-card
+   arriba: reemplaza onmouseenter/onmouseleave en línea (mismo riesgo
+   de "hover pegado" en táctil). Transición más rápida (0.1s, no
+   0.15s) a propósito — es una celda chica en una cuadrícula, un
+   realce más lento ahí se siente perezoso. */
+.calendar-day-active {
+  transition: transform 0.1s;
+}
 .card-glass {
   position: relative;
   overflow: hidden;
   background: rgba(255,255,255,0.045);
-  backdrop-filter: blur(24px) saturate(150%);
-  -webkit-backdrop-filter: blur(24px) saturate(150%);
+  backdrop-filter: blur(var(--glass-card-blur)) saturate(var(--glass-card-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-card-blur)) saturate(var(--glass-card-saturate));
   border-color: rgba(255,255,255,0.14);
   box-shadow:
     var(--shadow-md),
@@ -371,8 +416,8 @@ ul, ol { list-style: none; }
   position: relative;
   overflow: hidden;
   background: rgba(255,255,255,0.07);
-  backdrop-filter: blur(24px) saturate(160%);
-  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  backdrop-filter: blur(var(--glass-celebration-blur)) saturate(var(--glass-celebration-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-celebration-blur)) saturate(var(--glass-celebration-saturate));
   border: 1px solid rgba(255,255,255,0.18);
   border-radius: var(--radius-xl);
   padding: 32px 26px;
@@ -410,7 +455,7 @@ ul, ol { list-style: none; }
 .metric-card {
   background: var(--bg-card);
   border: 1px solid var(--border-card);
-  border-radius: var(--radius-lg);
+  border-radius: var(--card-radius);
   padding: var(--space-5);
   position: relative;
   overflow: hidden;
@@ -454,16 +499,16 @@ ul, ol { list-style: none; }
   -webkit-tap-highlight-color: transparent;
 }
 /* Presión real — se hunde de inmediato (80ms, sin resorte, así se
-   siente "sólido" al tocar) y regresa con resorte (350ms, con el
-   pequeño overshoot que ya definía --transition-spring) — es
-   exactamente el patrón de iOS: respuesta instantánea al bajar el
-   dedo, rebote suave al soltar. */
-.btn:active {
-  transform: scale(0.96);
-  transition: transform 80ms cubic-bezier(0.4,0,0.2,1);
-}
-.btn:not(:active) {
-  transition: transform var(--transition-spring), background 150ms, box-shadow 150ms, border-color 150ms, opacity 150ms;
+   siente "sólido" al tocar) y regresa con resorte (500ms, con el
+   pequeño overshoot que ya definía --transition-spring) — exactamente
+   el patrón de iOS: respuesta instantánea al bajar el dedo, rebote
+   suave al soltar. Ya NO es :active — lo anima Motion (js/motion.js)
+   con las mismas curvas, y prende/apaga la clase .is-pressed de abajo
+   para el destello blanco.
+   Transiciones NO relacionadas con el toque (fondo, sombra, borde,
+   opacidad) se quedan en CSS — eso sigue siendo su lugar natural. */
+.btn {
+  transition: background 150ms, box-shadow 150ms, border-color 150ms, opacity 150ms;
 }
 .btn::after {
   content: '';
@@ -473,7 +518,10 @@ ul, ol { list-style: none; }
   opacity: 0;
   transition: opacity var(--transition-fast);
 }
-.btn:active::after { opacity: 0.05; }
+/* El destello blanco es un pseudo-elemento — GSAP no puede tocarlo
+   directamente (no es un nodo real del DOM), así que esta pieza se
+   queda en CSS puro, con Motion prendiendo/apagando la clase. */
+.btn.is-pressed::after { opacity: 0.05; }
 
 .btn-primary {
   background: var(--accent);
@@ -507,6 +555,33 @@ ul, ol { list-style: none; }
 /* ── INPUTS ── */
 .input-group { display: flex; flex-direction: column; gap: var(--space-2); }
 .input-label { font-size: 12px; font-weight: 500; color: var(--text-2); }
+
+/* Slider (panel de ajustes de movimiento/diseño en Configuración —
+   primer input[type=range] de la app, no había ninguno antes). */
+input[type="range"] {
+  -webkit-appearance: none; appearance: none;
+  width: 100%; height: 4px;
+  border-radius: var(--radius-full);
+  background: var(--bg-input);
+  outline: none;
+  margin: 8px 0;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+  box-shadow: var(--shadow-accent);
+}
+input[type="range"]::-moz-range-thumb {
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+  border: none;
+  box-shadow: var(--shadow-accent);
+}
 .input {
   background: var(--bg-input);
   border: 1px solid var(--border);
@@ -612,31 +687,27 @@ ul, ol { list-style: none; }
 .toast {
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--card-radius);
   padding: var(--space-4) var(--space-5);
   min-width: 280px; max-width: 360px;
   box-shadow: var(--shadow-lg);
   display: flex; align-items: flex-start; gap: var(--space-3);
-  animation: toast-in var(--transition-spring) forwards;
+  /* Entrada y salida las da Motion.toastIn/toastOut (js/motion.js) */
 }
 .toast.success { border-color: rgba(0,255,135,0.3); }
 .toast.error   { border-color: rgba(239,68,68,0.3); }
 .toast.warning { border-color: rgba(245,158,11,0.3); }
-@keyframes toast-in {
-  from { opacity: 0; transform: translateX(20px) scale(0.92); }
-  to   { opacity: 1; transform: translateX(0) scale(1); }
-}
 
 /* ── MODAL ── */
 .modal-overlay {
   position: fixed; inset: 0;
   background: var(--bg-overlay);
-  backdrop-filter: blur(8px) saturate(120%);
-  -webkit-backdrop-filter: blur(8px) saturate(120%);
+  backdrop-filter: blur(var(--glass-overlay-blur)) saturate(var(--glass-overlay-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-overlay-blur)) saturate(var(--glass-overlay-saturate));
   z-index: 200;
   display: flex; align-items: center; justify-content: center;
   padding: var(--space-5);
-  animation: fade-in var(--transition-fast) forwards;
+  /* Entrada y salida las da Motion.modalIn/closeModal (js/motion.js) */
 }
 /* Burbuja de info (interpretación de gráficas/datos) — siempre
    centrada, incluso en móvil, a diferencia de los modales normales
@@ -663,8 +734,8 @@ ul, ol { list-style: none; }
      como una tarjeta blanca flotando encima de la app. */
   position: relative;
   background: rgba(255,255,255,0.045);
-  backdrop-filter: blur(24px) saturate(150%);
-  -webkit-backdrop-filter: blur(24px) saturate(150%);
+  backdrop-filter: blur(var(--glass-card-blur)) saturate(var(--glass-card-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-card-blur)) saturate(var(--glass-card-saturate));
   border: 1px solid rgba(255,255,255,0.14);
   border-radius: var(--radius-xl);
   width: 100%; max-width: 520px;
@@ -675,7 +746,7 @@ ul, ol { list-style: none; }
     var(--shadow-lg),
     inset 0 1px 0 rgba(255,255,255,0.09),
     inset 0 -1px 0 rgba(255,255,255,0.02);
-  animation: modal-in var(--transition-spring) forwards;
+  /* Entrada y salida las da Motion.modalIn/closeModal (js/motion.js) */
 }
 /* Las 2 líneas de luz del vidrio, combinadas en un solo pseudo-
    elemento (::before ya es el "handle" de la hoja en móvil) — 2 fondos
@@ -697,8 +768,8 @@ ul, ol { list-style: none; }
      tiene que tapar bien el contenido que pasa por debajo al hacer
      scroll, si no se ve como texto encimado y no como una barra fija. */
   background: rgba(19,19,31,0.75);
-  backdrop-filter: blur(20px) saturate(150%);
-  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  backdrop-filter: blur(var(--glass-header-blur)) saturate(var(--glass-header-saturate));
+  -webkit-backdrop-filter: blur(var(--glass-header-blur)) saturate(var(--glass-header-saturate));
 }
 .modal-title { font-weight: 700; font-size: 16px; }
 .modal-body  { padding: var(--space-6); }
@@ -707,9 +778,6 @@ ul, ol { list-style: none; }
   border-top: 1px solid rgba(255,255,255,0.08);
   display: flex; justify-content: flex-end; gap: var(--space-3);
 }
-@keyframes fade-in  { from { opacity: 0; } to { opacity: 1; } }
-@keyframes modal-in { from { opacity: 0; transform: scale(0.95) translateY(10px); } to { opacity: 1; transform: scale(1) translateY(0); } }
-
 /* ── SPECIAL: GLOW TEXT ── */
 .glow-text {
   color: var(--accent);
@@ -736,65 +804,31 @@ ul, ol { list-style: none; }
   100% { transform: scale(1);   box-shadow: 0 0 0 rgba(0,255,135,0); }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
-@keyframes bounce-in {
-  0%   { transform: scale(0.3); opacity: 0; }
-  50%  { transform: scale(1.05); }
-  70%  { transform: scale(0.9); }
-  100% { transform: scale(1); opacity: 1; }
-}
-@keyframes slide-up {
-  from { opacity: 0; transform: translateY(10px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-@keyframes record-flash {
-  0%,100% { background: var(--bg-card); }
-  50%      { background: var(--accent-glow); box-shadow: var(--shadow-accent-lg); }
-}
-.animate-slide-up  { animation: slide-up var(--transition-base) forwards; }
-.animate-bounce-in { animation: bounce-in var(--transition-spring) forwards; }
+/* .animate-slide-up / .animate-bounce-in: Motion (js/motion.js) las
+   detecta solas apenas aparecen en el DOM y las anima — ya no llevan
+   @keyframes propio, las clases siguen existiendo solo como la señal
+   que Motion busca. */
 
-/* ── ENTRADA EN CASCADA ── cada .section de una página recibe esta
-   clase + un animation-delay creciente por JS (ver dashboard.js) — el
-   keyframe vive aquí porque es la parte que no cambia entre módulos,
-   solo el delay es dinámico. "both" como fill-mode para que la
-   sección quede invisible desde el inicio, no parpadee visible antes
-   de que le toque su turno. */
-@keyframes stagger-in {
-  from { opacity: 0; transform: translateY(24px) scale(0.97); }
-  to   { opacity: 1; transform: translateY(0) scale(1); }
-}
-/* Duración propia (550ms), NO --transition-premium — esa es para
-   feedback instantáneo (botones, cambio de página), diseñada para
-   sentirse pero no para SEGUIRSE con la vista. Una cascada es lo
-   opuesto: el punto es que el ojo alcance a percibir cada pieza
-   llegando por separado. Con más distancia de movimiento (24px) y un
-   toque de escala (0.97→1, la sensación de "acomodarse" en su lugar)
-   se nota de verdad, no es solo un parpadeo. */
-.stagger-in { animation: stagger-in 550ms cubic-bezier(0.16,1,0.3,1) both; }
+/* La cascada de entrada (antes @keyframes stagger-in + un
+   animation-delay calculado a mano en 9 sitios distintos) ahora es
+   Motion.staggerIn(elementos) en js/motion.js — un módulo solo llama
+   la función con su lista de tarjetas, sin volver a escribir el
+   cálculo del índice ni la curva. Misma animación exacta (opacity
+   0→1, translateY 24px→0, scale 0.97→1, 550ms, curva premium). */
 
 /* ── SERIE RECIÉN COMPLETADA ── la única casilla que anima al marcar
    una serie (ver workout.js: _justCompletedSet) — un "pop" con
    overshoot real (pasa de 1.3 a 1, no solo aparece) + un resplandor
    que se apaga, para que SE SIENTA la confirmación de "lo logré", no
    solo un cambio de color instantáneo. */
-@keyframes set-pop {
-  0%   { transform: scale(0.5); box-shadow: 0 0 0 0 rgba(0,255,135,0); }
-  55%  { transform: scale(1.28); box-shadow: 0 0 0 8px rgba(0,255,135,0.18); }
-  100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(0,255,135,0); }
-}
-.set-just-completed { animation: set-pop 480ms cubic-bezier(0.34,1.56,0.64,1) both; }
+/* .set-just-completed y .phase-pop: antes disparaban @keyframes
+   propios (set-pop / phase-pop) directo por CSS. Ahora son solo
+   marcadores — Motion.setPop/phasePop (js/motion.js) los detecta por
+   selector después de renderizar y anima el mismo "pop con
+   resplandor" con GSAP, para poder compartir una sola implementación
+   entre los dos casos (antes eran dos @keyframes casi idénticos) y
+   usar las curvas estandarizadas del resto de la app. */
 
-/* ── TRANSICIÓN DE FASE EN CARDIO ── mismo espíritu que set-pop, pero
-   el color no puede ser fijo aquí — cada fase de un HIT tiene su
-   propio color (verde=fácil, rojo=máximo, etc.), así que en vez de
-   codificarlo en el keyframe, se lee de una variable CSS que cada
-   fase define al vuelo con su propio color (ver cardio.js). */
-@keyframes phase-pop {
-  0%   { transform: scale(0.92); box-shadow: 0 0 0 0 var(--phase-glow, transparent); }
-  50%  { transform: scale(1.02); box-shadow: 0 0 28px 6px var(--phase-glow, transparent); }
-  100% { transform: scale(1); box-shadow: 0 0 0 0 transparent; }
-}
-.phase-pop { animation: phase-pop 550ms cubic-bezier(0.34,1.56,0.64,1) both; }
 .animate-pulse-glow { animation: pulse-glow 2s infinite; }
 .animate-spin { animation: spin 1s linear infinite; }
 
@@ -824,7 +858,7 @@ ul, ol { list-style: none; }
   position: fixed; inset: 0;
   background: rgba(0,0,0,0.7);
   z-index: 99;
-  backdrop-filter: blur(4px);
+  backdrop-filter: blur(var(--glass-light-blur));
 }
 
 /* ── RESPONSIVE ── */
@@ -848,6 +882,15 @@ ul, ol { list-style: none; }
   .nutri-option-card:hover:not(:active) {
     border-color: var(--border-accent);
     transform: translateY(-1px);
+  }
+
+  .exercise-card:hover:not(:active) {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+  }
+
+  .calendar-day-active:hover:not(:active) {
+    transform: scale(1.05);
   }
 
   .metric-card:hover::before { opacity: 1; }
@@ -919,20 +962,11 @@ ul, ol { list-style: none; }
     background: rgba(255,255,255,0.22);
     z-index: 2;
   }
-  /* En escritorio el modal aparece centrado con un empujoncito chico
-     (scale+10px) — como hoja completa desde abajo, ese mismo
-     movimiento se ve tímido. Aquí sí sube desde fuera de la pantalla
-     por completo, que es como se comporta de verdad una hoja de iOS. */
-  .modal { animation-name: modal-in-sheet; }
-  @keyframes modal-in-sheet {
-    from { opacity: 0; transform: translateY(100%); }
-    to   { opacity: 1; transform: translateY(0); }
-  }
-  /* La burbuja de info se queda centrada (ver comentario arriba de
-     .modal-overlay-info) — no debe deslizarse desde abajo como si
-     fuera una hoja, se ve descolocado con algo que no vive pegado al
-     borde inferior. */
-  .modal-overlay-info .modal { animation-name: modal-in; }
+  /* La animación de hoja (sube desde abajo en móvil) y su excepción
+     para la burbuja de info (se queda centrada) ya las decide Motion
+     en JS (js/motion.js, _isSheet()) — misma lógica exacta (este mismo
+     punto de quiebre + la excepción de .modal-overlay-info), ahora en
+     un solo lugar en vez de repartida entre CSS y JS. */
   .modal-overlay-info .modal::before { display: none; }
   /* Respeta la isla dinámica / notch (arriba) y el home indicator (abajo)
      del iPhone — sin esto, el sidebar y las barras flotantes quedan

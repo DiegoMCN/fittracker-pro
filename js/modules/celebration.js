@@ -125,7 +125,7 @@ const RecordCelebration = (() => {
       </div>`;
 
     let _closed = false;
-    const _close = () => { if (_closed) return; _closed = true; overlay.remove(); if (onClose) onClose(); };
+    const _close = () => { if (_closed) return; _closed = true; Motion.closeModal(overlay); if (onClose) onClose(); };
 
     overlay.addEventListener('click', _close);
     document.body.appendChild(overlay);
@@ -156,7 +156,7 @@ const RecordCelebration = (() => {
       </div>`;
 
     let _closed = false;
-    const _close = () => { if (_closed) return; _closed = true; overlay.remove(); if (onClose) onClose(); };
+    const _close = () => { if (_closed) return; _closed = true; Motion.closeModal(overlay); if (onClose) onClose(); };
 
     overlay.addEventListener('click', _close);
     document.body.appendChild(overlay);
@@ -233,7 +233,7 @@ const RecordCelebration = (() => {
       </div>`;
 
     let _closed = false;
-    const _close = () => { if (_closed) return; _closed = true; overlay.remove(); if (onClose) onClose(); };
+    const _close = () => { if (_closed) return; _closed = true; Motion.closeModal(overlay); if (onClose) onClose(); };
 
     overlay.addEventListener('click', _close);
     document.body.appendChild(overlay);

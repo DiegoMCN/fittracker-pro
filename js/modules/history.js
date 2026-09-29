@@ -126,7 +126,7 @@ const History = (() => {
             <div style="font-size:40px;margin-bottom:12px">📭</div>
             <div>Sin sesiones registradas todavía</div>
           </div>` : dates.map((date, i) => `
-          <div class="${_shouldStagger ? 'stagger-in' : ''}" style="margin-bottom:20px${_shouldStagger ? `;animation-delay:${Math.min(i * 90, 630)}ms` : ''}">
+          <div class="${_shouldStagger ? 'stagger-in' : ''}" style="margin-bottom:20px">
             <div style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;
               letter-spacing:.06em;margin-bottom:10px;padding-left:4px">
               ${Utils.formatDate(date)}
@@ -138,6 +138,7 @@ const History = (() => {
       </div>`;
 
     setTimeout(_renderSplitsPaceChart, 100);
+    if (_shouldStagger) Motion.staggerIn(container.querySelectorAll('.stagger-in'));
     _shouldStagger = false; // ya se usó — expandir una tarjeta u otros re-renders no deben repetir la cascada
   }
 
@@ -433,7 +434,7 @@ const History = (() => {
       <div class="modal" style="max-width:480px">
         <div class="modal-header">
           <div class="modal-title">✏️ Completar datos del reloj</div>
-          <button class="btn btn-ghost btn-icon" onclick="this.closest('.modal-overlay').remove()">✕</button>
+          <button class="btn btn-ghost btn-icon" onclick="Motion.closeModal(this.closest('.modal-overlay'))">✕</button>
         </div>
         <div class="modal-body" style="display:flex;flex-direction:column;gap:12px">
           <p style="font-size:11px;color:var(--text-3)">${Utils.formatDate(s.date)} · ${s.type}</p>
@@ -493,7 +494,7 @@ const History = (() => {
           </div>
         </div>
         <div class="modal-footer">
-          <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancelar</button>
+          <button class="btn btn-secondary" onclick="Motion.closeModal(this.closest('.modal-overlay'))">Cancelar</button>
           <button class="btn btn-primary" id="ed-save-btn" onclick="History.saveEdit(${rowNum})">Guardar cambios</button>
         </div>
       </div>`;
@@ -523,7 +524,7 @@ const History = (() => {
       const result = await API.updateSession(payload);
       API.clearCache();
       Router.invalidateAll(); // lo que acabas de guardar puede afectar varios módulos (Dashboard, Métricas, etc.)
-      document.querySelector('.modal-overlay')?.remove();
+      Motion.closeModal(document.querySelector('.modal-overlay'));
       if (result.queued) {
         Sounds.click(); Haptics.medium();
         Toast.warning('Sin conexión — los cambios se sincronizarán cuando vuelva la conexión');
@@ -562,7 +563,7 @@ const History = (() => {
       <div class="modal" style="max-width:480px">
         <div class="modal-header">
           <div class="modal-title">✏️ Completar datos del reloj</div>
-          <button class="btn btn-ghost btn-icon" onclick="this.closest('.modal-overlay').remove()">✕</button>
+          <button class="btn btn-ghost btn-icon" onclick="Motion.closeModal(this.closest('.modal-overlay'))">✕</button>
         </div>
         <div class="modal-body" style="display:flex;flex-direction:column;gap:12px">
           <p style="font-size:11px;color:var(--text-3)">${Utils.formatDate(s.date)} · ${s.protocol || 'Cardio'}</p>
@@ -659,7 +660,7 @@ const History = (() => {
           </div>
         </div>
         <div class="modal-footer">
-          <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Cancelar</button>
+          <button class="btn btn-secondary" onclick="Motion.closeModal(this.closest('.modal-overlay'))">Cancelar</button>
           <button class="btn btn-primary" id="ce-save-btn" onclick="History.saveCardioEdit(${rowNum}, '${s.date}')">Guardar cambios</button>
         </div>
       </div>`;
@@ -779,7 +780,7 @@ const History = (() => {
       const result = await API.updateCardio(payload);
       API.clearCache();
       Router.invalidateAll(); // lo que acabas de guardar puede afectar varios módulos (Dashboard, Métricas, etc.)
-      document.querySelector('.modal-overlay')?.remove();
+      Motion.closeModal(document.querySelector('.modal-overlay'));
       if (result.queued) {
         Sounds.click(); Haptics.medium();
         Toast.warning('Sin conexión — los cambios se sincronizarán cuando vuelva la conexión');
