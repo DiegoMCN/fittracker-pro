@@ -72,10 +72,64 @@ const Configuracion = (() => {
           <button class="btn btn-secondary" style="width:100%" onclick="Configuracion.clearLocalData()">
             🗑️ Borrar datos guardados localmente
           </button>
+          <div id="cfg-version" style="font-size:12px;color:var(--text-3);margin-top:14px;line-height:1.6">Verificando versión del servidor…</div>
+        </div>
+
+        <div class="card animate-slide-up" style="margin-top:20px">
+          <div class="card-header">
+            <div>
+              <div class="card-title">🤖 Registro del Coach IA</div>
+              <div class="card-subtitle">Cada intento contra cada modelo: si funcionó, por qué falló y cuánto tardó — para entender por qué se pasa de un modelo a otro</div>
+            </div>
+          </div>
+          <div id="cfg-coach-log" style="font-size:12px;color:var(--text-3)">Cargando registro…</div>
         </div>
 
         ${_motionPanelHTML()}
       </div>`;
+    _loadVersion();
+    _loadCoachLog();
+  }
+
+  async function _loadCoachLog() {
+    const el = document.getElementById('cfg-coach-log');
+    if (!el) return;
+    let rows = [];
+    try { rows = (await API.getCoachLog()).rows || []; } catch(e) {}
+    if (!rows.length) { el.innerHTML = 'Todavía no hay registros. Se llenan al generar un consejo (requiere el servidor actualizado y haber corrido <b>setupSheets()</b>).'; return; }
+    const esc = Utils.escapeHtml;
+    const icon = (r) => r.result === 'ok' ? '✅' : '❌';
+    el.innerHTML = `<div style="overflow-x:auto;max-height:340px;overflow-y:auto"><table style="width:100%;border-collapse:collapse;font-size:11px">
+      <thead><tr style="text-align:left;color:var(--text-4)"><th style="padding:4px 6px">Cuándo</th><th style="padding:4px 6px">Modelo</th><th style="padding:4px 6px"></th><th style="padding:4px 6px">Causa</th><th style="padding:4px 6px;text-align:right">Seg.</th><th style="padding:4px 6px">Detalle</th></tr></thead>
+      <tbody>${rows.map(r => `<tr style="border-top:1px solid var(--border)">
+        <td style="padding:5px 6px;white-space:nowrap">${esc(String(r.ts || '').slice(5, 16))}</td>
+        <td style="padding:5px 6px;white-space:nowrap">${esc(r.model || '')}</td>
+        <td style="padding:5px 6px">${icon(r)}</td>
+        <td style="padding:5px 6px">${esc(r.kind || '')}</td>
+        <td style="padding:5px 6px;text-align:right">${esc(String(r.dur ?? ''))}</td>
+        <td style="padding:5px 6px;color:var(--text-3);min-width:180px">${esc(String(r.detail || '').slice(0, 160))}</td></tr>`).join('')}</tbody></table></div>`;
+  }
+
+  // ¿El Apps Script publicado está al día, y al Sheet no le falta ninguna
+  // columna? Antes no había forma de saberlo desde la app.
+  async function _loadVersion() {
+    const el = document.getElementById('cfg-version');
+    if (!el) return;
+    let res = null;
+    try { res = await API.getVersion(); } catch(e) {}
+    if (!res || !res.version) {
+      el.innerHTML = '⚠️ El servidor no reporta versión: el Apps Script publicado es anterior a esta actualización (o no hay conexión). Vuelve a desplegarlo.';
+      return;
+    }
+    const expected = CONFIG.EXPECTED_BACKEND_VERSION;
+    const verLine = res.version === expected || res.version === 'mock'
+      ? `✅ Servidor al día (${Utils.escapeHtml(res.version)})`
+      : `⚠️ El Apps Script publicado es <b>${Utils.escapeHtml(res.version)}</b> y la app espera <b>${Utils.escapeHtml(expected)}</b> — vuelve a desplegarlo.`;
+    const issues = res.schemaIssues || [];
+    const issueLine = issues.length
+      ? `<br>⚠️ A tu Sheet le faltan columnas — corre <b>setupSheets()</b> en Apps Script:<br>` + issues.map(i => `• ${Utils.escapeHtml(i.sheet)}: ${Utils.escapeHtml(i.problem)}`).join('<br>')
+      : '<br>✅ Columnas del Sheet completas';
+    el.innerHTML = verLine + issueLine;
   }
 
   // ── MOVIMIENTO Y DISEÑO ──────────────────────────────────────────

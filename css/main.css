@@ -804,6 +804,8 @@ input[type="range"]::-moz-range-thumb {
   100% { transform: scale(1);   box-shadow: 0 0 0 rgba(0,255,135,0); }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+/* Barra indeterminada del progreso del Coach IA (animación continua → CSS, no GSAP) */
+@keyframes coach-indeterminate { 0% { transform: translateX(-100%); } 100% { transform: translateX(250%); } }
 /* .animate-slide-up / .animate-bounce-in: Motion (js/motion.js) las
    detecta solas apenas aparecen en el DOM y las anima — ya no llevan
    @keyframes propio, las clases siguen existiendo solo como la señal

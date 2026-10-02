@@ -41,6 +41,8 @@ const CONFIG = {
   // La semana actual se calcula sola a partir de aquí, en vez de estar
   // hardcodeada (por eso antes se quedaba trabada en "Semana 3" para siempre).
   PROGRAM_START_DATE: '2026-08-24', // lunes de esta semana — fecha real confirmada de inicio (antes decía 17 de agosto por error, causaba un desfase de 1 semana en toda la app)
+  // Debe coincidir con BACKEND_VERSION en 00_Core.gs — si no, Configuración avisa que el Apps Script publicado no está al día.
+  EXPECTED_BACKEND_VERSION: '2026.10.02-coach',
 
   // Fase actual del programa
   CURRENT_PHASE: {

@@ -38,9 +38,14 @@ const API = (() => {
   // cola offline al reintentar items pendientes.
   const FETCH_TIMEOUT_MS = 8000; // antes no había timeout — esperaba lo que el navegador tardara solo en darse por vencido, a veces minutos en una señal débil
 
-  async function _attemptFetch(params) {
+  // timeoutMs: 8s para todo lo normal. El consejo de la IA pasa uno propio
+  // (5.5 min): Gemini tarda ~15s solo para responder "OK" y bastante más
+  // con el consejo completo — con 8s la app se rendía SIEMPRE antes de
+  // que Google terminara y mostraba "no disponible", aunque el consejo
+  // sí se generaba y guardaba del lado del servidor.
+  async function _attemptFetch(params, timeoutMs = FETCH_TIMEOUT_MS) {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     try {
       let res;
       if (params.method === 'POST') {
@@ -59,7 +64,7 @@ const API = (() => {
 
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      if (data.error) throw new Error(data.error);
+      if (data.error) throw new Error(typeof data.error === 'string' ? data.error : (data.error.message || JSON.stringify(data.error)));
       return data;
     } finally {
       clearTimeout(timeoutId);
@@ -68,7 +73,7 @@ const API = (() => {
 
   // Fetch base con retry
   async function _fetch(params, options = {}) {
-    const { useCache = true, retries = 2 } = options;
+    const { useCache = true, retries = 2, timeoutMs } = options;
     const cacheKey = JSON.stringify(params);
 
     if (useCache && params.method !== 'POST') {
@@ -98,7 +103,7 @@ const API = (() => {
     let lastError;
     for (let attempt = 0; attempt <= retries; attempt++) {
       try {
-        const data = await _attemptFetch(params);
+        const data = await _attemptFetch(params, timeoutMs);
         _lastWasMock = false;
         if (useCache && params.method !== 'POST') _cacheSet(cacheKey, data);
         return data;
@@ -132,6 +137,9 @@ const API = (() => {
   // ── MOCK DATA (para desarrollo sin backend) ──────────────────────────────
   function _getMockData(action) {
     const mocks = {
+      getVersion: { version: 'mock', schemaIssues: [] },
+      getCoachJob: { status: 'desconocido' },
+      getCoachLog: { rows: [] },
       getDashboard: {
         weekStreak: 3,
         thisWeek: { sessions: 2, target: 6, calories: 768, volume: 11425 },
@@ -263,6 +271,9 @@ const API = (() => {
       _forceOffline = !!val;
       localStorage.setItem('fittracker_force_offline', _forceOffline ? '1' : '0');
     },
+
+    getVersion: () =>
+      _fetch({ action: 'getVersion' }, { useCache: false }),
 
     getDashboard: () =>
       _fetch({ action: 'getDashboard' }),
@@ -404,8 +415,12 @@ const API = (() => {
     updateCardio: (data) =>
       _fetch({ action: 'updateCardio', method: 'POST', ...data }, { useCache: false, retries: 0 }),
 
-    refreshDashboardInsight: () =>
-      _fetch({ action: 'refreshDashboardInsight', method: 'POST' }, { useCache: false, retries: 0 }),
+    refreshDashboardInsight: (requestId) =>
+      _fetch({ action: 'refreshDashboardInsight', method: 'POST', requestId }, { useCache: false, retries: 0, timeoutMs: 330000 }),
+
+    // Progreso del consejo en curso (lo pregunta Coach IA cada pocos segundos)
+    getCoachJob: (id) => _fetch({ action: 'getCoachJob', id }, { useCache: false, retries: 0 }),
+    getCoachLog: () => _fetch({ action: 'getCoachLog' }, { useCache: false }),
 
     saveMealLog: (data) =>
       _fetch({ action: 'saveMealLog', method: 'POST', ...data }, { useCache: false, retries: 0 }),

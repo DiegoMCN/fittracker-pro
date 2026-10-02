@@ -11,6 +11,7 @@ const Coach = (() => {
   let _chartConfig = null; // { type: 'weight'|'speed'|'fc', title, subtitle, labels, values, unit, exerciseName }
 
   async function init(container) {
+    setTimeout(_maybeResumeJob, 0); // si quedó un consejo generándose (pantalla bloqueada, recarga), retomarlo
     container.innerHTML = `
       <div style="max-width:700px;margin:0 auto">
         <div class="skeleton" style="height:180px;border-radius:16px;margin-bottom:20px"></div>
@@ -246,50 +247,151 @@ const Coach = (() => {
     });
   }
 
-  async function generate() {
-    if (_generating) return; // evita doble click mientras genera
+  // ── GENERACIÓN CON PROGRESO REAL ──────────────────────────────────
+  // El consejo puede tardar 1-3 min (Gemini piensa antes de escribir).
+  // Mientras tanto, la app le pregunta al servidor cada 3 s en qué paso va
+  // (getCoachJob) y lo muestra. Si bloqueas la pantalla, sales de la app o
+  // se corta la conexión, el servidor SIGUE trabajando: el número de
+  // trabajo queda guardado en el teléfono y al volver la app se reengancha
+  // y recoge el resultado.
+  const JOB_KEY = 'fittracker_coach_job';
+  const JOB_MAX_MS = 7 * 60 * 1000; // más que el límite de Apps Script (6 min)
+  let _job = null, _pollTimer = null, _clockTimer = null, _lastSteps = [];
+
+  function _newJobId() {
+    return (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(36).slice(2);
+  }
+
+  function _fmtElapsed(ms) { const s = Math.floor(ms / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; }
+
+  // Panel idempotente: si un re-render lo borró, lo vuelve a poner debajo del botón.
+  function _renderProgress(note) {
+    if (!_job) return;
+    const btn = document.getElementById('coach-generate-btn');
+    if (!btn) return;
+    let panel = document.getElementById('coach-progress');
+    if (!panel) {
+      panel = document.createElement('div');
+      panel.id = 'coach-progress';
+      panel.className = 'card animate-slide-up';
+      panel.style.cssText = 'margin-top:12px;padding:14px 16px';
+      btn.insertAdjacentElement('afterend', panel);
+    }
+    const steps = _lastSteps.slice(-6);
+    panel.innerHTML = `
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+        <div style="width:18px;height:18px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.9s linear infinite;flex-shrink:0"></div>
+        <div style="flex:1;font-size:13px;font-weight:600">Generando tu consejo</div>
+        <div id="coach-progress-clock" style="font-size:12px;color:var(--text-3);font-variant-numeric:tabular-nums">${_fmtElapsed(Date.now() - _job.startedAt)}</div>
+      </div>
+      <div style="height:3px;border-radius:99px;background:var(--bg-input);overflow:hidden;margin-bottom:10px">
+        <div style="height:100%;width:40%;background:var(--accent);border-radius:99px;animation:coach-indeterminate 1.4s ease-in-out infinite"></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px">
+        ${steps.length ? steps.map((st, i) => `
+          <div style="display:flex;gap:8px;font-size:11px;line-height:1.45;color:${i === steps.length - 1 ? 'var(--text-1)' : 'var(--text-3)'}">
+            <span style="flex-shrink:0;width:34px;color:var(--text-4);font-variant-numeric:tabular-nums">${st.t}s</span>
+            <span>${i === steps.length - 1 ? '▸' : '✓'} ${Utils.escapeHtml(st.msg)}</span>
+          </div>`).join('') : `<div style="font-size:11px;color:var(--text-3)">Enviando la solicitud al servidor…</div>`}
+      </div>
+      <div style="font-size:10px;color:var(--text-4);margin-top:10px;line-height:1.5">
+        ${note ? Utils.escapeHtml(note) : 'Puede tardar 1–3 min. Puedes bloquear la pantalla o salir: el servidor sigue trabajando y el resultado aparece aquí al volver.'}
+      </div>`;
+  }
+
+  function _startJob(id, startedAt) {
+    _job = { id, startedAt: startedAt || Date.now(), finished: false };
+    _lastSteps = [];
+    try { localStorage.setItem(JOB_KEY, JSON.stringify({ id, startedAt: _job.startedAt })); } catch(e) {}
     _generating = true;
     const btn = document.getElementById('coach-generate-btn');
-    if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Generando...'; }
-    Sounds.click();
+    if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Generando…'; }
+    _renderProgress();
+    clearInterval(_pollTimer); clearInterval(_clockTimer);
+    _pollTimer = setInterval(_poll, 3000);
+    _clockTimer = setInterval(() => {
+      const c = document.getElementById('coach-progress-clock');
+      if (c && _job) c.textContent = _fmtElapsed(Date.now() - _job.startedAt); else if (_job) _renderProgress();
+    }, 1000);
+  }
 
+  async function _poll() {
+    if (!_job || _job.finished) return;
+    if (Date.now() - _job.startedAt > JOB_MAX_MS) {
+      return _completeJob({ ok: false, message: 'El servidor no confirmó el resultado a tiempo. Si el consejo se generó, aparecerá al recargar Coach IA; si no, revisa el Registro del Coach IA en Configuración.' });
+    }
     try {
-      const res = await API.refreshDashboardInsight();
+      const st = await API.getCoachJob(_job.id);
+      if (!_job || _job.finished) return;
+      if (st && Array.isArray(st.steps)) { _lastSteps = st.steps; _renderProgress(); }
+      if (st && st.status === 'done') _completeJob({ ok: true });
+      else if (st && st.status === 'error') _completeJob({ ok: false, message: st.cause && st.cause.message });
+    } catch(e) { /* sin señal un momento: se reintenta en el siguiente ciclo */ }
+  }
+
+  async function _completeJob({ ok, insight, message }) {
+    if (!_job || _job.finished) return;
+    _job.finished = true;
+    clearInterval(_pollTimer); clearInterval(_clockTimer);
+    try { localStorage.removeItem(JOB_KEY); } catch(e) {}
+    _job = null; _generating = false;
+    const panel = document.getElementById('coach-progress'); if (panel) panel.remove();
+    const btn = document.getElementById('coach-generate-btn');
+    if (ok) {
       API.clearCache();
-      Router.invalidateAll(); // lo que acabas de guardar puede afectar varios módulos (Dashboard, Métricas, etc.)
-      if (res.insight) {
-        // Actualiza el historial local sin refetch completo
+      Router.invalidateAll(); // el consejo también actualiza notas de ejercicios e insights de gráficas
+      if (insight) {
         const today = Utils.today();
         _history = _history.filter(h => h.date !== today);
-        _history.unshift({ date: today, note: res.insight });
-        Sounds.serieDone(); Haptics.success();
-        Toast.success('Consejo generado 🤖');
+        _history.unshift({ date: today, note: insight });
         render();
-      } else if (res.duplicate) {
-        Toast.warning(res.message || 'Ya se generó un consejo hace poco — espera unos minutos antes de volver a pedir.');
-        // El candado del backend dura 5 minutos — se deja el botón
-        // deshabilitado ese mismo tiempo en vez de reactivarlo de
-        // inmediato, para no invitar a tocarlo otra vez sabiendo que
-        // solo va a rebotar contra el mismo enfriamiento.
-        if (btn) {
-          btn.innerHTML = '⏳ Espera unos minutos...';
-          setTimeout(() => {
-            if (btn) { btn.disabled = false; btn.innerHTML = '🎯 Generar consejo de hoy'; }
-          }, 5 * 60 * 1000);
-        }
-      } else {
-        Toast.warning('No se pudo generar el consejo — revisa el log de Apps Script (Ejecuciones) para ver la causa exacta: puede ser la API key, cuota agotada, o un error de la API');
-        if (btn) { btn.disabled = false; btn.innerHTML = '🎯 Generar consejo de hoy'; }
+      } else if (Router.current() === 'coach') {
+        init(document.getElementById('page-content')); // vino del sondeo: se recarga del servidor
       }
-    } catch(err) {
-      Sounds.error();
-      Toast.error(err.message && err.message.includes('Sin conexión') ? err.message : 'Error al generar el consejo');
-      console.error(err);
+      Sounds.serieDone(); Haptics.success();
+      Toast.success('Consejo generado 🤖');
+    } else {
       if (btn) { btn.disabled = false; btn.innerHTML = '🎯 Generar consejo de hoy'; }
-    } finally {
-      _generating = false;
+      Toast.warning(message ? `No se pudo generar el consejo: ${message}` : 'No se pudo generar el consejo — revisa el Registro del Coach IA en Configuración.', 12000);
     }
   }
+
+  // Al abrir Coach IA (o volver a la app): si había un consejo en curso, reengancharse.
+  function _maybeResumeJob() {
+    if (_job) { _renderProgress(); _poll(); return; }
+    let saved = null;
+    try { saved = JSON.parse(localStorage.getItem(JOB_KEY) || 'null'); } catch(e) {}
+    if (saved && saved.id && Date.now() - saved.startedAt < JOB_MAX_MS) { _startJob(saved.id, saved.startedAt); _poll(); }
+    else { try { localStorage.removeItem(JOB_KEY); } catch(e) {} }
+  }
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && _job) _poll(); });
+
+  async function generate() {
+    if (_generating) return; // evita doble click mientras genera
+    Sounds.click();
+    const id = _newJobId();
+    _startJob(id);
+    try {
+      const res = await API.refreshDashboardInsight(id);
+      if (res.duplicate) {
+        if (res.jobId && res.jobId !== id) {
+          // Ya había uno corriendo (p. ej. lo pediste antes de bloquear la pantalla): seguir ese.
+          try { localStorage.setItem(JOB_KEY, JSON.stringify({ id: res.jobId, startedAt: _job.startedAt })); } catch(e) {}
+          _job.id = res.jobId;
+          _renderProgress('Ya había un consejo generándose — mostrando su progreso.');
+          return;
+        }
+        return _completeJob({ ok: false, message: res.message || 'Ya se generó un consejo hace poco — espera unos minutos.' });
+      }
+      if (res.insight) return _completeJob({ ok: true, insight: res.insight });
+      return _completeJob({ ok: false, message: res.cause && res.cause.message });
+    } catch(err) {
+      // Se cortó la conexión, se bloqueó la pantalla o se agotó la espera:
+      // el servidor sigue trabajando — el sondeo recoge el resultado.
+      if (_job && !_job.finished) _renderProgress('Se perdió la conexión con el teléfono, pero el servidor sigue trabajando. Esperando el resultado…');
+    }
+  }
+
 
   return { init, generate };
 })();
