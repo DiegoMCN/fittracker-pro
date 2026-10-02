@@ -501,6 +501,7 @@ const Router = (() => {
         plan:      { title: 'Plan Semanal', sub: 'Semana 3 · Fase 1' },
         history:   { title: 'Bitácora', sub: 'Historial de sesiones' },
         metrics:   { title: 'Métricas', sub: 'Evolución y gráficas' },
+        forma:     { title: 'Simulador de forma', sub: 'Tu condición, tu fatiga y tu mejor día' },
         exercises: { title: 'Ejercicios', sub: 'Catálogo y cargas' },
         perfil:    { title: 'Perfil', sub: 'Datos básicos y composición corporal' },
         config:    { title: 'Configuración', sub: 'Preferencias de la app' },

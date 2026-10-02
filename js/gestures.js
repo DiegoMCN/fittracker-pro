@@ -89,7 +89,29 @@ const Gestures = (() => {
     if (scrollContainer._ptrEnabled) return; // los listeners ya están enganchados, no hace falta más
     scrollContainer._ptrEnabled = true;
 
-    let startY = 0, pulling = false, dist = 0;
+    let startY = 0, startX = 0, pulling = false, dist = 0, armed = false, engaged = false;
+    // Zona muerta, como iOS: el dedo tiene que bajar 10px antes de que
+    // la app decida si es un jalón para recargar o un scroll normal.
+    const SLOP = 10;
+
+    // ¿La página está REALMENTE hasta arriba? En esta app lo que se
+    // desplaza es la ventana (el documento), no #page-content. Antes
+    // solo se revisaba scrollContainer.scrollTop — que siempre vale 0 —
+    // así que el gesto se armaba aunque estuvieras a media página: al
+    // deslizar hacia arriba para regresar, la app creía que querías
+    // recargar. Tampoco cuenta si el dedo empezó dentro de un modal o
+    // de algo con scroll propio que no está hasta arriba.
+    function atTop(target) {
+      const doc = document.scrollingElement || document.documentElement;
+      if ((window.scrollY || window.pageYOffset || 0) > 0) return false;
+      if (doc && doc.scrollTop > 0) return false;
+      if (scrollContainer.scrollTop > 0) return false;
+      if (target && target.closest && target.closest('.modal-overlay')) return false;
+      for (let el = target; el && el !== scrollContainer && el !== document.body; el = el.parentElement) {
+        if (el.scrollTop > 0) return false;
+      }
+      return true;
+    }
     // TRIGGER es en pixeles YA CON RESISTENCIA (visuales, no los que
     // de verdad recorrió el dedo) — con la fórmula de arriba, jalar
     // 50px visuales requiere mover el dedo real bastante más que eso,
@@ -97,9 +119,11 @@ const Gestures = (() => {
     const TRIGGER = 50;
 
     scrollContainer.addEventListener('touchstart', (e) => {
-      if (scrollContainer.scrollTop > 0) { pulling = false; return; }
+      pulling = false; engaged = false;
+      armed = atTop(e.target);
+      if (!armed) return;
       startY = e.touches[0].clientY;
-      pulling = true;
+      startX = e.touches[0].clientX;
       dist = 0;
       ensureIndicator(); // por si el render anterior lo destruyó y no ha vuelto a jalar desde entonces
       // Sin transición mientras se jala — tiene que seguir al dedo en
@@ -109,9 +133,18 @@ const Gestures = (() => {
     }, { passive: true });
 
     scrollContainer.addEventListener('touchmove', (e) => {
-      if (!pulling) return;
-      const rawDist = e.touches[0].clientY - startY;
-      if (rawDist <= 0) { pulling = false; scrollContainer._ptrIndicator.style.opacity = '0'; return; }
+      if (!armed) return;
+      const dy = e.touches[0].clientY - startY;
+      const dx = e.touches[0].clientX - startX;
+      if (!engaged) {
+        if (Math.abs(dy) < SLOP && Math.abs(dx) < SLOP) return; // todavía no se sabe qué gesto es
+        // Solo es jalón si va claramente hacia ABAJO, más vertical que
+        // horizontal (no el carrusel) y la página sigue hasta arriba.
+        if (dy <= 0 || Math.abs(dx) > Math.abs(dy) || !atTop(e.target)) { armed = false; return; }
+        engaged = true; pulling = true;
+      }
+      const rawDist = dy - SLOP;
+      if (rawDist <= 0) { pulling = false; armed = false; scrollContainer._ptrIndicator.style.opacity = '0'; return; }
       e.preventDefault(); // aquí sí — es el jalón que queremos controlar nosotros, no el navegador
       dist = _rubberBand(rawDist); // esta es la distancia YA resistida — la que de verdad se usa para pintar y para el umbral
       const progress = Math.min(dist / TRIGGER, 1);

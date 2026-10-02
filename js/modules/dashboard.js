@@ -2,32 +2,16 @@
 // DASHBOARD MODULE
 // ═══════════════════════════════════════════
 
-// Lugares reales para comparar contra los kilómetros corridos — la
-// distancia real a cada uno se calcula en tiempo real desde la
-// ciudad de "casa" que Diego configure (Configuración), así esto
-// sirve sin importar si algún día cambia de ciudad. Cubre un rango
-// amplio (7km a 1267km desde Playa del Carmen) para que casi
-// cualquier total de hoy/semana/mes/año encuentre una comparación
-// razonable.
-const _KM_LANDMARKS = [
-  { name: 'Xcaret', lat: 20.5827, lng: -87.1201 },
-  { name: 'Puerto Aventuras', lat: 20.4986, lng: -87.2394 },
-  { name: 'Cozumel', lat: 20.4230, lng: -86.9223 },
-  { name: 'Puerto Morelos', lat: 20.8460, lng: -86.8747 },
-  { name: 'Tulum', lat: 20.2114, lng: -87.4654 },
-  { name: 'Cancún', lat: 21.1619, lng: -86.8515 },
-  { name: 'Valladolid', lat: 20.6896, lng: -88.2019 },
-  { name: 'Chichén Itzá', lat: 20.6843, lng: -88.5678 },
-  { name: 'Mérida', lat: 20.9674, lng: -89.5926 },
-  { name: 'Chetumal', lat: 18.5001, lng: -88.2960 },
-  { name: 'Campeche', lat: 19.8301, lng: -90.5349 },
-  { name: 'La Habana, Cuba', lat: 23.1136, lng: -82.3666 },
-  { name: 'Villahermosa', lat: 17.9895, lng: -92.9475 },
-  { name: 'Ciudad de Guatemala', lat: 14.6349, lng: -90.5069 },
-  { name: 'Miami, EE.UU.', lat: 25.7617, lng: -80.1918 },
-  { name: 'Veracruz', lat: 19.1738, lng: -96.1342 },
-  { name: 'Ciudad de México', lat: 19.4326, lng: -99.1332 },
-];
+// ═══ RUTA VIRTUAL DE KILÓMETROS ════════════════════════════════════
+// Antes había 17 lugares fijos guardados aquí (Xcaret, Tulum, Mérida…)
+// y se elegía el de distancia "parecida" a tus km, en cualquier
+// dirección — impreciso (3 km → "Xcaret", 7 km) y tope en CDMX. Ahora
+// NO hay lugares guardados: tus km se recorren sobre una CARRETERA REAL
+// desde tu ciudad (Configuración) rumbo a CDMX y luego a Tijuana, y el
+// nombre del punto exacto donde caes se obtiene solo de OpenStreetMap.
+// Aquí solo vive el RUMBO del viaje, no los lugares.
+const _KM_ROUTE_WAYPOINTS = [[19.4326, -99.1332], [32.5149, -117.0382]]; // CDMX → Tijuana
+const _KM_ROUTE_KEY = 'fittracker_km_route_v2';
 
 function _haversineKm(lat1, lng1, lat2, lng2) {
   const R = 6371;
@@ -37,19 +21,71 @@ function _haversineKm(lat1, lng1, lat2, lng2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-// Encuentra el lugar cuya distancia real desde casa esté más cerca
-// del km corrido — no necesariamente por debajo, el más cercano en
-// cualquier dirección se siente más natural que forzar "todavía no
-// llegas a X".
-function _closestLandmark(homeLat, homeLng, km) {
-  if (km <= 0 || homeLat == null || homeLng == null) return null;
-  let best = null, bestDiff = Infinity;
-  _KM_LANDMARKS.forEach(p => {
-    const distKm = _haversineKm(homeLat, homeLng, p.lat, p.lng);
-    const diff = Math.abs(distKm - km);
-    if (diff < bestDiff) { bestDiff = diff; best = { ...p, distKm: Math.round(distKm) }; }
+// La ruta por carretera se pide UNA vez a OSRM (servicio abierto, sin
+// llave) y se guarda en el teléfono. Si no hay conexión, se usa una
+// línea recta aproximada (punteada en el mapa) y no se guarda.
+async function _kmRoute(homeLat, homeLng) {
+  const key = `${_KM_ROUTE_KEY}_${homeLat.toFixed(3)}_${homeLng.toFixed(3)}`;
+  try { const c = JSON.parse(localStorage.getItem(key) || 'null'); if (c && c.pts && c.pts.length > 1) return c; } catch(e) {}
+  let pts = null, real = false;
+  try {
+    const coords = [[homeLat, homeLng], ..._KM_ROUTE_WAYPOINTS].map(([la, ln]) => `${ln},${la}`).join(';');
+    const res = await fetch(`https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson`);
+    const data = await res.json();
+    const g = data.code === 'Ok' && data.routes && data.routes[0] && data.routes[0].geometry && data.routes[0].geometry.coordinates;
+    if (g && g.length > 1) { pts = g.map(([ln, la]) => [la, ln]); real = true; }
+  } catch(e) { /* sin red: línea recta abajo */ }
+  if (!pts) {
+    const legs = [[homeLat, homeLng], ..._KM_ROUTE_WAYPOINTS]; pts = [];
+    for (let i = 0; i < legs.length - 1; i++) for (let k = 0; k < 100; k++) { const t = k / 100; pts.push([legs[i][0] + (legs[i+1][0] - legs[i][0]) * t, legs[i][1] + (legs[i+1][1] - legs[i][1]) * t]); }
+    pts.push(legs[legs.length - 1]);
+  }
+  // Distancia acumulada; puntos a ≥0.5 km (la geometría completa trae miles).
+  const out = [pts[0]], cum = [0]; let acc = 0;
+  for (let i = 1; i < pts.length; i++) {
+    const last = out[out.length - 1], d = _haversineKm(last[0], last[1], pts[i][0], pts[i][1]);
+    if (d >= 0.5 || i === pts.length - 1) { acc += d; out.push([Math.round(pts[i][0] * 1e5) / 1e5, Math.round(pts[i][1] * 1e5) / 1e5]); cum.push(Math.round(acc * 100) / 100); }
+  }
+  const route = { pts: out, cum, real };
+  if (real) { try { localStorage.setItem(key, JSON.stringify(route)); } catch(e) {} }
+  return route;
+}
+
+// Punto exacto sobre la carretera a "km" de casa.
+function _kmPointAt(route, km) {
+  const { pts, cum } = route;
+  if (!(km > 0)) return { point: pts[0], idx: 0 };
+  if (km >= cum[cum.length - 1]) return { point: pts[pts.length - 1], idx: pts.length - 1, beyond: true };
+  let lo = 0, hi = cum.length - 1;
+  while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (cum[mid] <= km) lo = mid; else hi = mid; }
+  const t = (km - cum[lo]) / ((cum[hi] - cum[lo]) || 1);
+  return { point: [pts[lo][0] + (pts[hi][0] - pts[lo][0]) * t, pts[lo][1] + (pts[hi][1] - pts[lo][1]) * t], idx: lo };
+}
+
+// Nombre del lugar donde caes — OpenStreetMap (Nominatim, sin llave).
+// Su política pide máximo 1 consulta por segundo: se encolan, y cada
+// nombre queda guardado en el teléfono (por zona de ~1 km).
+let _nominatimQueue = Promise.resolve();
+function _kmPlaceName(lat, lng, km) {
+  const zoom = km < 20 ? 14 : 10; // poca distancia → colonia; mucha → ciudad/municipio
+  const key = `fittracker_km_place_${zoom}_${lat.toFixed(2)}_${lng.toFixed(2)}`;
+  try { const c = localStorage.getItem(key); if (c) return Promise.resolve(c); } catch(e) {}
+  const job = _nominatimQueue.then(async () => {
+    try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=${zoom}&accept-language=es`);
+      const a = ((await res.json()) || {}).address || {};
+      const town = a.city || a.town || a.village || a.hamlet || a.municipality || a.county;
+      const colonia = zoom >= 14 ? (a.suburb || a.neighbourhood || a.quarter) : null;
+      // Cerca de casa: "Colonia, Ciudad". Lejos: "Ciudad, Estado".
+      const parts = colonia ? [colonia, town] : [town, a.state];
+      const name = parts.filter(Boolean).filter((v, i, arr) => arr.indexOf(v) === i).join(', ') || null;
+      if (name) { try { localStorage.setItem(key, name); } catch(e) {} }
+      return name;
+    } catch(e) { return null; }
+    finally { await new Promise(r => setTimeout(r, 1100)); }
   });
-  return best;
+  _nominatimQueue = job.catch(() => {});
+  return job;
 }
 
 // Tarjeta tipo carrusel (swipeable) — hoy / semana / mes / año, para
@@ -84,28 +120,23 @@ function _kmCarouselHTML(distanceStats, profile) {
     <div class="card section" style="padding:0;overflow:hidden">
       <div style="padding:16px 16px 4px 16px">
         <div class="card-title">🏃 Kilómetros corridos</div>
-        <div class="card-subtitle">Desliza para ver hoy, la semana, el mes y el año — comparado contra ${homeCity || 'tu ciudad'}</div>
+        <div class="card-subtitle">Tus km sobre la carretera desde ${homeCity || 'tu ciudad'} rumbo a CDMX — desliza para hoy, semana, mes y año</div>
       </div>
-      <div id="km-carousel" style="display:flex;overflow-x:auto;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;gap:0" onscroll="Dashboard_onKmScroll(this)">
-        ${periods.map(p => {
-          const landmark = _closestLandmark(homeLat, homeLng, p.km);
-          return `
+      <div id="km-carousel" data-home-lat="${homeLat}" data-home-lng="${homeLng}" data-home-city="${Utils.escapeHtml(homeCity)}" style="display:flex;overflow-x:auto;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;gap:0" onscroll="Dashboard_onKmScroll(this)">
+        ${periods.map(p => `
           <div style="flex:0 0 100%;scroll-snap-align:start;padding:12px 16px 18px 16px;box-sizing:border-box">
             <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:4px">
               <span style="font-size:22px;font-weight:700;color:var(--accent)">${p.km.toFixed(p.km < 10 ? 1 : 0)}</span>
               <span style="font-size:12px;color:var(--text-3)">km · ${p.label}</span>
             </div>
-            ${landmark ? `
-            <div style="font-size:12px;color:var(--text-2);margin-bottom:10px">
-              Es como si hubieras ido de <b>${homeCity || 'tu casa'}</b> hasta <b>${landmark.name}</b> (${landmark.distKm} km)
-            </div>
-            <div id="km-map-${p.key}" data-home-lat="${homeLat}" data-home-lng="${homeLng}" data-dest-lat="${landmark.lat}" data-dest-lng="${landmark.lng}"
-              style="height:140px;border-radius:10px;overflow:hidden;background:var(--bg-input)"></div>
+            ${p.km > 0 ? `
+            <div id="km-place-${p.key}" style="font-size:12px;color:var(--text-2);margin-bottom:10px;min-height:17px">Ubicando tu punto en la carretera…</div>
+            <div id="km-map-${p.key}" data-km="${p.km}" data-period="${p.key}"
+              style="height:150px;border-radius:10px;overflow:hidden;background:var(--bg-input)"></div>
             ` : `
             <div style="font-size:12px;color:var(--text-3)">Sin carreras registradas todavía — ${p.label.toLowerCase()}.</div>
             `}
-          </div>`;
-        }).join('')}
+          </div>`).join('')}
       </div>
       <div style="display:flex;justify-content:center;gap:6px;padding:4px 0 14px 0">
         ${periods.map((p,i) => `<span class="km-dot" data-idx="${i}" style="width:6px;height:6px;border-radius:99px;background:${i===0 ? 'var(--accent)' : 'var(--border)'};transition:background 0.2s"></span>`).join('')}
@@ -209,49 +240,39 @@ function Dashboard_onKmScroll(el) {
 // igual que las gráficas de Chart.js más abajo.
 async function _initKmMaps() {
   if (typeof L === 'undefined') return;
+  const card = document.getElementById('km-carousel'); if (!card) return;
+  const homeLat = Number(card.dataset.homeLat), homeLng = Number(card.dataset.homeLng);
+  const home = card.dataset.homeCity || 'tu casa';
   const els = Array.from(document.querySelectorAll('[id^="km-map-"]')).filter(el => !el.dataset.mapInit);
+  if (!els.length) return;
   els.forEach(el => { el.dataset.mapInit = '1'; });
+  let route; try { route = await _kmRoute(homeLat, homeLng); } catch(e) { return; }
 
-  await Promise.all(els.map(async (el) => {
-    const homeLat = Number(el.dataset.homeLat), homeLng = Number(el.dataset.homeLng);
-    const destLat = Number(el.dataset.destLat), destLng = Number(el.dataset.destLng);
+  for (const el of els) {
+    const km = Number(el.dataset.km) || 0;
+    const { point, idx, beyond } = _kmPointAt(route, km);
+    const done = route.pts.slice(0, idx + 1).concat([point]);
     try {
-      const map = L.map(el.id, {
-        zoomControl: false, attributionControl: false, dragging: false,
-        scrollWheelZoom: false, doubleClickZoom: false, touchZoom: false, boxZoom: false,
-      });
-      // tile.openstreetmap.org bloquea uso embebido en apps (403) — su
-      // política solo permite tráfico muy ligero/de prueba. CARTO
-      // ofrece el mismo mapa base (son los mismos datos de
-      // OpenStreetMap) gratis y sin API key, pensado justo para este
-      // tipo de uso.
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 12 }).addTo(map);
+      const map = L.map(el.id, { zoomControl: false, attributionControl: false, dragging: false, scrollWheelZoom: false, doubleClickZoom: false, touchZoom: false, boxZoom: false });
+      // CARTO: mismo mapa base de OpenStreetMap, gratis y sin llave
+      // (tile.openstreetmap.org bloquea el uso embebido en apps).
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 16 }).addTo(map);
+      L.polyline(route.pts, { color: '#7C3AED', weight: 2, opacity: 0.35, dashArray: route.real ? null : '5,5' }).addTo(map); // la ruta completa, tenue
+      L.polyline(done, { color: '#00FF87', weight: 4, opacity: 0.95 }).addTo(map);                                        // lo que ya recorriste
+      L.circleMarker([homeLat, homeLng], { radius: 4, color: '#00FF87', fillColor: '#00FF87', fillOpacity: 1 }).addTo(map);
+      L.circleMarker(point, { radius: 6, color: '#FFFFFF', weight: 2, fillColor: '#00FF87', fillOpacity: 1 }).addTo(map);
+      map.fitBounds(L.latLngBounds(done).pad(0.35), { maxZoom: 14 });
+    } catch(e) { /* un mapa que falle no tumba el Dashboard */ }
 
-      // Ruta real por carretera (no línea recta) — OSRM tiene un
-      // servidor público gratis, sin API key, pensado para uso ligero
-      // como este. Si no hay camino por tierra (ej. Cozumel, es isla)
-      // cae de vuelta a la línea punteada recta.
-      let routeLatLngs = null;
-      try {
-        const url = `https://router.project-osrm.org/route/v1/driving/${homeLng},${homeLat};${destLng},${destLat}?overview=full&geometries=geojson`;
-        const res = await fetch(url);
-        const data = await res.json();
-        if (data.code === 'Ok' && data.routes?.[0]?.geometry?.coordinates) {
-          routeLatLngs = data.routes[0].geometry.coordinates.map(([lng, lat]) => [lat, lng]);
-        }
-      } catch(e) { /* sin ruta por carretera — usa línea recta abajo */ }
-
-      const pathLatLngs = routeLatLngs || [[homeLat, homeLng], [destLat, destLng]];
-      const bounds = L.latLngBounds(pathLatLngs);
-      map.fitBounds(bounds, { padding: [24, 24] });
-      L.polyline(pathLatLngs, {
-        color: '#00FF87', weight: routeLatLngs ? 3 : 2, opacity: 0.85,
-        dashArray: routeLatLngs ? null : '5,5', // línea recta (sin ruta real) se marca punteada, para que se note que es aproximada
-      }).addTo(map);
-      L.circleMarker([homeLat, homeLng], { radius: 5, color: '#00FF87', fillColor: '#00FF87', fillOpacity: 1 }).addTo(map);
-      L.circleMarker([destLat, destLng], { radius: 5, color: '#7C3AED', fillColor: '#7C3AED', fillOpacity: 1 }).addTo(map);
-    } catch(e) { /* silencioso — si un mapa falla, no debe tumbar el resto del Dashboard */ }
-  }));
+    const label = document.getElementById('km-place-' + el.dataset.period);
+    if (!label) continue;
+    const esc = Utils.escapeHtml;
+    if (beyond) { label.innerHTML = `¡Ya recorriste toda la ruta de <b>${esc(home)}</b> hasta <b>Tijuana</b> por carretera!`; continue; }
+    const name = await _kmPlaceName(point[0], point[1], km);
+    label.innerHTML = name
+      ? `Es como si hubieras corrido de <b>${esc(home)}</b> hasta <b>${esc(name)}</b> por carretera`
+      : `Vas a ${Math.round(km)} km de ${esc(home)} por la carretera rumbo a CDMX`;
+  }
 }
 
 

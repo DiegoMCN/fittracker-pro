@@ -140,6 +140,8 @@ const API = (() => {
       getVersion: { version: 'mock', schemaIssues: [] },
       getCoachJob: { status: 'desconocido' },
       getCoachLog: { rows: [] },
+      getFormModel: null,
+      interpretFormScenario: { success: false, cause: { message: 'Sin conexión con el servidor' } },
       getDashboard: {
         weekStreak: 3,
         thisWeek: { sessions: 2, target: 6, calories: 768, volume: 11425 },
@@ -421,6 +423,11 @@ const API = (() => {
     // Progreso del consejo en curso (lo pregunta Coach IA cada pocos segundos)
     getCoachJob: (id) => _fetch({ action: 'getCoachJob', id }, { useCache: false, retries: 0 }),
     getCoachLog: () => _fetch({ action: 'getCoachLog' }, { useCache: false }),
+
+    // Simulador de forma
+    getFormModel: () => _fetch({ action: 'getFormModel' }, { useCache: false }),
+    interpretFormScenario: (scenario) =>
+      _fetch({ action: 'interpretFormScenario', method: 'POST', ...scenario }, { useCache: false, retries: 0, timeoutMs: 330000 }),
 
     saveMealLog: (data) =>
       _fetch({ action: 'saveMealLog', method: 'POST', ...data }, { useCache: false, retries: 0 }),

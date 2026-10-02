@@ -83,6 +83,10 @@
         <span class="nav-icon">📈</span>
         <span>Métricas</span>
       </div>
+      <div class="nav-item" data-page="forma" onclick="Router.navigate('forma')">
+        <span class="nav-icon">🔮</span>
+        <span>Simulador</span>
+      </div>
       <div class="nav-item" data-page="exercises" onclick="Router.navigate('exercises')">
         <span class="nav-icon">🎯</span>
         <span>Ejercicios</span>
@@ -224,6 +228,7 @@
 <script src="js/vendor/body-muscles-1.0.0.umd.min.js"></script>
 <script src="js/muscle-map.js"></script>
 <script src="js/modules/metrics.js"></script>
+<script src="js/modules/forma.js"></script>
 <script src="js/modules/profile.js"></script>
 <script src="js/modules/configuracion.js"></script>
 <script src="js/modules/import.js"></script>
@@ -340,6 +345,7 @@ Router.register('cardio',    (container) => initCardio(container));
 Router.register('plan',      (container) => initPlan(container));
 Router.register('history',   (container) => initHistory(container));
 Router.register('metrics',   (container) => initMetrics(container));
+Router.register('forma',     (container) => initForma(container));
 Router.register('exercises', (container) => initExercises(container));
 Router.register('perfil',    (container) => initProfile(container));
 Router.register('config',    (container) => initConfiguracion(container));
