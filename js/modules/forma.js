@@ -117,7 +117,8 @@ const Forma = (() => {
         <div style="font-size:11px;color:var(--text-3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">Tu forma hoy</div>
         ${_gaugeSVG()}
         <div id="fm-zone" style="font-size:18px;font-weight:800;color:${z.color};margin-top:-6px">${esc(z.label)}</div>
-        <div style="font-size:12px;color:var(--text-3);max-width:420px;margin:6px auto 16px;line-height:1.5">${esc(z.desc)}</div>
+        <div style="font-size:12px;color:var(--text-3);max-width:420px;margin:6px auto ${_m.testDue ? '10px' : '16px'};line-height:1.5">${esc(z.desc)}</div>
+        ${_m.testDue ? `<button class="btn btn-sm" style="margin-bottom:14px;background:rgba(0,255,135,0.12);color:var(--accent);border:1px solid rgba(0,255,135,0.35)" onclick="Forma.goToTest()">🧪 Te toca tu prueba quincenal</button>` : ''}
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
           ${_stat('fm-fit', 'Condición', 'Lo que has construido (42 días)', '#00FF87')}
           ${_stat('fm-fat', 'Fatiga', 'Lo que traes encima (7 días)', '#A78BFA')}
@@ -171,6 +172,9 @@ const Forma = (() => {
         <div id="fm-plan"></div>
       </div>
 
+      <!-- 4b. PRUEBA QUINCENAL -->
+      ${_testCardHTML()}
+
       <!-- 5. LA LECTURA DEL TEMACH -->
       <div class="card section">
         <div class="card-header"><div><div class="card-title">🧠 Lo que dice el Temach</div><div class="card-subtitle">El modelo da números; el Temach te dice si el escenario tiene sentido para tus metas</div></div></div>
@@ -185,17 +189,20 @@ const Forma = (() => {
           <p><b>Condición</b>: el promedio de tu carga de los últimos 42 días — lo que tu cuerpo ya construyó. Sube lento y baja lento.</p>
           <p style="margin-top:8px"><b>Fatiga</b>: el promedio de los últimos 7 días — lo que traes encima. Sube y baja rápido.</p>
           <p style="margin-top:8px"><b>Forma</b>: condición menos fatiga, en % de tu condición. Por eso un par de días suaves te ponen "fresco": la fatiga se va mucho antes que la condición. Es el principio con el que los atletas planean llegar a su mejor día.</p>
+          <p style="margin-top:8px"><b>UA (unidades arbitrarias de carga)</b> = esfuerzo percibido (1–10) × minutos. Una sesión de 60 min con esfuerzo 7 son 420 UA. No es una unidad física como kilos o kilómetros: sirve para sumar pesas y cardio en la misma cuenta y comparar tus sesiones entre sí.</p>
           <p style="margin-top:8px"><b>Tu carga</b> es esfuerzo × minutos de cada sesión, fuerza y cardio. La simulación repite tu semana habitual de las últimas 4 semanas (${_m.weeklyLoad.toLocaleString('es-MX')} UA por semana), multiplicada por el escenario.</p>
           <div style="margin-top:12px;display:flex;flex-direction:column;gap:6px">
             ${_m.zones.map(zz => `<div style="display:flex;gap:8px;align-items:flex-start"><span style="width:10px;height:10px;border-radius:3px;background:${zz.color};flex-shrink:0;margin-top:4px"></span><span><b>${esc(zz.label)}</b> (${zz.min <= -999 ? 'menos de ' + zz.max : zz.max >= 999 ? 'más de +' + zz.min : (zz.min > 0 ? '+' : '') + zz.min + ' a ' + (zz.max > 0 ? '+' : '') + zz.max}%) — ${esc(zz.desc)}</span></div>`).join('')}
           </div>
-          <p style="margin-top:12px;color:var(--text-3)"><b>Qué tan confiable es:</b> describe muy bien la TENDENCIA (cuándo vas a estar cansado, cuándo fresco), pero usa constantes generales (42 y 7 días), no las tuyas, y no predice tu velocidad ni tus dominadas exactas. Basado en ${_m.quality.sessions} sesiones de las últimas 4 semanas${_m.quality.estimated ? `, ${_m.quality.estimated} con esfuerzo estimado — registrar tu esfuerzo en cada sesión lo vuelve más preciso` : ', todas con tu esfuerzo registrado'}.</p>
+          <p style="margin-top:12px;color:var(--text-3)"><b>Qué tan confiable es:</b> describe muy bien la TENDENCIA (cuándo vas a estar cansado, cuándo fresco) y no predice tu velocidad ni tus dominadas exactas. ${_calibText()} Basado en ${_m.quality.sessions} sesiones de las últimas 4 semanas${_m.quality.estimated ? `, ${_m.quality.estimated} con esfuerzo estimado — registrar tu esfuerzo en cada sesión lo vuelve más preciso` : ', todas con tu esfuerzo registrado'}.</p>
         </div>
       </div>
     </div>`;
 
     if (typeof Motion !== 'undefined') Motion.staggerIn(container.querySelectorAll('.section'));
     _animateHero();
+    const bar = document.getElementById('fm-calib-bar');
+    if (bar && typeof gsap !== 'undefined') gsap.fromTo(bar, { width: '0%' }, { width: bar.dataset.pct + '%', duration: 1.1, ease: 'power3.out', delay: 0.4 });
     _buildChart();
     _updateScenario(true);
     if (_plan) _renderPlan(false);
@@ -441,6 +448,92 @@ const Forma = (() => {
     }
   }
 
+  // ── PRUEBA QUINCENAL ────────────────────────────────────────────
+  // Cada 2 semanas: sprint de 20 s y máximo de dominadas con asistencia
+  // fija. Con 6 pruebas el backend busca las constantes que mejor explican
+  // TUS resultados (primero la fatiga, luego la condición si los datos lo
+  // justifican) — ver _fitFormModel en 11_Forma.gs.
+  function _calibText() {
+    const c = _m.calibration || {};
+    if (c.personalizedParts === 'ambas') return `Ya usa <b>tus</b> constantes: tu condición se construye en ~${c.tauFitness} días (promedio: 42) y tu fatiga se va en ~${c.tauFatigue} (promedio: 7).`;
+    if (c.personalizedParts === 'fatiga') return `Ya aprendió <b>tu fatiga</b>: se te va en ~${c.tauFatigue} días (promedio: 7). Tu condición todavía usa la general (42 días) — cambia tan lento que tarda más pruebas en aprenderse.`;
+    if ((c.usable || 0) >= (c.needed || 6)) return `Con tus ${c.usable} pruebas, las constantes generales (42 y 7 días) todavía predicen igual o mejor que unas personales, así que se mantienen. Cada prueba nueva lo vuelve a revisar.`;
+    return `Por ahora usa las constantes generales (42 y 7 días). Con ${c.needed || 6} pruebas quincenales empieza a aprender las tuyas — llevas ${c.usable || 0}.`;
+  }
+
+  function _testCardHTML() {
+    const c = _m.calibration || { usable: 0, needed: 6 };
+    const tests = _m.tests || [];
+    const ref = tests.find(x => x.reps > 0);
+    const refAssist = ref ? ref.assist : null;
+    const pct = c.personalized ? 100 : Math.min(100, Math.round((c.usable || 0) / (c.needed || 6) * 100));
+    const left = daysBetween(_m.today, _m.nextTestDue);
+    const status = _m.testDue
+      ? `<span style="color:var(--accent);font-weight:700">Te toca hoy</span>`
+      : `Próxima: <b>${esc(dayName(_m.nextTestDue))}</b> (en ${left} día${left === 1 ? '' : 's'})`;
+    return `
+      <div class="card section" id="fm-test-card">
+        <div class="card-header"><div><div class="card-title">🧪 Prueba quincenal</div><div class="card-subtitle">10 minutos cada 2 semanas para que el simulador aprenda cómo respondes tú</div></div></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;margin-bottom:8px"><span>${status}</span><span style="color:var(--text-3)">${c.personalized ? '✨ personalizado' : `${c.usable || 0} de ${c.needed || 6} pruebas`}</span></div>
+        <div style="height:6px;border-radius:99px;background:var(--bg-input);overflow:hidden;margin-bottom:10px">
+          <div id="fm-calib-bar" data-pct="${pct}" style="height:100%;width:${pct}%;border-radius:99px;background:linear-gradient(90deg, var(--purple), var(--accent))"></div>
+        </div>
+        <div style="font-size:12px;color:var(--text-2);line-height:1.55;margin-bottom:12px">${_calibText()}</div>
+        ${tests.length ? `<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;margin-bottom:12px">${tests.slice(-6).reverse().map(x => `
+          <div style="flex-shrink:0;background:var(--bg-input);border-radius:10px;padding:8px 10px;font-size:11px;line-height:1.5">
+            <div style="color:var(--text-3)">${esc(dayName(x.date))}</div>
+            ${x.speed ? `<div>🏃 <b>${x.speed}</b> km/h</div>` : ''}${x.reps !== null ? `<div>💪 <b>${x.reps}</b> reps${x.assist !== null ? ` · ${x.assist} lbs` : ''}</div>` : ''}
+          </div>`).join('')}</div>` : ''}
+        <button class="btn ${_m.testDue ? 'btn-primary' : 'btn-secondary'}" style="width:100%" onclick="Forma.toggleTestForm()">🧪 Registrar mi prueba</button>
+        <div id="fm-test-form" style="display:none;margin-top:14px">
+          <ol style="font-size:12px;color:var(--text-2);line-height:1.6;padding-left:18px;margin:0 0 12px 0">
+            <li>Al <b>inicio</b> de una sesión, tras 10 min de calentamiento — nunca al final, cansado.</li>
+            <li><b>Sprint:</b> la velocidad MÁS alta que sostengas <b>20 segundos</b> en la caminadora.</li>
+            <li>Descansa 3 minutos.</li>
+            <li><b>Dominadas:</b> máximo de repeticiones limpias en la máquina ${refAssist !== null && refAssist !== undefined ? `con <b>${refAssist} lbs</b> de asistencia — la misma de siempre, si no los números no se comparan` : 'con una asistencia en la que saques <b>10 a 15</b> — anótala y úsala SIEMPRE igual (más repeticiones = medición más fina)'}.</li>
+          </ol>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <div class="input-group" style="margin:0"><label class="input-label">Sprint (km/h)</label><input class="input" type="number" step="0.1" min="4" max="35" id="fm-t-speed" placeholder="12.5"></div>
+            <div class="input-group" style="margin:0"><label class="input-label">Dominadas (reps)</label><input class="input" type="number" step="1" min="0" max="60" id="fm-t-reps" placeholder="12"></div>
+            <div class="input-group" style="margin:0"><label class="input-label">Asistencia (lbs)</label><input class="input" type="number" step="1" min="0" id="fm-t-assist" value="${refAssist ?? ''}" placeholder="25"></div>
+            <div class="input-group" style="margin:0"><label class="input-label">Fecha</label><input class="input" type="date" id="fm-t-date" max="${_m.today}" value="${_m.today}"></div>
+          </div>
+          <div class="input-group" style="margin-top:8px"><label class="input-label">Notas (opcional)</label><input class="input" id="fm-t-notes" maxlength="200" placeholder="Dormí mal, caminadora distinta…"></div>
+          <button class="btn btn-primary" id="fm-t-save" style="width:100%;margin-top:4px" onclick="Forma.saveTest()">Guardar prueba</button>
+        </div>
+      </div>`;
+  }
+
+  function toggleTestForm() {
+    const f = document.getElementById('fm-test-form'); if (!f) return;
+    const open = f.style.display === 'none';
+    f.style.display = open ? 'block' : 'none';
+    if (open && typeof gsap !== 'undefined') gsap.from(f, { opacity: 0, y: -6, duration: 0.3 });
+  }
+  function goToTest() {
+    const card = document.getElementById('fm-test-card'); if (!card) return;
+    card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const f = document.getElementById('fm-test-form'); if (f && f.style.display === 'none') toggleTestForm();
+  }
+
+  async function saveTest() {
+    const v = (id) => (document.getElementById(id) || {}).value;
+    const payload = { speed: v('fm-t-speed'), reps: v('fm-t-reps'), assist: v('fm-t-assist'), date: v('fm-t-date'), notes: v('fm-t-notes') };
+    if (!payload.speed && payload.reps === '') { Toast.warning('Registra al menos tu sprint o tus dominadas.'); return; }
+    const btn = document.getElementById('fm-t-save'); if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
+    try {
+      const r = await API.saveFormTest(payload);
+      if (r && r.success) {
+        if (typeof Sounds !== 'undefined' && Sounds.serieDone) Sounds.serieDone();
+        Toast.success(r.updated ? 'Prueba actualizada 🧪' : 'Prueba guardada 🧪 — el modelo se recalculó');
+        await init(document.getElementById('page-content'));
+        return;
+      }
+      Toast.warning((r && r.error) || 'No se pudo guardar la prueba.');
+    } catch(e) { Toast.warning('Sin conexión — intenta de nuevo cuando tengas señal.'); }
+    if (btn) { btn.disabled = false; btn.textContent = 'Guardar prueba'; }
+  }
+
   // ── IA ──────────────────────────────────────────────────────────
   function _clearAI() { const el = document.getElementById('fm-ai'); if (el && !_aiBusy) el.innerHTML = ''; }
 
@@ -492,7 +585,7 @@ const Forma = (() => {
     if (open && typeof gsap !== 'undefined') gsap.from(el, { opacity: 0, y: -6, duration: 0.3 });
   }
 
-  return { init, setPreset, setLoad, setWeeks, setMode, planTestDay, askAI, toggleHow, _test: { simulate: (f) => simulate(f), planPeak: (d) => planPeak(d), summarize: (s, c) => summarize(s, c), setModel: (m) => { _m = m; } } };
+  return { init, setPreset, setLoad, setWeeks, setMode, planTestDay, askAI, toggleHow, toggleTestForm, goToTest, saveTest, _test: { simulate: (f) => simulate(f), planPeak: (d) => planPeak(d), summarize: (s, c) => summarize(s, c), setModel: (m) => { _m = m; } } };
 })();
 
 function initForma(container) { Forma.init(container); }

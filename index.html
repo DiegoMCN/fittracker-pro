@@ -87,6 +87,10 @@
         <span class="nav-icon">🔮</span>
         <span>Simulador</span>
       </div>
+      <div class="nav-item" data-page="patrones" onclick="Router.navigate('patrones')">
+        <span class="nav-icon">🧬</span>
+        <span>Patrones</span>
+      </div>
       <div class="nav-item" data-page="exercises" onclick="Router.navigate('exercises')">
         <span class="nav-icon">🎯</span>
         <span>Ejercicios</span>
@@ -229,6 +233,7 @@
 <script src="js/muscle-map.js"></script>
 <script src="js/modules/metrics.js"></script>
 <script src="js/modules/forma.js"></script>
+<script src="js/modules/patrones.js"></script>
 <script src="js/modules/profile.js"></script>
 <script src="js/modules/configuracion.js"></script>
 <script src="js/modules/import.js"></script>
@@ -346,6 +351,7 @@ Router.register('plan',      (container) => initPlan(container));
 Router.register('history',   (container) => initHistory(container));
 Router.register('metrics',   (container) => initMetrics(container));
 Router.register('forma',     (container) => initForma(container));
+Router.register('patrones',  (container) => initPatrones(container));
 Router.register('exercises', (container) => initExercises(container));
 Router.register('perfil',    (container) => initProfile(container));
 Router.register('config',    (container) => initConfiguracion(container));

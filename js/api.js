@@ -142,6 +142,8 @@ const API = (() => {
       getCoachLog: { rows: [] },
       getFormModel: null,
       interpretFormScenario: { success: false, cause: { message: 'Sin conexión con el servidor' } },
+      saveFormTest: { success: false, error: 'Sin conexión con el servidor' },
+      getPersonalPatterns: null,
       getDashboard: {
         weekStreak: 3,
         thisWeek: { sessions: 2, target: 6, calories: 768, volume: 11425 },
@@ -428,6 +430,8 @@ const API = (() => {
     getFormModel: () => _fetch({ action: 'getFormModel' }, { useCache: false }),
     interpretFormScenario: (scenario) =>
       _fetch({ action: 'interpretFormScenario', method: 'POST', ...scenario }, { useCache: false, retries: 0, timeoutMs: 330000 }),
+    saveFormTest: (test) => _fetch({ action: 'saveFormTest', method: 'POST', ...test }, { useCache: false, retries: 0 }),
+    getPersonalPatterns: () => _fetch({ action: 'getPersonalPatterns' }, { useCache: false }),
 
     saveMealLog: (data) =>
       _fetch({ action: 'saveMealLog', method: 'POST', ...data }, { useCache: false, retries: 0 }),
