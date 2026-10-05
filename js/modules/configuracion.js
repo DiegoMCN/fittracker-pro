@@ -129,7 +129,12 @@ const Configuracion = (() => {
     const issueLine = issues.length
       ? `<br>⚠️ A tu Sheet le faltan columnas — corre <b>setupSheets()</b> en Apps Script:<br>` + issues.map(i => `• ${Utils.escapeHtml(i.sheet)}: ${Utils.escapeHtml(i.problem)}`).join('<br>')
       : '<br>✅ Columnas del Sheet completas';
-    el.innerHTML = verLine + issueLine;
+    // Si el servidor no reporta archivos (versión vieja), no se afirma nada: la línea de versión ya avisa.
+    const dep = res.deployIssues;
+    const deployLine = dep === undefined ? '' : dep.length
+      ? `<br>⚠️ <b>Al Apps Script publicado le falta o tiene desactualizado:</b><br>` + dep.map(d => `• <b>${Utils.escapeHtml(d.file)}</b> — le faltan ${d.missing.length} función(es), p. ej. ${Utils.escapeHtml(d.missing.slice(0, 2).join(', '))}`).join('<br>') + `<br><span style="color:var(--text-4)">Vuelve a pegar ese archivo completo, guarda y publica una nueva versión. Puedes revisar también con <b>verificarDespliegue()</b> en el editor.</span>`
+      : '<br>✅ Todos los archivos del Apps Script están completos';
+    el.innerHTML = verLine + issueLine + deployLine;
   }
 
   // ── MOVIMIENTO Y DISEÑO ──────────────────────────────────────────

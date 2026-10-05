@@ -9,6 +9,8 @@ const Calendario = (() => {
   let _viewDate = new Date(); // mes que se está mostrando
   let _usingMock = false;
   let _phases = [];       // rangos de semana por fase (getProgramPhases)
+  let _checkins = {};      // fecha -> check-in (sueño, energía, qué hiciste en tu descanso)
+  let _restForm = { date: null, acts: [], note: '' };
   let _dayTypeByDow = {};  // 0-6 -> {type, name, icon} — el tipo de día no cambia por fase
 
   const DOW = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
@@ -16,9 +18,11 @@ const Calendario = (() => {
 
   async function init(container) {
     container.innerHTML = `<div class="skeleton" style="height:500px;border-radius:16px"></div>`;
-    const [sesRes, cardioRes, phasesRes, planRes] = await Promise.all([
-      API.getSessions(120), API.getCardio(90), API.getProgramPhases(52), API.getWeekPlan(),
+    const [sesRes, cardioRes, phasesRes, planRes, ckRes] = await Promise.all([
+      API.getSessions(120), API.getCardio(90), API.getProgramPhases(52), API.getWeekPlan(), API.getCheckins().catch(() => ({ checkins: [] })),
     ]);
+    _checkins = {};
+    ((ckRes && ckRes.checkins) || []).forEach(c => { _checkins[c.date] = c; });
     _sessions = sesRes.sessions || [];
     _cardio = cardioRes.sessions || [];
     _usingMock = API.isMock();
@@ -125,24 +129,32 @@ const Calendario = (() => {
               const wasRestDay = !planned || planned.type === 'rest';
               const missed = !wasRestDay && !hasAny && dateStr < todayStr; // solo días ya pasados cuentan como "perdidos"
               const bonus = wasRestDay && hasAny; // entrenaste en tu día de descanso — se marca en positivo
+              // Descanso PLANEADO que ya pasó (o es hoy) y no entrenaste: cuenta como
+              // hecho solo — descansar también es parte del plan, no hay que registrarlo.
+              const plannedRest = !!planned && planned.type === 'rest';
+              const restDone = plannedRest && !hasAny && dateStr <= todayStr;
+              const ck = _checkins[dateStr];
+              const hasRestNote = !!(ck && (ck.restActivities.length || ck.restNote));
+              const clickable = hasAny || restDone || !!ck;
 
               const phase = _phaseForDate(dateStr);
 
               const heatBg = hasAny
                 ? `rgba(0, 255, 135, ${(0.10 + intensity * 0.35).toFixed(2)})`
-                : missed ? 'rgba(239,68,68,0.06)' : 'transparent';
+                : restDone ? 'rgba(110,109,138,0.16)' : missed ? 'rgba(239,68,68,0.06)' : 'transparent';
 
               return `
-              <div class="${hasAny ? 'calendar-day-active' : ''}" onclick="${hasAny ? `Calendario.openDay('${dateStr}')` : ''}" title="${phase ? `Fase ${phase.number} — ${phase.name}` : ''}"
+              <div class="${clickable ? 'calendar-day-active' : ''}" onclick="${clickable ? `Calendario.openDay('${dateStr}')` : ''}" title="${phase ? `Fase ${phase.number} — ${phase.name}` : ''}"
                 style="position:relative;aspect-ratio:1;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
-                cursor:${hasAny ? 'pointer' : 'default'};
+                cursor:${clickable ? 'pointer' : 'default'};
                 background:${isToday ? 'var(--accent-glow)' : heatBg};
                 border:${isToday ? '1.5px solid var(--accent)' : missed ? '1px dashed rgba(239,68,68,0.35)' : '1px solid transparent'}">
-                <div style="font-size:11px;font-weight:${isToday ? '700' : '500'};color:${isToday ? 'var(--accent)' : hasAny ? 'var(--text-1)' : missed ? 'var(--danger)' : 'var(--text-4)'}">${d}</div>
+                <div style="font-size:11px;font-weight:${isToday ? '700' : '500'};color:${isToday ? 'var(--accent)' : (hasAny || restDone) ? 'var(--text-1)' : missed ? 'var(--danger)' : 'var(--text-4)'}">${d}</div>
                 <div style="display:flex;gap:2px;height:6px;align-items:center">
                   ${hasStrength ? `<div style="width:5px;height:5px;border-radius:50%;background:var(--accent)"></div>` : ''}
                   ${hasCardio ? `<div style="width:5px;height:5px;border-radius:50%;background:var(--info)"></div>` : ''}
                   ${bonus ? `<span style="font-size:7px">✨</span>` : ''}
+                  ${restDone ? `<span style="font-size:8px">${hasRestNote ? '🛌' : '😴'}</span>` : ''}
                   ${missed ? `<span style="font-size:7px;color:var(--danger)">·</span>` : ''}
                 </div>
               </div>`;
@@ -153,6 +165,7 @@ const Calendario = (() => {
             <div style="display:flex;align-items:center;gap:5px"><div style="width:6px;height:6px;border-radius:50%;background:var(--accent)"></div>Fuerza</div>
             <div style="display:flex;align-items:center;gap:5px"><div style="width:6px;height:6px;border-radius:50%;background:var(--info)"></div>Cardio</div>
             <div style="display:flex;align-items:center;gap:5px">✨ Extra en descanso</div>
+            <div style="display:flex;align-items:center;gap:5px">😴 Descanso (se marca solo) · 🛌 con nota</div>
             <div style="display:flex;align-items:center;gap:5px"><div style="width:6px;height:6px;border-radius:2px;border:1px dashed rgba(239,68,68,0.5)"></div>Día planeado sin registrar</div>
           </div>
         </div>
@@ -195,13 +208,72 @@ const Calendario = (() => {
     Motion.staggerIn(container.querySelectorAll('.section'));
   }
 
+  // ── Descanso y check-in dentro del modal del día ──────────────────
+  function _isPlannedRest(dateStr) {
+    const p = _dayTypeByDow[new Date(dateStr + 'T00:00:00').getDay()];
+    return !!p && p.type === 'rest' && dateStr <= Utils.today();
+  }
+  function _checkinLine(dateStr) {
+    const c = _checkins[dateStr];
+    if (!c || (c.sleep === null && c.energy === null)) return '';
+    const bits = [c.sleep !== null ? `sueño ${c.sleep}/10` : null, c.energy !== null ? `energía ${c.energy}/5` : null].filter(Boolean);
+    return `<div style="font-size:11px;color:var(--text-3);padding:2px 2px 0">☀️ Check-in del día: ${bits.join(' · ')}</div>`;
+  }
+  function _restBlockHTML(dateStr, restOnly) {
+    if (_restForm.date !== dateStr) {
+      const c = _checkins[dateStr] || { restActivities: [], restNote: '' };
+      _restForm = { date: dateStr, acts: (c.restActivities || []).slice(), note: c.restNote || '' };
+    }
+    const done = !!((_checkins[dateStr] || {}).restActivities || []).length || !!(_checkins[dateStr] || {}).restNote;
+    return `
+      <div style="background:var(--bg-input);border-radius:10px;padding:12px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <span style="font-size:16px">😴</span>
+          <span style="font-size:12px;font-weight:700">${restOnly ? 'Día de descanso — hecho ✓' : 'Tu descanso de este día'}</span>
+        </div>
+        ${restOnly ? '<div style="font-size:11px;color:var(--text-3);margin-bottom:10px;line-height:1.5">Se marca solo: descansar también es parte del plan. Si quieres, anota qué hiciste — así el Coach aprende cómo te recuperas.</div>' : ''}
+        <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px">
+          ${Utils.REST_ACTIVITIES.map((a, i) => `<button type="button" class="btn btn-sm ${_restForm.acts.includes(a) ? 'btn-primary' : 'btn-secondary'}" style="padding:6px 10px;font-size:11px" onclick="Calendario.toggleRestAct(${i})">${Utils.escapeHtml(a)}</button>`).join('')}
+        </div>
+        <input class="input" maxlength="200" placeholder="Algo más que quieras anotar (opcional)" value="${Utils.escapeHtml(_restForm.note)}" oninput="Calendario.setRestNote(this.value)" style="margin-bottom:8px">
+        <button class="btn btn-primary btn-sm" id="cal-rest-save" style="width:100%" onclick="Calendario.saveRest()">${done ? 'Actualizar nota de descanso' : 'Guardar nota de descanso'}</button>
+      </div>`;
+  }
+  function toggleRestAct(i) {
+    Sounds.click();
+    const a = Utils.REST_ACTIVITIES[i], k = _restForm.acts.indexOf(a);
+    if (k >= 0) _restForm.acts.splice(k, 1); else _restForm.acts.push(a);
+    const b = document.getElementById('cal-rest-block');
+    if (b) b.innerHTML = _restBlockHTML(_restForm.date, !_sessions.some(s => s.date === _restForm.date) && !_cardio.some(c => c.date === _restForm.date));
+  }
+  function setRestNote(v) { _restForm.note = v; }
+  async function saveRest() {
+    if (!_restForm.date) return;
+    if (!_restForm.acts.length && !_restForm.note.trim()) { Toast.warning('Elige una actividad o escribe una nota.'); return; }
+    const btn = document.getElementById('cal-rest-save'); if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
+    try {
+      const res = await API.saveCheckin({ date: _restForm.date, restActivities: _restForm.acts, restNote: _restForm.note.trim() });
+      if (res && res.success) {
+        Sounds.serieDone();
+        _checkins[_restForm.date] = Object.assign({ sleep: null, energy: null }, _checkins[_restForm.date], { date: _restForm.date, restActivities: _restForm.acts.slice(), restNote: _restForm.note.trim() });
+        API.clearCache();
+        Toast.success('Nota de descanso guardada 🛌');
+        const ov = document.querySelector('.modal-overlay.modal-centered'); if (ov) Motion.closeModal(ov);
+        render();
+        return;
+      }
+      Toast.warning((res && res.error) || 'No se pudo guardar.');
+    } catch(e) { Toast.warning('Sin conexión — intenta de nuevo cuando tengas señal.'); }
+    if (btn) { btn.disabled = false; btn.textContent = 'Guardar nota de descanso'; }
+  }
+
   function openDay(dateStr) {
     Sounds.click();
     const daySessions = _sessions.filter(s => s.date === dateStr);
     const dayCardio = _cardio.filter(c => c.date === dateStr);
 
     const overlay = document.createElement('div');
-    overlay.className = 'modal-overlay';
+    overlay.className = 'modal-overlay modal-centered'; // en celular, centrado (no hoja desde abajo)
     overlay.innerHTML = `
       <div class="modal" style="max-width:440px">
         <div class="modal-header">
@@ -209,6 +281,7 @@ const Calendario = (() => {
           <button class="btn btn-ghost btn-icon" onclick="Motion.closeModal(this.closest('.modal-overlay'))">✕</button>
         </div>
         <div class="modal-body" style="display:flex;flex-direction:column;gap:10px">
+          ${_checkinLine(dateStr)}
           ${daySessions.map(s => `
             <div style="background:var(--bg-input);border-radius:10px;padding:12px">
               <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
@@ -225,9 +298,10 @@ const Calendario = (() => {
               </div>
               <div style="font-size:11px;color:var(--text-3)">${Utils.formatDuration(c.duration)}${c.fcAvg ? ` · ${c.fcAvg} bpm` : ''}${c.distance ? ` · ${c.distance} km` : ''}</div>
             </div>`).join('')}
+          ${_isPlannedRest(dateStr) ? `<div id="cal-rest-block">${_restBlockHTML(dateStr, !daySessions.length && !dayCardio.length)}</div>` : ''}
         </div>
         <div class="modal-footer">
-          <button class="btn btn-primary" style="width:100%" onclick="Router.navigate('history')">Ver en Bitácora →</button>
+          ${(daySessions.length || dayCardio.length) ? `<button class="btn btn-primary" style="width:100%" onclick="Router.navigate('history')">Ver en Bitácora →</button>` : `<button class="btn btn-secondary" style="width:100%" onclick="Motion.closeModal(this.closest('.modal-overlay'))">Cerrar</button>`}
         </div>
       </div>`;
     document.body.appendChild(overlay);
@@ -249,7 +323,7 @@ const Calendario = (() => {
     return _fmtDate(d);
   }
 
-  return { init, changeMonth, goToday, openDay };
+  return { init, changeMonth, goToday, openDay, toggleRestAct, setRestNote, saveRest };
 })();
 
 function initCalendario(container) { Calendario.init(container); }

@@ -36,7 +36,7 @@ const History = (() => {
     const fromSessions = _sessions.map(s => ({ ...s, _kind: 'sesion' }));
     const fromCardio = _cardio.map(c => ({
       date: c.date, type: 'Cardio', duration: c.duration, fcAvg: c.fcAvg, fcPeak: c.fcPeak,
-      calories: c.caloriasActivas, calTotal: c.caloriasTotales, paceProm: c.paceProm,
+      calories: c.caloriasActivas, calTotal: c.caloriasTotales, paceProm: c.paceProm, velProm: c.velProm,
       effort: c.effort || null, sleep: c.sleep || null, volume: null, notes: c.notes, _kind: 'cardio',
       distance: c.distance, cadAvg: c.cadAvg, cadPeak: c.cadPeak, cadPeakVal: c.cadPeak,
       velMax: c.velMax, fcPost1: c.fcPost1, fcPost2: c.fcPost2, rec2min: c.rec2min,
@@ -176,6 +176,7 @@ const History = (() => {
             ${s.fcMin ? `<div><div style="font-size:10px;color:var(--text-4)">FC mínima</div><div style="font-weight:700;font-size:14px">${s.fcMin} bpm</div></div>` : ''}
             ${s.calories ? `<div><div style="font-size:10px;color:var(--text-4)">Calorías activas</div><div style="font-weight:700;font-size:14px">${s.calories} kcal</div></div>` : ''}
             ${s.calTotal ? `<div><div style="font-size:10px;color:var(--text-4)">Calorías totales</div><div style="font-weight:700;font-size:14px">${s.calTotal} kcal</div></div>` : ''}
+            ${s.velProm ? `<div><div style="font-size:10px;color:var(--text-4)">Velocidad sostenida</div><div style="font-weight:700;font-size:14px">${s.velProm} km/h</div></div>` : ''}
             ${s.paceProm ? `<div><div style="font-size:10px;color:var(--text-4)">Pace promedio</div><div style="font-weight:700;font-size:14px">${s.paceProm}/km</div></div>` : ''}
             ${s.cadAvg ? `<div><div style="font-size:10px;color:var(--text-4)">Cadencia</div><div style="font-weight:700;font-size:14px">${s.cadAvg} spm</div></div>` : ''}
             ${s.cadPeak ? `<div><div style="font-size:10px;color:var(--text-4)">Cadencia pico</div><div style="font-weight:700;font-size:14px">${s.cadPeak} spm</div></div>` : ''}

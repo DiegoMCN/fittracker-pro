@@ -122,15 +122,15 @@ const Metrics = (() => {
           <div class="card-header">
             <div>
               <div class="card-title">Métricas corporales</div>
-              <div class="card-subtitle">${_metricsHistory.length ? `Última: ${Utils.formatDate(_metricsHistory[0].date)}` : 'Sin registros todavía'}</div>
+              <div class="card-subtitle">${_metricsHistory.length ? `Se llena sola con tus sesiones · último dato: ${Utils.formatDate(_metricsHistory[0].date)}` : 'Sin registros todavía'}</div>
             </div>
             ${_infoBtn('perf_trend')}
           </div>
           ${_metricsHistory.length === 0 ? `
             <div style="text-align:center;padding:30px 20px;color:var(--text-3)">
               <div style="font-size:32px;margin-bottom:10px">📈</div>
-              <div style="font-size:12px">Registra velocidad de sprint, dominadas, cadencia y dead hang aquí para ver tu evolución.</div>
-              <button class="btn btn-primary" style="margin-top:14px" onclick="Metrics.openCapture()">+ Registrar primera medición</button>
+              <div style="font-size:12px">Se llena sola con tus sesiones: velocidad de sprint, cadencia, dead hang y dominadas libres. También puedes registrar una medición a mano.</div>
+              <button class="btn btn-primary" style="margin-top:14px" onclick="Metrics.openCapture()">+ Registrar una medición a mano</button>
             </div>` : `
             <div class="grid-4" style="gap:10px;margin-bottom:16px">
               ${[
@@ -139,9 +139,12 @@ const Metrics = (() => {
                 { key:'cadAvg', label:'Cadencia', unit:'spm', color:'var(--purple-light)', higherIsBetter:true },
                 { key:'deadHang', label:'Dead hang', unit:'seg', color:'var(--warning)', higherIsBetter:true },
               ].map(f => {
-                // _metricsHistory ya viene más-reciente-primero (index 0 = último)
-                const latest = _metricsHistory[0][f.key];
-                const prevEntry = _metricsHistory.slice(1).find(h => h[f.key] !== null && h[f.key] !== undefined);
+                // _metricsHistory viene más-reciente-primero. El último valor de CADA
+                // métrica (no solo de la última fecha): con datos derivados de tus
+                // sesiones, un día puede traer dead hang pero no sprint.
+                const latestEntry = _metricsHistory.find(h => h[f.key] !== null && h[f.key] !== undefined);
+                const latest = latestEntry ? latestEntry[f.key] : null;
+                const prevEntry = latestEntry ? _metricsHistory.slice(_metricsHistory.indexOf(latestEntry) + 1).find(h => h[f.key] !== null && h[f.key] !== undefined) : null;
                 const prevVal = prevEntry ? prevEntry[f.key] : null;
                 const delta = (latest !== null && latest !== undefined && prevVal !== null)
                   ? Math.round((latest - prevVal) * 10) / 10 : null;
@@ -793,7 +796,7 @@ const Metrics = (() => {
     if (!canvas) return;
     // _metricsHistory viene más-reciente-primero — para la gráfica se
     // necesita orden cronológico.
-    const chronological = _metricsHistory.slice(0, 10).slice().reverse();
+    const chronological = _metricsHistory.slice(0, 16).slice().reverse();
     if (chronological.length < 2) { _emptyState(canvas); return; }
 
     const labels = chronological.map(h => Utils.formatDateShort(h.date));

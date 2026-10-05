@@ -144,6 +144,9 @@ const API = (() => {
       interpretFormScenario: { success: false, cause: { message: 'Sin conexión con el servidor' } },
       saveFormTest: { success: false, error: 'Sin conexión con el servidor' },
       getPersonalPatterns: null,
+      getCheckins: { checkins: [] },
+      getExerciseModules: { modules: [] },
+      saveCheckin: { success: false, error: 'Sin conexión con el servidor' },
       getDashboard: {
         weekStreak: 3,
         thisWeek: { sessions: 2, target: 6, calories: 768, volume: 11425 },
@@ -294,6 +297,9 @@ const API = (() => {
     getExercises: () =>
       _fetch({ action: 'getExercises' }),
 
+    // Progreso de CADA ejercicio (sesiones, serie por sesión, récords) para la pantalla Ejercicios
+    getExerciseModules: () => _fetch({ action: 'getExerciseModules' }, { useCache: false }),
+
     getWeekPlan: (phase) =>
       _fetch({ action: 'getWeekPlan', ...(phase ? { phase } : {}) }),
 
@@ -336,8 +342,13 @@ const API = (() => {
     getOvertrainingStatus: () =>
       _fetch({ action: 'getOvertrainingStatus' }),
 
+    // Sin caché: "listo para entrenar" cambia con las horas — siempre fresco.
     getReadinessScore: () =>
-      _fetch({ action: 'getReadinessScore' }),
+      _fetch({ action: 'getReadinessScore' }, { useCache: false }),
+
+    // Check-in diario (sueño, energía, qué hiciste en tu descanso)
+    getCheckins: () => _fetch({ action: 'getCheckins' }, { useCache: false }),
+    saveCheckin: (data) => _fetch({ action: 'saveCheckin', method: 'POST', ...data }, { useCache: false, retries: 0 }),
 
     getGoalProjections: () =>
       _fetch({ action: 'getGoalProjections' }),

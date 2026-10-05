@@ -21,7 +21,8 @@ const Forma = (() => {
   };
   const AI_MSGS = ['Leyendo tu curva…', 'Revisando tus metas del winter arc…', 'Comparando con tu carga reciente…', 'Pensando qué haría yo en tu lugar…'];
 
-  let _m = null, _chart = null, _mode = 'forma', _sc = { preset: 'igual', loadPct: 100, weeks: 4 }, _plan = null, _aiBusy = false, _raf = null;
+  const AI_KEY = 'fittracker_form_ai';
+  let _m = null, _chart = null, _planChart = null, _mode = 'forma', _sc = { preset: 'igual', loadPct: 100, weeks: 4 }, _plan = null, _ai = null, _aiBusy = false, _raf = null;
 
   // ── utilidades ──────────────────────────────────────────────────
   const pad = (n) => String(n).padStart(2, '0');
@@ -70,8 +71,8 @@ const Forma = (() => {
   //  • con menos de 2 semanas, la descarga se acorta lo necesario.
   function planPeak(target) {
     const idx = daysBetween(_m.today, target) - 1;
-    if (idx < 6 || idx >= HORIZON) return null;
-    const minTaper = idx >= 14 ? 7 : 3;
+    if (idx < 2 || idx >= HORIZON) return null;
+    const minTaper = idx >= 14 ? 7 : Math.min(3, idx);
     let best = null;
     for (let m = 0.9; m <= 1.301; m += 0.05) {
       for (let taper = minTaper; taper <= Math.min(14, idx); taper++) {
@@ -100,7 +101,19 @@ const Forma = (() => {
         <div style="font-size:12px;color:var(--text-3);line-height:1.6">El simulador necesita al menos un par de semanas de sesiones con su esfuerzo registrado para calcular tu condición y tu fatiga.</div></div>`;
       return;
     }
-    try { const saved = localStorage.getItem(TESTDAY_KEY); if (saved && daysBetween(_m.today, saved) > 6) _plan = planPeak(saved); } catch(e) {}
+    // El plan guardado se vuelve a calcular con tus datos de HOY. Si el día ya
+    // pasó o ya no hay tiempo de planear, se quita solo (no se queda pegado).
+    _plan = null;
+    try {
+      const saved = localStorage.getItem(TESTDAY_KEY);
+      if (saved) {
+        const dd = daysBetween(_m.today, saved);
+        if (dd >= 3 && dd <= HORIZON) _plan = planPeak(saved);
+        if (!_plan) localStorage.removeItem(TESTDAY_KEY);
+      }
+    } catch(e) {}
+    // La lectura del Temach se queda hasta que pidas otra.
+    try { _ai = JSON.parse(localStorage.getItem(AI_KEY) || 'null'); } catch(e) { _ai = null; }
     render(container);
   }
 
@@ -120,8 +133,8 @@ const Forma = (() => {
         <div style="font-size:12px;color:var(--text-3);max-width:420px;margin:6px auto ${_m.testDue ? '10px' : '16px'};line-height:1.5">${esc(z.desc)}</div>
         ${_m.testDue ? `<button class="btn btn-sm" style="margin-bottom:14px;background:rgba(0,255,135,0.12);color:var(--accent);border:1px solid rgba(0,255,135,0.35)" onclick="Forma.goToTest()">🧪 Te toca tu prueba quincenal</button>` : ''}
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
-          ${_stat('fm-fit', 'Condición', 'Lo que has construido (42 días)', '#00FF87')}
-          ${_stat('fm-fat', 'Fatiga', 'Lo que traes encima (7 días)', '#A78BFA')}
+          ${_stat('fm-fit', 'Condición', `Lo que has construido (${_m.tau.fitness} días)`, '#00FF87')}
+          ${_stat('fm-fat', 'Fatiga', `Lo que traes encima (${_m.tau.fatigue} días)`, '#A78BFA')}
           ${_stat('fm-form', 'Forma', 'Condición − fatiga', z.color, '%')}
         </div>
         ${_m.building ? `<div style="margin-top:14px;font-size:11px;color:var(--warning);line-height:1.5">⏳ Calibrando: llevas ${_m.daysOfData} días de datos. Tu condición se estabiliza hacia los 63 días — hasta entonces, toma las cifras como tendencia.</div>` : ''}
@@ -134,10 +147,12 @@ const Forma = (() => {
           <div style="display:flex;gap:6px">
             <button class="btn btn-sm ${_mode === 'forma' ? 'btn-primary' : 'btn-secondary'}" onclick="Forma.setMode('forma')">Forma</button>
             <button class="btn btn-sm ${_mode === 'cf' ? 'btn-primary' : 'btn-secondary'}" onclick="Forma.setMode('cf')">Condición y fatiga</button>
+            <button class="btn btn-sm ${_mode === 'bt' ? 'btn-primary' : 'btn-secondary'}" onclick="Forma.setMode('bt')">Proyectado vs. real</button>
           </div>
         </div>
         <div style="position:relative;height:230px"><canvas id="fm-chart"></canvas></div>
         <div id="fm-legend" style="display:flex;flex-wrap:wrap;gap:12px;justify-content:center;margin-top:10px;font-size:10px;color:var(--text-3)"></div>
+        <div id="fm-bt-note" style="display:none;margin-top:12px;padding:10px 12px;border-radius:10px;background:var(--bg-input);font-size:12px;line-height:1.6;color:var(--text-2)"></div>
       </div>
 
       <!-- 3. ¿QUÉ PASA SI…? -->
@@ -175,10 +190,13 @@ const Forma = (() => {
       <!-- 4b. PRUEBA QUINCENAL -->
       ${_testCardHTML()}
 
+      <!-- 4c. ¿COMO LA POBLACIÓN? -->
+      ${_populationHTML()}
+
       <!-- 5. LA LECTURA DEL TEMACH -->
       <div class="card section">
-        <div class="card-header"><div><div class="card-title">🧠 Lo que dice el Temach</div><div class="card-subtitle">El modelo da números; el Temach te dice si el escenario tiene sentido para tus metas</div></div></div>
-        <button class="btn btn-secondary" id="fm-ai-btn" style="width:100%" onclick="Forma.askAI()">Que el Temach lea mi escenario</button>
+        <div class="card-header"><div><div class="card-title">🧠 Lo que dice el Temach</div><div class="card-subtitle">Te explica tu medidor, tu curva, tu escenario y tus pruebas — y si hay algo que ajustar. Se queda aquí hasta que pidas otra lectura.</div></div></div>
+        <button class="btn btn-secondary" id="fm-ai-btn" style="width:100%" onclick="Forma.askAI()">Que el Temach lea mi pantalla</button>
         <div id="fm-ai" style="margin-top:12px"></div>
       </div>
 
@@ -191,6 +209,7 @@ const Forma = (() => {
           <p style="margin-top:8px"><b>Forma</b>: condición menos fatiga, en % de tu condición. Por eso un par de días suaves te ponen "fresco": la fatiga se va mucho antes que la condición. Es el principio con el que los atletas planean llegar a su mejor día.</p>
           <p style="margin-top:8px"><b>UA (unidades arbitrarias de carga)</b> = esfuerzo percibido (1–10) × minutos. Una sesión de 60 min con esfuerzo 7 son 420 UA. No es una unidad física como kilos o kilómetros: sirve para sumar pesas y cardio en la misma cuenta y comparar tus sesiones entre sí.</p>
           <p style="margin-top:8px"><b>Tu carga</b> es esfuerzo × minutos de cada sesión, fuerza y cardio. La simulación repite tu semana habitual de las últimas 4 semanas (${_m.weeklyLoad.toLocaleString('es-MX')} UA por semana), multiplicada por el escenario.</p>
+          <p style="margin-top:8px"><b>Proyectado vs. real</b>: en la curva puedes ver, día por día, la forma que se proyectaba hace 7 días (suponiendo que repetías tu semana habitual) junto a la que pasó de verdad. Mide qué tan parecida fue tu semana real a la habitual — no si las fórmulas están bien. Lo que afina el modelo a ti son las pruebas quincenales.</p>
           <div style="margin-top:12px;display:flex;flex-direction:column;gap:6px">
             ${_m.zones.map(zz => `<div style="display:flex;gap:8px;align-items:flex-start"><span style="width:10px;height:10px;border-radius:3px;background:${zz.color};flex-shrink:0;margin-top:4px"></span><span><b>${esc(zz.label)}</b> (${zz.min <= -999 ? 'menos de ' + zz.max : zz.max >= 999 ? 'más de +' + zz.min : (zz.min > 0 ? '+' : '') + zz.min + ' a ' + (zz.max > 0 ? '+' : '') + zz.max}%) — ${esc(zz.desc)}</span></div>`).join('')}
           </div>
@@ -206,6 +225,7 @@ const Forma = (() => {
     _buildChart();
     _updateScenario(true);
     if (_plan) _renderPlan(false);
+    _renderAI();
   }
 
   function _stat(id, label, hint, color, unit = '') {
@@ -251,53 +271,60 @@ const Forma = (() => {
 
   // ── gráfica ─────────────────────────────────────────────────────
   // Bandas de zonas detrás de la curva + línea de "hoy" + día de prueba.
-  const _bandsPlugin = {
-    id: 'fmBands',
-    beforeDatasetsDraw(chart) {
-      if (_mode !== 'forma') return;
-      const { ctx, chartArea: a, scales: { y } } = chart;
-      ctx.save();
-      _m.zones.forEach(zz => {
-        const top = y.getPixelForValue(Math.min(zz.max, y.max)), bot = y.getPixelForValue(Math.max(zz.min, y.min));
-        if (bot <= top) return;
-        ctx.fillStyle = zz.color + '14'; ctx.fillRect(a.left, top, a.right - a.left, bot - top);
-      });
-      ctx.restore();
-    },
-    afterDatasetsDraw(chart) {
-      const { ctx, chartArea: a, scales: { x } } = chart;
-      const line = (idx, color, text) => {
-        if (idx < 0) return; const px = x.getPixelForValue(idx);
-        ctx.save(); ctx.strokeStyle = color; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(px, a.top); ctx.lineTo(px, a.bottom); ctx.stroke();
-        ctx.setLineDash([]); ctx.fillStyle = color; ctx.font = '600 10px Poppins, sans-serif'; ctx.textAlign = 'center'; ctx.fillText(text, px, a.top + 10); ctx.restore();
-      };
-      line(HISTORY_SHOWN - 1, 'rgba(255,255,255,0.55)', 'hoy');
-      if (_plan) line(HISTORY_SHOWN + _plan.idx, '#00FF87', '🎯');
-    },
-  };
+  // Bandas de zonas detrás de la curva + líneas verticales (hoy, día de prueba).
+  // Una sola fábrica para las dos gráficas: la curva principal y la del plan.
+  function _bandsPlugin(id, markersFn, enabledFn) {
+    return {
+      id,
+      beforeDatasetsDraw(chart) {
+        if (enabledFn && !enabledFn()) return;
+        const { ctx, chartArea: a, scales: { y } } = chart;
+        ctx.save();
+        _m.zones.forEach(zz => {
+          const top = y.getPixelForValue(Math.min(zz.max, y.max)), bot = y.getPixelForValue(Math.max(zz.min, y.min));
+          if (bot <= top) return;
+          ctx.fillStyle = zz.color + '14'; ctx.fillRect(a.left, top, a.right - a.left, bot - top);
+        });
+        ctx.restore();
+      },
+      afterDatasetsDraw(chart) {
+        const { ctx, chartArea: a, scales: { x } } = chart;
+        (markersFn() || []).forEach(({ idx, color, text }) => {
+          if (idx < 0) return; const px = x.getPixelForValue(idx);
+          ctx.save(); ctx.strokeStyle = color; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(px, a.top); ctx.lineTo(px, a.bottom); ctx.stroke();
+          ctx.setLineDash([]); ctx.fillStyle = color; ctx.font = '600 10px Poppins, sans-serif'; ctx.textAlign = 'center'; ctx.fillText(text, px, a.top + 10); ctx.restore();
+        });
+      },
+    };
+  }
+  const _mainBands = () => _bandsPlugin('fmBands', () => _mode === 'forma' ? [{ idx: HISTORY_SHOWN - 1, color: 'rgba(255,255,255,0.55)', text: 'hoy' }] : [], () => _mode !== 'cf');
 
   function _labels() {
+    if (_mode === 'bt') return ((_m.backtest && _m.backtest.points) || []).map(p => p.date);
     const hist = _m.history.slice(-HISTORY_SHOWN).map(h => h.date);
     const fut = []; for (let i = 1; i <= HORIZON; i++) fut.push(addDays(_m.today, i));
     return hist.concat(fut);
   }
 
   function _datasets() {
+    const ds = (label, data, color, opts = {}) => ({ label, data, borderColor: color, backgroundColor: color + '22', borderWidth: 2.5, pointRadius: 0, tension: 0.35, fill: false, spanGaps: false, ...opts });
+    if (_mode === 'bt') {
+      const pts = (_m.backtest && _m.backtest.points) || [];
+      return [ds('Real', pts.map(p => p.actual), '#FFFFFF', { pointRadius: 3 }), ds('Proyectado hace 7 días', pts.map(p => p.forecast), '#A78BFA', { borderDash: [5, 4], pointRadius: 3 })];
+    }
     const hist = _m.history.slice(-HISTORY_SHOWN);
     const pad = (arr, before, after) => Array(before).fill(null).concat(arr, Array(after).fill(null));
-    const scenario = _sc.preset === 'plan' && _plan ? _plan.sim : simulate(scenarioFn(_sc));
+    const scenario = simulate(scenarioFn(_sc));
     const base = simulate(() => 1);
     const showBase = !(_sc.preset === 'igual' && _sc.loadPct === 100);
     const H = hist.length;
-    const key = _mode === 'forma' ? 'formPct' : null;
     const histVals = (k) => hist.map(h => h[k]);
     const fut = (sim, k) => [hist[H - 1][k]].concat(sim.map(d => k === 'formPct' ? d.formPct : Math.round(d[k] * 10) / 10)); // empieza en "hoy" para que la línea no se corte
-    const ds = (label, data, color, opts = {}) => ({ label, data, borderColor: color, backgroundColor: color + '22', borderWidth: 2.5, pointRadius: 0, tension: 0.35, fill: false, spanGaps: false, ...opts });
-    if (key) {
+    if (_mode === 'forma') {
       return [
         ds('Tu historia', pad(histVals('formPct'), 0, HORIZON), '#FFFFFF'),
         showBase ? ds('Si sigues igual', pad(fut(base, 'formPct'), H - 1, 0), '#6E6D8A', { borderDash: [5, 5], borderWidth: 1.5 }) : null,
-        ds(_sc.preset === 'plan' ? 'Plan al pico' : 'Tu escenario', pad(fut(scenario, 'formPct'), H - 1, 0), _sc.preset === 'plan' ? '#00FF87' : '#A78BFA', { borderWidth: 3 }),
+        ds('Tu escenario', pad(fut(scenario, 'formPct'), H - 1, 0), '#A78BFA', { borderWidth: 3 }),
       ].filter(Boolean);
     }
     return [
@@ -308,6 +335,16 @@ const Forma = (() => {
     ];
   }
 
+  function _btNote() {
+    const el = document.getElementById('fm-bt-note'); if (!el) return;
+    if (_mode !== 'bt') { el.style.display = 'none'; return; }
+    const bt = _m.backtest;
+    el.style.display = 'block';
+    if (!bt || bt.n < 3) { el.innerHTML = 'Todavía no hay suficiente historia para comparar: necesita unas 5 semanas de datos (4 para conocer tu semana habitual + 1 para comparar).'; return; }
+    const verdict = bt.mae <= 5 ? 'Tu semana real se parece mucho a tu semana habitual.' : bt.mae <= 10 ? 'Tu semana real varió un poco respecto a la habitual.' : 'Tu semana real varió bastante respecto a la habitual.';
+    el.innerHTML = `<b>Diferencia típica: ±${bt.mae} puntos de forma</b> en ${bt.n} días comparados. ${verdict}<br><span style="color:var(--text-3)">Cada día se compara lo que se proyectaba <b>7 días antes</b> (suponiendo que repetías tu semana habitual) con lo que pasó de verdad. Una diferencia grande casi siempre significa que esa semana entrenaste distinto a lo habitual — <b>no</b> que el modelo falle. Lo que afina el modelo son tus pruebas quincenales.</span>`;
+  }
+
   function _buildChart() {
     const canvas = document.getElementById('fm-chart');
     if (!canvas || typeof Chart === 'undefined') return;
@@ -315,7 +352,7 @@ const Forma = (() => {
     _chart = new Chart(canvas, {
       type: 'line',
       data: { labels: _labels(), datasets: _datasets() },
-      plugins: [_bandsPlugin],
+      plugins: [_mainBands()],
       options: {
         responsive: true, maintainAspectRatio: false,
         animation: { duration: 650, easing: 'easeOutQuart' },
@@ -326,19 +363,20 @@ const Forma = (() => {
             backgroundColor: '#13131F', borderColor: 'rgba(255,255,255,0.08)', borderWidth: 1, titleColor: '#B4B2CC', bodyColor: '#FFFFFF',
             callbacks: {
               title: (items) => dayName(_chart.data.labels[items[0].dataIndex]),
-              label: (c) => c.raw == null ? null : ` ${c.dataset.label}: ${_mode === 'forma' ? signed(c.raw) + '% · ' + zoneOf(c.raw).label : Math.round(c.raw) + ' UA/día'}`,
+              label: (c) => c.raw == null ? null : ` ${c.dataset.label}: ${_mode === 'cf' ? Math.round(c.raw) + ' UA/día' : signed(c.raw) + '% · ' + zoneOf(c.raw).label}`,
             },
           },
         },
         scales: {
           x: { ticks: { color: '#6E6D8A', font: { size: 10, family: 'Poppins' }, maxRotation: 0, maxTicksLimit: 6, callback: (v, i) => { const d = new Date(_chart ? _chart.data.labels[i] + 'T00:00:00' : 0); return isNaN(d) ? '' : `${d.getDate()}/${d.getMonth() + 1}`; } }, grid: { display: false }, border: { display: false } },
-          y: _mode === 'forma'
+          y: _mode !== 'cf'
             ? { suggestedMin: -60, suggestedMax: 40, ticks: { color: '#6E6D8A', font: { size: 10, family: 'Poppins' }, callback: v => signed(v) + '%' }, grid: { color: 'rgba(255,255,255,0.04)' }, border: { display: false } }
             : { beginAtZero: true, ticks: { color: '#6E6D8A', font: { size: 10, family: 'Poppins' } }, grid: { color: 'rgba(255,255,255,0.04)' }, border: { display: false } },
         },
       },
     });
     _renderLegend();
+    _btNote();
   }
 
   function _renderLegend() {
@@ -350,9 +388,7 @@ const Forma = (() => {
   const _loadLabel = (p) => p === 0 ? 'Descanso total' : p === 100 ? '100% · tu semana habitual' : `${p}% de tu semana habitual`;
 
   function _updateScenario(first) {
-    const sim = _sc.preset === 'plan' && _plan ? _plan.sim : simulate(scenarioFn(_sc));
-    const scForSummary = _sc.preset === 'plan' && _plan ? { weeks: Math.ceil((_plan.idx + 1) / 7) } : _sc;
-    const s = summarize(sim, scForSummary);
+    const s = summarize(simulate(scenarioFn(_sc)), _sc);
     const ze = zoneOf(s.end.formPct);
     const res = document.getElementById('fm-results');
     if (res) {
@@ -392,10 +428,10 @@ const Forma = (() => {
     const sliders = document.querySelectorAll('.card input[type="range"]');
     if (sliders[0]) sliders[0].value = p.loadPct;
     if (sliders[1]) sliders[1].value = p.weeks;
-    _syncLabels(); _markPreset(key); _updateScenario(false); _clearAI();
+    _syncLabels(); _markPreset(key); _updateScenario(false);
   }
-  function setLoad(v) { _sc = { ..._sc, preset: 'custom', loadPct: Number(v) }; _syncLabels(); _markPreset(null); _queueUpdate(); _clearAI(); }
-  function setWeeks(v) { _sc = { ..._sc, preset: _sc.preset === 'plan' ? 'custom' : _sc.preset, weeks: Number(v) }; _syncLabels(); _queueUpdate(); _clearAI(); }
+  function setLoad(v) { _sc = { ..._sc, preset: 'custom', loadPct: Number(v) }; _syncLabels(); _markPreset(null); _queueUpdate(); }
+  function setWeeks(v) { _sc = { ..._sc, weeks: Number(v) }; _syncLabels(); _queueUpdate(); }
   function _syncLabels() {
     const l = document.getElementById('fm-load-val'), w = document.getElementById('fm-weeks-val');
     if (l) l.textContent = _loadLabel(_sc.loadPct);
@@ -404,6 +440,9 @@ const Forma = (() => {
   function setMode(m) { _mode = m; const c = document.getElementById('page-content'); document.querySelectorAll('.card-header .btn[onclick^="Forma.setMode"]').forEach(b => { b.className = 'btn btn-sm ' + (b.getAttribute('onclick').includes(`'${m}'`) ? 'btn-primary' : 'btn-secondary'); }); _buildChart(); }
 
   // ── día de prueba ───────────────────────────────────────────────
+  // El plan vive en SU PROPIA tarjeta y gráfica: ya no se encima en "Tu curva".
+  // Se guarda la fecha en el teléfono y se recalcula con tus datos de hoy cada
+  // vez que entras; "Quitar plan" lo borra por completo.
   function planTestDay() {
     const input = document.getElementById('fm-testday');
     const date = input && input.value;
@@ -414,12 +453,21 @@ const Forma = (() => {
     _plan = planPeak(date);
     if (!_plan) { Toast.warning('No pude armar un plan para esa fecha.'); return; }
     try { localStorage.setItem(TESTDAY_KEY, date); } catch(e) {}
-    _sc = { ..._sc, preset: 'plan' };
-    _markPreset(null);
     _renderPlan(true);
-    _updateScenario(false);
-    _clearAI();
   }
+
+  function clearPlan() {
+    if (typeof Sounds !== 'undefined') Sounds.click();
+    _plan = null;
+    try { localStorage.removeItem(TESTDAY_KEY); } catch(e) {}
+    if (_planChart) { try { _planChart.destroy(); } catch(e) {} _planChart = null; }
+    const el = document.getElementById('fm-plan'), input = document.getElementById('fm-testday');
+    if (input) input.value = '';
+    if (el) el.innerHTML = '';
+    Toast.success('Plan quitado');
+  }
+
+  function changePlanDate() { const i = document.getElementById('fm-testday'); if (i) { i.scrollIntoView({ behavior: 'smooth', block: 'center' }); i.focus(); } }
 
   function _renderPlan(animate) {
     const el = document.getElementById('fm-plan'); if (!el || !_plan) return;
@@ -429,9 +477,15 @@ const Forma = (() => {
         <div style="font-size:11px;font-weight:700;color:#0A0A12;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${title}</div>
         <div style="font-size:10px;color:rgba(10,10,18,0.75);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${sub}</div></div>` : '';
     el.innerHTML = `
-      <div style="margin-top:14px;padding:14px;border-radius:14px;background:linear-gradient(135deg, rgba(0,255,135,0.10), rgba(124,58,237,0.10));border:1px solid rgba(0,255,135,0.25)">
-        <div style="font-size:12px;color:var(--text-3)">Tu día de prueba</div>
-        <div style="font-size:17px;font-weight:800;margin-bottom:10px">${esc(dayName(addDays(_m.today, p.idx + 1)))}</div>
+      <div id="fm-plan-card" style="margin-top:14px;padding:14px;border-radius:14px;background:linear-gradient(135deg, rgba(0,255,135,0.10), rgba(124,58,237,0.10));border:1px solid rgba(0,255,135,0.25)">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+          <div><div style="font-size:12px;color:var(--text-3)">Tu día de prueba</div>
+          <div style="font-size:17px;font-weight:800;margin-bottom:10px">${esc(dayName(addDays(_m.today, p.idx + 1)))}</div></div>
+          <div style="display:flex;gap:6px;flex-shrink:0">
+            <button class="btn btn-ghost btn-sm" onclick="Forma.changePlanDate()">Cambiar fecha</button>
+            <button class="btn btn-secondary btn-sm" onclick="Forma.clearPlan()">✕ Quitar plan</button>
+          </div>
+        </div>
         <div style="display:flex;gap:4px;margin-bottom:10px">
           ${seg(buildDays, '#F59E0B', `Construir · ${p.build}%`, `${buildDays} días`)}
           ${seg(p.taper, '#3B82F6', `Bajar · ${p.taperPct}%`, `${p.taper} días`)}
@@ -441,11 +495,38 @@ const Forma = (() => {
           ${buildDays > 0 ? `<b>${buildDays} días</b> entrenando al <b>${p.build}%</b> de tu semana habitual, ` : ''}después <b>${p.taper} días</b> bajando al <b>${p.taperPct}%</b> — mismos días e intensidad, menos series o menos minutos (bajar volumen, no intensidad, es lo que mejor funciona antes de una prueba). Llegarías con forma de <b style="color:${zz.color}">${signed(d.formPct)}% · ${esc(zz.label)}</b> y la condición <b>${signed(gain)}%</b> respecto a hoy.
           ${p.inPeak ? '' : '<br><span style="color:var(--warning)">⚠️ Con tan poco tiempo no se alcanza la zona fresca completa — es el mejor punto posible para esa fecha.</span>'}
         </div>
+        <div style="font-size:11px;color:var(--text-3);margin:14px 0 6px">Tu forma día por día con este plan (la línea punteada es "si sigues igual")</div>
+        <div style="position:relative;height:190px"><canvas id="fm-plan-chart"></canvas></div>
       </div>`;
+    _buildPlanChart();
     if (animate && typeof gsap !== 'undefined') {
       gsap.from(el.firstElementChild, { y: 10, opacity: 0, duration: 0.45, ease: 'power2.out' });
       gsap.from(el.querySelectorAll('.fm-seg'), { scaleX: 0, transformOrigin: 'left center', duration: 0.6, stagger: 0.12, ease: 'power3.out', delay: 0.15 });
     }
+  }
+
+  function _buildPlanChart() {
+    const canvas = document.getElementById('fm-plan-chart');
+    if (_planChart) { try { _planChart.destroy(); } catch(e) {} _planChart = null; }
+    if (!canvas || !_plan || typeof Chart === 'undefined') return;
+    const labels = []; for (let i = 0; i <= _plan.idx + 4; i++) labels.push(addDays(_m.today, i));
+    const cur = _m.history[_m.history.length - 1].formPct;
+    const series = (sim) => [cur].concat(sim.slice(0, labels.length - 1).map(d => d.formPct));
+    const ds = (label, data, color, opts = {}) => ({ label, data, borderColor: color, backgroundColor: color + '22', borderWidth: 2.5, pointRadius: 0, tension: 0.35, fill: false, ...opts });
+    _planChart = new Chart(canvas, {
+      type: 'line',
+      data: { labels, datasets: [ds('Si sigues igual', series(simulate(() => 1)), '#6E6D8A', { borderDash: [5, 5], borderWidth: 1.5 }), ds('Tu plan', series(_plan.sim), '#00FF87', { borderWidth: 3 })] },
+      plugins: [_bandsPlugin('fmPlanBands', () => [{ idx: 0, color: 'rgba(255,255,255,0.55)', text: 'hoy' }, { idx: _plan.idx + 1, color: '#00FF87', text: '🎯' }], null)],
+      options: {
+        responsive: true, maintainAspectRatio: false, animation: { duration: 650, easing: 'easeOutQuart' }, interaction: { mode: 'index', intersect: false },
+        plugins: { legend: { display: false }, tooltip: { backgroundColor: '#13131F', borderColor: 'rgba(255,255,255,0.08)', borderWidth: 1, titleColor: '#B4B2CC', bodyColor: '#FFFFFF',
+          callbacks: { title: (it) => dayName(labels[it[0].dataIndex]), label: (c) => c.raw == null ? null : ` ${c.dataset.label}: ${signed(c.raw)}% · ${zoneOf(c.raw).label}` } } },
+        scales: {
+          x: { ticks: { color: '#6E6D8A', font: { size: 10, family: 'Poppins' }, maxRotation: 0, maxTicksLimit: 6, callback: (v, i) => { const d = new Date(labels[i] + 'T00:00:00'); return isNaN(d) ? '' : `${d.getDate()}/${d.getMonth() + 1}`; } }, grid: { display: false }, border: { display: false } },
+          y: { suggestedMin: -60, suggestedMax: 40, ticks: { color: '#6E6D8A', font: { size: 10, family: 'Poppins' }, callback: v => signed(v) + '%' }, grid: { color: 'rgba(255,255,255,0.04)' }, border: { display: false } },
+        },
+      },
+    });
   }
 
   // ── PRUEBA QUINCENAL ────────────────────────────────────────────
@@ -535,7 +616,56 @@ const Forma = (() => {
   }
 
   // ── IA ──────────────────────────────────────────────────────────
-  function _clearAI() { const el = document.getElementById('fm-ai'); if (el && !_aiBusy) el.innerHTML = ''; }
+  // ── ¿COMO LA POBLACIÓN O LA EXCEPCIÓN? ──────────────────────────
+  // La app NO tiene datos de otras personas. "Población" aquí = los valores de
+  // referencia de la literatura del entrenamiento (condición ≈ 42 días, fatiga
+  // ≈ 7). Mientras el modelo use esos mismos valores, no hay forma honesta de
+  // saber si eres como la mayoría: solo después de calibrarlo con tus pruebas.
+  function _popBar(label, you, pop, min, max, fast, slow) {
+    const pos = (v) => Math.max(0, Math.min(100, (v - min) / (max - min) * 100));
+    const diff = (you - pop) / pop, exception = Math.abs(diff) >= 0.25;
+    const verdict = Math.abs(diff) < 0.15 ? 'Como la mayoría' : (you < pop ? 'Más rápido que lo típico' : 'Más lento que lo típico');
+    return `<div style="margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;margin-bottom:8px"><b>${label}</b><span style="color:${exception ? '#F59E0B' : 'var(--accent)'};font-weight:700;text-align:right">${exception ? '⭐ Excepción · ' : ''}${verdict}</span></div>
+      <div style="position:relative;height:8px;border-radius:99px;background:var(--bg-input)">
+        <div style="position:absolute;left:${pos(pop)}%;top:-3px;width:14px;height:14px;margin-left:-7px;border-radius:50%;border:2px solid var(--text-3);background:var(--bg-card)"></div>
+        <div style="position:absolute;left:${pos(you)}%;top:-3px;width:14px;height:14px;margin-left:-7px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 3px rgba(0,255,135,0.25)"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-4);margin-top:7px"><span>${min} días</span><span>Tú: <b style="color:var(--text-1)">${you} días</b> · Población: ${pop}</span><span>${max} días</span></div>
+      <div style="font-size:11px;color:var(--text-3);margin-top:6px;line-height:1.5">${Math.abs(diff) < 0.15 ? 'Tu cuerpo responde como lo hace la mayoría de la gente que entrena.' : (you < pop ? fast : slow)}</div></div>`;
+  }
+
+  function _populationHTML() {
+    const c = _m.calibration || {}, h = _m.history;
+    const d28 = h[Math.max(0, h.length - 29)], last = h[h.length - 1];
+    const fitChange = d28 && d28.fitness > 0 ? Math.round((last.fitness / d28.fitness - 1) * 100) : null;
+    const body = c.personalized
+      ? `${c.personalizedParts === 'ambas' ? _popBar('Condición — cuánto tarda en construirse (y en perderse)', _m.tau.fitness, 42, 21, 63, 'Ganas condición más rápido que lo típico… y también la pierdes más rápido si paras varios días.', 'Ganas condición más lento que lo típico, pero la conservas más tiempo cuando paras.') : `<div style="font-size:12px;color:var(--text-3);margin-bottom:14px;line-height:1.5">Tu <b>condición</b> todavía usa el valor general (42 días): cambia tan lento que necesita más pruebas para aprenderse.</div>`}
+         ${_popBar('Fatiga — cuánto tarda en irse', _m.tau.fatigue, 7, 3, 14, 'Te recuperas más rápido que lo típico: toleras bloques densos con menos días suaves.', 'Tu fatiga tarda más en irse que lo típico: respeta los días suaves y no apiles bloques duros.')}`
+      : `<div style="font-size:12px;color:var(--text-2);line-height:1.6;margin-bottom:10px">Todavía <b>no se puede saber</b> si eres como la mayoría o la excepción: el modelo usa los valores de la población (condición 42 días, fatiga 7) hasta aprender los tuyos. Con tus pruebas quincenales lo averigua — llevas <b>${c.usable || 0} de ${c.needed || 6}</b>.</div>
+         <div style="height:6px;border-radius:99px;background:var(--bg-input);overflow:hidden"><div style="height:100%;width:${Math.min(100, Math.round((c.usable || 0) / (c.needed || 6) * 100))}%;border-radius:99px;background:linear-gradient(90deg, var(--purple), var(--accent))"></div></div>`;
+    return `
+      <div class="card section" id="fm-pop-card">
+        <div class="card-header"><div><div class="card-title">🧭 ¿Eres como la población o la excepción?</div><div class="card-subtitle">Compara cómo responde tu cuerpo contra lo típico</div></div></div>
+        ${body}
+        ${fitChange !== null ? `<div style="margin-top:14px;padding:10px 12px;border-radius:10px;background:var(--bg-input);font-size:12px;line-height:1.5">Tu condición cambió <b style="color:${fitChange >= 0 ? 'var(--accent)' : 'var(--danger)'}">${fitChange > 0 ? '+' : ''}${fitChange}%</b> en las últimas 4 semanas.</div>` : ''}
+        <div style="font-size:10px;color:var(--text-4);margin-top:12px;line-height:1.5">La app no tiene datos de otras personas: "población" son los valores de referencia de la literatura del entrenamiento (42 y 7 días). Es una comparación del <i>modelo</i>, no un ranking contra gente real.</div>
+      </div>`;
+  }
+
+  // ── LECTURA DEL TEMACH (se queda hasta que pidas otra) ───────────
+  function _renderAI() {
+    const el = document.getElementById('fm-ai'), btn = document.getElementById('fm-ai-btn');
+    if (!el || _aiBusy) return;
+    const has = !!(_ai && _ai.text);
+    if (btn) btn.textContent = has ? '🔄 Actualizar lectura' : 'Que el Temach lea mi pantalla';
+    if (!has) { el.innerHTML = ''; return; }
+    const when = new Date(_ai.at).toLocaleString('es-MX', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+    const stale = _ai.day !== _m.today;
+    el.innerHTML = `
+      <div style="font-size:11px;color:var(--text-3);margin-bottom:10px;line-height:1.5">Lectura del ${esc(when)} · escenario: <b>${esc(_ai.name || '—')}</b>${stale ? ' · <span style="color:var(--warning)">es de otro día — actualízala para que use tus datos de hoy</span>' : ''}</div>
+      <div class="fm-ai-text" style="font-size:13px;line-height:1.7;color:var(--text-1)">${Utils.renderMarkdown ? Utils.renderMarkdown(_ai.text) : esc(_ai.text).replace(/\n/g, '<br>')}</div>`;
+  }
 
   async function askAI() {
     if (_aiBusy) return;
@@ -553,28 +683,31 @@ const Forma = (() => {
       m.textContent = AI_MSGS[i];
     }, 2600);
 
-    const sim = _sc.preset === 'plan' && _plan ? _plan.sim : simulate(scenarioFn(_sc));
-    const s = summarize(sim, _sc.preset === 'plan' && _plan ? { weeks: Math.ceil((_plan.idx + 1) / 7) } : _sc);
+    const s = summarize(simulate(scenarioFn(_sc)), _sc);
     const payload = {
       current: { formaPct: _m.current.formPct, zona: zoneOf(_m.current.formPct).label, condicion: _m.current.fitness, fatiga: _m.current.fatigue, cargaSemanalHabitual: _m.weeklyLoad },
-      scenario: _sc.preset === 'plan' ? { nombre: 'Plan al pico' } : { nombre: (PRESETS[_sc.preset] || {}).label || 'Personalizado', cargaPct: _sc.loadPct, semanas: _sc.weeks },
-      result: { formaAlTerminarPct: s.end.formPct, zonaAlTerminar: zoneOf(s.end.formPct).label, cambioCondicionPct: s.fitnessChange, puntoMasBajoPct: s.minDay.formPct, fechaPuntoMasBajo: s.minDay.date, mejorDiaParaRendir: s.best ? s.best.date : null },
+      scenario: { nombre: (PRESETS[_sc.preset] || {}).label || 'Personalizado', cargaPct: _sc.loadPct, semanas: _sc.weeks },
+      result: { formaAlTerminarPct: s.end.formPct, zonaAlTerminar: zoneOf(s.end.formPct).label, cambioCondicionPct: s.fitnessChange, puntoMasBajoPct: s.minDay.formPct, fechaPuntoMasBajo: s.minDay.date, proximoDiaFresco: s.best ? s.best.date : null },
       testDay: _plan ? { fecha: addDays(_m.today, _plan.idx + 1), construirPct: _plan.build, diasConstruir: _plan.idx - _plan.taper, bajarPct: _plan.taperPct, diasBajar: _plan.taper, formaEseDiaPct: _plan.day.formPct } : null,
       building: !!_m.building,
     };
+    let errHtml = '';
     try {
       const r = await API.interpretFormScenario(payload);
       if (r && r.success && r.text) {
-        el.innerHTML = `<div class="fm-ai-text" style="font-size:13px;line-height:1.7;color:var(--text-1)">${Utils.renderMarkdown ? Utils.renderMarkdown(r.text) : esc(r.text).replace(/\n/g, '<br>')}</div>`;
-        if (typeof gsap !== 'undefined') gsap.from(el.firstElementChild, { opacity: 0, y: 8, duration: 0.5, ease: 'power2.out' });
+        _ai = { text: r.text, at: r.at || Date.now(), name: payload.scenario.nombre, day: _m.today };
+        try { localStorage.setItem(AI_KEY, JSON.stringify(_ai)); } catch(e) {}
       } else {
-        el.innerHTML = `<div style="font-size:12px;color:var(--warning);line-height:1.5">No se pudo leer el escenario: ${esc((r && r.cause && r.cause.message) || 'sin respuesta del servidor')}</div>`;
+        errHtml = `<div style="font-size:12px;color:var(--warning);line-height:1.5;margin-bottom:10px">No se pudo leer tu pantalla: ${esc((r && r.cause && r.cause.message) || 'sin respuesta del servidor')}${_ai ? ' Se conserva tu lectura anterior.' : ''}</div>`;
       }
     } catch(e) {
-      el.innerHTML = `<div style="font-size:12px;color:var(--warning);line-height:1.5">No se pudo conectar con el Temach. Intenta de nuevo en un momento.</div>`;
+      errHtml = `<div style="font-size:12px;color:var(--warning);line-height:1.5;margin-bottom:10px">No se pudo conectar con el Temach. Intenta de nuevo en un momento.${_ai ? ' Se conserva tu lectura anterior.' : ''}</div>`;
     } finally {
       clearInterval(ticker); _aiBusy = false;
-      if (btn) { btn.disabled = false; btn.textContent = 'Que el Temach lea mi escenario'; }
+      if (btn) btn.disabled = false;
+      _renderAI();
+      if (errHtml) el.insertAdjacentHTML('afterbegin', errHtml);
+      else if (typeof gsap !== 'undefined' && el.lastElementChild) gsap.from(el.lastElementChild, { opacity: 0, y: 8, duration: 0.5, ease: 'power2.out' });
     }
   }
 
@@ -585,7 +718,7 @@ const Forma = (() => {
     if (open && typeof gsap !== 'undefined') gsap.from(el, { opacity: 0, y: -6, duration: 0.3 });
   }
 
-  return { init, setPreset, setLoad, setWeeks, setMode, planTestDay, askAI, toggleHow, toggleTestForm, goToTest, saveTest, _test: { simulate: (f) => simulate(f), planPeak: (d) => planPeak(d), summarize: (s, c) => summarize(s, c), setModel: (m) => { _m = m; } } };
+  return { init, setPreset, setLoad, setWeeks, setMode, planTestDay, clearPlan, changePlanDate, askAI, toggleHow, toggleTestForm, goToTest, saveTest, _test: { simulate: (f) => simulate(f), planPeak: (d) => planPeak(d), summarize: (s, c) => summarize(s, c), setModel: (m) => { _m = m; } } };
 })();
 
 function initForma(container) { Forma.init(container); }

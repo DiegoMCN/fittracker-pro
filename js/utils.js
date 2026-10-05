@@ -165,6 +165,43 @@ const Utils = {
   dayName(dayNum) {
     return ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'][dayNum];
   },
+  // "m:ss" o "h:mm:ss" → minutos (0 si no es un tiempo válido).
+  parseClock(str) {
+    const p = String(str || '').trim().split(':').map(Number);
+    if (p.some(isNaN) || p.length < 2 || p.length > 3) return 0;
+    return p.length === 2 ? p[0] + p[1] / 60 : p[0] * 60 + p[1] + p[2] / 60;
+  },
+
+  // La duración que guarda la app sale de SU cronómetro (hasta que tocas
+  // Terminar). El reloj es la verdad: si escribes las zonas, aquí se ve cuánto
+  // suman y puedes usar ese tiempo con un toque. prefix = 'ws' (fuerza) o 'cs' (cardio).
+  durationHint(prefix) {
+    const input = document.getElementById(prefix + '-duration'), hint = document.getElementById(prefix + '-dur-hint');
+    if (!input || !hint) return;
+    const measured = Number(input.dataset.measured) || 0;
+    const sum = [1, 2, 3, 4, 5].reduce((t, i) => t + Utils.parseClock((document.getElementById(`${prefix}-z${i}`) || {}).value), 0);
+    const typed = parseFloat(input.value) || 0;
+    if (sum >= 1) {
+      const n = Math.round(sum);
+      hint.innerHTML = `Tus zonas del reloj suman <b>${n} min</b> (la app midió ${measured}).` + (Math.abs(n - typed) >= 2
+        ? ` <button type="button" class="btn btn-ghost btn-sm" style="padding:2px 8px;font-size:11px;color:var(--accent)" onclick="document.getElementById('${prefix}-duration').value=${n};document.getElementById('${prefix}-duration').dispatchEvent(new Event('input'))">Usar ${n} min</button>` : ' ✓');
+    } else {
+      hint.textContent = `La app midió ${measured} min. Si tu reloj marcó otro tiempo, cámbialo aquí — el reloj es la referencia.`;
+    }
+  },
+
+  // Qué puede haber hecho en un día de descanso (Dashboard y Calendario)
+  REST_ACTIVITIES: ['Caminata ligera', 'Movilidad / estiramiento', 'Dormí de más', 'Comí e hidraté bien', 'Masaje / sauna', 'Descanso total'],
+
+  // Check-in de hoy guardado en el teléfono (sueño/energía) — los formularios
+  // de fin de sesión lo usan para prellenar, y así no se pregunta dos veces.
+  todayCheckin() {
+    try { return JSON.parse(localStorage.getItem('fittracker_checkin_' + Utils.today()) || 'null'); } catch(e) { return null; }
+  },
+  saveTodayCheckin(c) {
+    try { localStorage.setItem('fittracker_checkin_' + Utils.today(), JSON.stringify({ sleep: c.sleep ?? null, energy: c.energy ?? null })); } catch(e) {}
+  },
+
   today() {
     // OJO: nunca usar toISOString() aquí — convierte a UTC y puede
     // regresar el día equivocado según tu zona horaria. Esto usa los

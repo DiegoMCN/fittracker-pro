@@ -123,7 +123,7 @@ const Motion = (() => {
   // excepción): sube como hoja nativa desde abajo — el "handle" gris
   // sigue siendo puramente CSS (::before), no necesita JS.
   function _isSheet(overlay) {
-    return _isMobile() && !overlay.classList.contains('modal-overlay-info');
+    return _isMobile() && !overlay.classList.contains('modal-overlay-info') && !overlay.classList.contains('modal-centered');
   }
 
   function modalIn(overlay) {
@@ -368,7 +368,33 @@ const Motion = (() => {
     _popGlow(el, { fromScale: 0.92, peakScale: 1.02, glowShadow: `0 0 28px 6px ${glowColor}`, duration: 0.55 });
   }
 
+  // Tocar el fondo oscuro cierra el modal (con su animación), como en iOS.
+  // Solo si el toque fue EN el fondo, no dentro de la tarjeta.
+  // PROTECCIÓN: si el popup tiene un campo que ya modificaste (o una casilla
+  // cambiada), tocar fuera NO lo cierra — lo sacude para avisarte, en vez de
+  // tirar a la basura lo que estabas escribiendo. Sin cambios, cierra normal.
+  function _isDirty(overlay) {
+    return Array.from(overlay.querySelectorAll('input, textarea, select')).some(el => {
+      if (el.type === 'checkbox' || el.type === 'radio') return el.checked !== el.defaultChecked;
+      if (el.type === 'hidden' || el.type === 'button' || el.type === 'submit') return false;
+      return el.value !== el.defaultValue;
+    });
+  }
+  function _initBackdropClose() {
+    document.addEventListener('click', (e) => {
+      const t = e.target;
+      if (!(t && t.classList && t.classList.contains('modal-overlay')) || t.dataset.noBackdropClose) return;
+      if (_isDirty(t)) {
+        const card = t.querySelector('.modal');
+        if (card) gsap.fromTo(card, { x: -7 }, { x: 0, duration: 0.45, ease: 'elastic.out(1, 0.25)', overwrite: 'auto' });
+        return;
+      }
+      closeModal(t);
+    });
+  }
+
   function init() {
+    _initBackdropClose();
     _initTapFeedback();
     _initAutoEntrance();
   }

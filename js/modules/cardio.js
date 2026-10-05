@@ -311,6 +311,7 @@ const Cardio = (() => {
     _stopMetronome();
     document.removeEventListener('visibilitychange', _onCardioVisibilityChange);
     state.finished = true;
+    state.endedAt = Date.now(); // la duración se fija al TERMINAR, no al guardar (ver workout.js finishSession)
     Sounds.sessionDone(); Haptics.done();
     WakeLock.release();
     RecoveryTimer.start({
@@ -566,6 +567,11 @@ const Cardio = (() => {
             <div class="card-title">¿Qué tan duro se sintió?</div>
             <div class="card-subtitle">Esfuerzo percibido del 1 (muy fácil) al 10 (máximo). Es lo que la app usa para medir tu carga de entrenamiento — el reloj no lo sabe, solo tú.</div>
           </div>
+          <div class="input-group">
+            <label class="input-label">Duración (min) — la de tu reloj</label>
+            <input class="input" type="number" id="cs-duration" min="1" max="600" value="${_measuredMinutes()}" data-measured="${_measuredMinutes()}" oninput="Utils.durationHint('cs');Cardio.onSpeedInput()">
+            <div id="cs-dur-hint" style="font-size:11px;color:var(--text-3);margin-top:5px;line-height:1.5">La app midió ${_measuredMinutes()} min. Si tu reloj marcó otro tiempo, cámbialo aquí — el reloj es la referencia.</div>
+          </div>
           <div class="input-row">
             <div class="input-group" style="flex:1">
               <label class="input-label">Esfuerzo (1-10)</label>
@@ -573,7 +579,7 @@ const Cardio = (() => {
             </div>
             <div class="input-group" style="flex:1">
               <label class="input-label">¿Cómo dormiste? (1-10)</label>
-              <input class="input" type="number" id="cs-sleep" min="1" max="10" placeholder="8">
+              <input class="input" type="number" id="cs-sleep" min="1" max="10" placeholder="8" value="${(Utils.todayCheckin() || {}).sleep ?? ''}">
             </div>
           </div>
         </div>
@@ -612,27 +618,40 @@ const Cardio = (() => {
             <div class="input-row">
               <div class="input-group" style="flex:1">
                 <label class="input-label">Zona 1</label>
-                <input class="input" id="cs-z1" placeholder="45:35">
+                <input class="input" id="cs-z1" oninput="Utils.durationHint('cs')" placeholder="45:35">
               </div>
               <div class="input-group" style="flex:1">
                 <label class="input-label">Zona 2</label>
-                <input class="input" id="cs-z2" placeholder="01:36">
+                <input class="input" id="cs-z2" oninput="Utils.durationHint('cs')" placeholder="01:36">
               </div>
               <div class="input-group" style="flex:1">
                 <label class="input-label">Zona 3</label>
-                <input class="input" id="cs-z3" placeholder="00:15">
+                <input class="input" id="cs-z3" oninput="Utils.durationHint('cs')" placeholder="00:15">
               </div>
             </div>
             <div class="input-row">
               <div class="input-group" style="flex:1">
                 <label class="input-label">Zona 4</label>
-                <input class="input" id="cs-z4" placeholder="00:00">
+                <input class="input" id="cs-z4" oninput="Utils.durationHint('cs')" placeholder="00:00">
               </div>
               <div class="input-group" style="flex:1">
                 <label class="input-label">Zona 5</label>
-                <input class="input" id="cs-z5" placeholder="00:00">
+                <input class="input" id="cs-z5" oninput="Utils.durationHint('cs')" placeholder="00:00">
               </div>
             </div>
+            ${state.protocolKey === 'zona2' ? `
+            <div style="background:var(--accent-glow);border:1px solid var(--border-accent);border-radius:12px;padding:12px;margin-bottom:14px">
+              <label class="input-label" style="display:flex;align-items:center;justify-content:space-between">
+                <span>🚶 Velocidad que mantuviste en la caminadora (km/h)</span>
+                <button type="button" class="btn btn-ghost btn-icon" style="width:24px;height:24px;font-size:13px" onclick="Cardio.toggleSpeedInfo()" aria-label="¿Qué es esto?">ⓘ</button>
+              </label>
+              <input class="input" type="number" step="0.1" min="2" max="35" id="cs-velprom" placeholder="6.7" oninput="Cardio.onSpeedInput()" style="margin-top:6px">
+              <div id="cs-speed-hint" style="font-size:11px;color:var(--text-3);margin-top:6px;min-height:16px;line-height:1.5">Escribe la velocidad y calculo tu pace y la distancia.</div>
+              <div id="cs-speed-info" style="display:none;font-size:11px;color:var(--text-2);line-height:1.65;margin-top:8px;padding:10px;background:var(--bg-input);border-radius:8px">
+                <b>¿Qué es el pace?</b> Cuánto tardas en recorrer <b>1 km</b>. Es la misma información que la velocidad, dicha al revés: pace (min/km) = 60 ÷ velocidad (km/h). A 6.7 km/h tardas 8:57 por km.<br><br>
+                <b>¿Por qué importa en Zona 2?</b> Como la frecuencia cardíaca es constante (143–153 bpm), la señal de que tu base aeróbica mejora es que <b>a la misma frecuencia cardíaca vayas más rápido</b> que antes. Por eso conviene anotar la velocidad que de verdad mantuviste.
+              </div>
+            </div>` : ''}
             <div class="input-row">
               <div class="input-group" style="flex:1">
                 <label class="input-label">Cadencia prom.</label>
@@ -650,7 +669,7 @@ const Cardio = (() => {
               </div>
               <div class="input-group" style="flex:1">
                 <label class="input-label">Distancia</label>
-                <input class="input" type="number" step="0.01" id="cs-distance" placeholder="km" oninput="Cardio.renderSplitInputs()">
+                <input class="input" type="number" step="0.01" id="cs-distance" placeholder="km" oninput="this.dataset.auto='0';Cardio.renderSplitInputs()">
               </div>
             </div>
             <div class="input-row">
@@ -664,7 +683,7 @@ const Cardio = (() => {
               </div>
               <div class="input-group" style="flex:1">
                 <label class="input-label">Pace promedio</label>
-                <input class="input" id="cs-pace" placeholder="5:30">
+                <input class="input" id="cs-pace" placeholder="5:30" oninput="this.dataset.auto='0'">
               </div>
             </div>
 
@@ -807,6 +826,38 @@ const Cardio = (() => {
     return Math.round(totalKm * 100) / 100;
   }
 
+  // Minutos reales de la sesión: hasta que TERMINÓ (no hasta que guardas).
+  function _measuredMinutes() {
+    return state && state.startedAt ? Math.max(0, Math.round(((state.endedAt || Date.now()) - state.startedAt) / 60000)) : 0;
+  }
+  // Si ya hay un tiempo en el formulario (el de tu reloj), ese manda.
+  function _sessionMinutes() {
+    const typed = parseFloat(document.getElementById('cs-duration')?.value);
+    return (typed >= 1 && typed <= 600) ? Math.round(typed) : _measuredMinutes();
+  }
+
+  // Velocidad de caminadora → pace y distancia, al escribir. Rellena el pace
+  // y la distancia SOLO si están vacíos o los puso este mismo cálculo: lo que
+  // escribas a mano nunca se pisa.
+  function onSpeedInput() {
+    const v = parseFloat(document.getElementById('cs-velprom')?.value);
+    const hint = document.getElementById('cs-speed-hint');
+    if (!(v >= 2 && v <= 35)) { if (hint) hint.textContent = 'Escribe la velocidad y calculo tu pace y la distancia.'; return; }
+    const secPerKm = Math.round(3600 / v);
+    const pace = `${Math.floor(secPerKm / 60)}:${String(secPerKm % 60).padStart(2, '0')}`;
+    const mins = _sessionMinutes();
+    const km = Math.round(v * mins / 60 * 100) / 100;
+    if (hint) hint.innerHTML = `= pace de <b>${pace}</b> por km · ≈ <b>${km} km</b> en ${mins} min`;
+    const paceEl = document.getElementById('cs-pace'), distEl = document.getElementById('cs-distance');
+    if (paceEl && (!paceEl.value || paceEl.dataset.auto === '1')) { paceEl.value = pace; paceEl.dataset.auto = '1'; }
+    if (distEl && (!distEl.value || distEl.dataset.auto === '1')) { distEl.value = km; distEl.dataset.auto = '1'; renderSplitInputs(); }
+  }
+  function toggleSpeedInfo() {
+    const el = document.getElementById('cs-speed-info'); if (!el) return;
+    const open = el.style.display === 'none'; el.style.display = open ? 'block' : 'none';
+    if (open && typeof gsap !== 'undefined') gsap.from(el, { opacity: 0, y: -6, duration: 0.3 });
+  }
+
   function saveStats() {
     if (!_lockButtons('cs-save-btn')) return;
     const val = id => document.getElementById(id)?.value || '';
@@ -814,17 +865,20 @@ const Cardio = (() => {
     // para cuando Diego no la llenó (típico en HIT, donde no se ve
     // natural anotar distancia a mano en cada intervalo).
     let distance = val('cs-distance');
+    const velProm = parseFloat(val('cs-velprom'));
+    // Prioridad: lo que escribiste > velocidad sostenida × tiempo real > estimado del protocolo.
+    if (!distance && velProm >= 2 && velProm <= 35) distance = Math.round(velProm * _sessionMinutes() / 60 * 100) / 100;
     if (!distance && state.protocol?.phases) {
       const estimated = _estimateDistanceKm(state.protocol.phases);
       if (estimated > 0) distance = estimated;
     }
     _saveCardioSession({
-      effort: val('cs-effort'), sleep: val('cs-sleep'),
+      duration: val('cs-duration'), effort: val('cs-effort'), sleep: val('cs-sleep'),
       fcAvg: val('cs-fcavg'), fcPeak: val('cs-fcpeak'),
       fcPost0: val('cs-fcpost0'), fcPost1: val('cs-fcpost1'), fcPost2: val('cs-fcpost2'),
       zone1: val('cs-z1'), zone2: val('cs-z2'), zone3: val('cs-z3'), zone4: val('cs-z4'), zone5: val('cs-z5'),
       cadAvg: val('cs-cadavg'), cadPeak: val('cs-cadpeak'),
-      velMax: val('cs-velmax'), distance,
+      velMax: val('cs-velmax'), velProm: val('cs-velprom'), distance,
       caloriasActivas: val('cs-cal-active'), caloriasTotales: val('cs-cal-total'), paceProm: val('cs-pace'),
       splits: _collectSplits(),
       notes: val('cs-notes'),
@@ -832,7 +886,8 @@ const Cardio = (() => {
   }
 
   async function _saveCardioSession(stats) {
-    const duration = Math.round((Date.now() - state.startedAt) / 60000);
+    const typedMin = Math.round(Number(stats.duration));
+    const duration = (typedMin >= 1 && typedMin <= 600) ? typedMin : _measuredMinutes();
     // Preferimos la ventana completa 0→2min (igual que fuerza); si no
     // capturaste "FC al terminar" cae a 1→2min como antes.
     const rec2min = (stats.fcPost0 && stats.fcPost2)
@@ -856,7 +911,7 @@ const Cardio = (() => {
       zone1: stats.zone1 || '', zone2: stats.zone2 || '', zone3: stats.zone3 || '',
       zone4: stats.zone4 || '', zone5: stats.zone5 || '',
       cadAvg: stats.cadAvg || '', cadPeak: stats.cadPeak || '',
-      velMax: stats.velMax || '',
+      velMax: stats.velMax || '', velProm: stats.velProm || '',
       caloriasActivas: stats.caloriasActivas || '',
       caloriasTotales: stats.caloriasTotales || '',
       paceProm: stats.paceProm || '',
@@ -925,6 +980,12 @@ const Cardio = (() => {
             <div class="metric-label">Recuperación 2min</div>
             <div class="metric-value accent">${payload.rec2min}<span class="metric-unit">bpm</span></div>
           </div>` : ''}
+          ${payload.velProm ? `
+          <div class="metric-card">
+            <div class="metric-label">Velocidad sostenida</div>
+            <div class="metric-value" style="color:var(--accent)">${payload.velProm}<span class="metric-unit">km/h</span></div>
+            ${payload.paceProm ? `<div style="font-size:10px;color:var(--text-3);margin-top:2px">pace ${Utils.escapeHtml(String(payload.paceProm))} /km</div>` : ''}
+          </div>` : ''}
           ${payload.cadAvg ? `
           <div class="metric-card">
             <div class="metric-label">Cadencia</div>
@@ -972,7 +1033,7 @@ const Cardio = (() => {
   return {
     init, selectProtocol, selectHitDuration, backToPicker, startProtocol, togglePause, skipPhase,
     discardSession, onRouteChange, hasActiveSession, skipStats, saveStats,
-    toggleMetronome, adjustMetronome, renderSplitInputs, shareSession,
+    toggleMetronome, adjustMetronome, renderSplitInputs, shareSession, onSpeedInput, toggleSpeedInfo,
   };
 })();
 

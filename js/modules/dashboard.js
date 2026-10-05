@@ -147,58 +147,266 @@ function _kmCarouselHTML(distanceStats, profile) {
 // Meta de "primera dominada libre" — Fase 2. Solo se muestra una vez
 // que ya hay al menos un intento registrado, para no ensuciar el
 // Dashboard antes de que empiece esa fase.
-// Puntaje de "listo para entrenar" — siempre con sus razones visibles
-// (nunca un número solo sin explicar), y sin alarmar de más: incluso
-// en "bajo" es información, no una orden de no entrenar hoy.
+// ═══ LISTO PARA ENTRENAR — TARJETA VIVA ═══════════════════════════════
+// Antes de tu sesión: cómo estás para entrenar. Después: tu recuperación
+// subiendo en vivo, a qué hora estarás al 100% y cómo amanecerás mañana.
+// El servidor calcula todo (getReadinessScore) con la hora exacta en que
+// terminó tu última sesión; aquí solo se pinta, y se actualiza sola:
+//  • cada 30 s se mueve la barra y los textos de tiempo (cálculo local);
+//  • cada 5 min, o al volver a la app, se vuelve a pedir al servidor;
+//  • al guardar tu check-in, al instante.
+let _rdy = null, _rdyAt = 0, _rdyTimer = null, _rdyBusy = false, _rdyHooked = false, _rdyWhyOpen = false, _rdyEditing = false, _rdyRingDone = false;
+const _rdyForm = { sleep: null, energy: null, acts: [], note: '' };
+const _REST_ACTS = Utils.REST_ACTIVITIES;
+const _ENERGY = [['😫', 'Sin energía'], ['😕', 'Baja'], ['😐', 'Normal'], ['🙂', 'Buena'], ['🤩', 'A tope']];
+const _RDY_CFG = {
+  alto:  { color: 'var(--accent)', hex: '#00FF87', emoji: '🟢', label: 'Alto' },
+  medio: { color: '#F59E0B',       hex: '#F59E0B', emoji: '🟡', label: 'Medio' },
+  bajo:  { color: '#EF4444',       hex: '#EF4444', emoji: '🔴', label: 'Bajo' },
+};
+const _TONE_COLOR = { bien: 'var(--accent)', ojo: '#F59E0B', mal: '#EF4444' };
+const _RING_C = 2 * Math.PI * 26;
+
+function _isRestDayToday() { return ((CONFIG.WEEK_PLAN || {})[new Date().getDay()] || {}).type === 'rest'; }
+
+function _fmtHM(h) { const m = Math.max(0, Math.round(h * 60)); return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m % 60 ? ' ' + (m % 60) + ' min' : ''}`; }
+function _fmtClock(ms) {
+  const d = new Date(ms), n = new Date();
+  const diff = Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()) - new Date(n.getFullYear(), n.getMonth(), n.getDate())) / 86400000);
+  const t = d.toLocaleTimeString('es-MX', { hour: 'numeric', minute: '2-digit', hour12: true });
+  return `${diff === 0 ? 'hoy' : diff === 1 ? 'mañana' : d.toLocaleDateString('es-MX', { weekday: 'long' })} a las ${t}`;
+}
+
+// Recuperación en este instante: parte de lo que dijo el servidor y suma el tiempo transcurrido desde entonces.
+// Recibe la respuesta y el momento en que llegó — nunca depende de estado
+// global: la primera vez que se pinta la tarjeta todavía no hay estado.
+function _rdyLiveFor(r, at) {
+  const rc = r && r.recovery; if (!rc) return null;
+  const hs = rc.hoursSince + (Date.now() - at) / 3600000;
+  return { hs, pct: Math.min(100, Math.round(hs / rc.needHours * 100)), left: Math.max(0, rc.needHours - hs) };
+}
+function _rdyLive() { return _rdyLiveFor(_rdy, _rdyAt); }
+
+function _rdyMainHTML(r, at) {
+  const cfg = _RDY_CFG[r.level] || _RDY_CFG.medio;
+  const mode = r.mode || 'antes';
+  const recov = mode !== 'antes' && r.recovery;
+  const lv = recov ? _rdyLiveFor(r, at || Date.now()) : null;
+  const comps = r.components || (r.reasons || []).map(t => ({ label: '', text: t, delta: 0, tone: 'bien' }));
+  const tm = r.tomorrow ? (_RDY_CFG[r.tomorrow.level] || _RDY_CFG.medio) : null;
+  const title = recov ? (mode === 'despues' ? 'Sesión completada · recuperándote' : 'Recuperándote de tu última sesión') : `Listo para entrenar: ${cfg.label}`;
+  const sub = recov
+    ? (lv.pct >= 100 ? 'Ya completaste tu tiempo de recuperación' : `Al 100% <b>${_fmtClock(r.recovery.readyAtMs)}</b> · faltan ~${_fmtHM(lv.left)}`)
+    : comps.slice(0, 2).map(c => Utils.escapeHtml(c.text)).join(' · ');
+  return `
+    <div style="display:flex;align-items:center;gap:14px">
+      <div style="position:relative;width:64px;height:64px;flex-shrink:0">
+        <svg viewBox="0 0 64 64" width="64" height="64" style="transform:rotate(-90deg)">
+          <circle cx="32" cy="32" r="26" fill="none" stroke="var(--bg-input)" stroke-width="6"/>
+          <circle id="rdy-ring" cx="32" cy="32" r="26" fill="none" stroke="${cfg.hex}" stroke-width="6" stroke-linecap="round" stroke-dasharray="${_RING_C.toFixed(2)}" stroke-dashoffset="${(_RING_C * (1 - r.score / 100)).toFixed(2)}"/>
+        </svg>
+        <div id="rdy-score" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:19px;font-weight:800;color:${cfg.color}">${r.score}</div>
+      </div>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:700;font-size:14px;line-height:1.3">${recov ? '⏳ ' : cfg.emoji + ' '}${title}</div>
+        <div id="rdy-sub" style="font-size:11px;color:var(--text-3);margin-top:3px;line-height:1.5">${sub}</div>
+      </div>
+    </div>
+    ${recov ? `
+    <div style="margin-top:12px">
+      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-3);margin-bottom:4px"><span>Recuperación estimada</span><span id="rdy-pct" style="font-weight:700;color:var(--text-1)">${lv.pct}%</span></div>
+      <div style="height:7px;background:var(--bg-input);border-radius:99px;overflow:hidden"><div id="rdy-bar" style="height:100%;width:${lv.pct}%;border-radius:99px;background:linear-gradient(90deg, var(--purple), var(--accent));transition:width 0.6s ease"></div></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;font-size:11px">
+        <span style="padding:4px 10px;border-radius:99px;background:var(--bg-input)">Si entrenaras ahora: ${cfg.emoji} ${cfg.label} (${r.score})</span>
+        ${tm ? `<span style="padding:4px 10px;border-radius:99px;background:var(--bg-input)">Mañana temprano: ${tm.emoji} ${tm.label} (${r.tomorrow.score})</span>` : ''}
+      </div>
+    </div>` : ''}
+    <button class="btn btn-ghost btn-sm" style="margin-top:10px;padding:4px 0;font-size:11px;color:var(--text-3)" onclick="rdyToggleWhy()">¿Por qué este puntaje? <span id="rdy-why-arrow">${_rdyWhyOpen ? '▾' : '▸'}</span></button>
+    <div id="rdy-why" style="display:${_rdyWhyOpen ? 'block' : 'none'};margin-top:6px">
+      ${comps.map(c => `<div style="display:flex;gap:8px;align-items:flex-start;font-size:11px;line-height:1.5;margin-bottom:6px">
+        <span style="flex-shrink:0;min-width:30px;text-align:center;padding:1px 6px;border-radius:99px;font-weight:700;background:var(--bg-input);color:${_TONE_COLOR[c.tone] || 'var(--text-2)'}">${c.delta > 0 ? '+' : ''}${c.delta}</span>
+        <span style="color:var(--text-2)">${Utils.escapeHtml(c.text)}</span></div>`).join('')}
+      <div style="font-size:10px;color:var(--text-4);line-height:1.5;margin-top:4px">El tiempo de recuperación es una estimación general (24–48 h según qué tan dura fue tu sesión), no tu fisiología exacta. Se actualiza solo con las horas, tu forma, tu sueño y tu energía.</div>
+    </div>`;
+}
+
+function _rdyChip(label, active, fn, wide) {
+  return `<button type="button" class="btn btn-sm ${active ? 'btn-primary' : 'btn-secondary'}" style="${wide ? 'padding:6px 10px' : 'min-width:32px;padding:6px 0'};font-size:12px" onclick="${fn}">${label}</button>`;
+}
+
+function _rdyCheckinHTML(r) {
+  const missing = r.missing || [], rest = _isRestDayToday(), ck = r.checkin;
+  const needSleep = missing.includes('sleep') || _rdyEditing, needEnergy = missing.includes('energy') || _rdyEditing;
+  if (!needSleep && !needEnergy && !rest) {
+    const bits = [ck && ck.sleep !== null && ck.sleep !== undefined ? `sueño ${ck.sleep}/10` : null, ck && ck.energy ? `energía ${ck.energy}/5` : null].filter(Boolean);
+    return bits.length ? `<div style="margin-top:12px;font-size:11px;color:var(--text-3);display:flex;justify-content:space-between;align-items:center"><span>☀️ Check-in de hoy: ${bits.join(' · ')} ✓</span><button class="btn btn-ghost btn-sm" style="font-size:11px;padding:2px 6px" onclick="rdyEditCheckin()">Editar</button></div>` : '';
+  }
+  return `
+    <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+      <div style="font-size:12px;font-weight:700;margin-bottom:10px">${rest ? '🛌 Hoy toca descanso' : '☀️ Check-in de hoy'} <span style="font-weight:400;color:var(--text-3)">· 10 segundos, mejora tu puntaje y lo que aprende la app</span></div>
+      ${needSleep ? `<div style="font-size:11px;color:var(--text-3);margin-bottom:6px">¿Cómo dormiste? (1 = fatal, 10 = perfecto)</div>
+        <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:12px">${[1,2,3,4,5,6,7,8,9,10].map(n => _rdyChip(n, _rdyForm.sleep === n, `rdyPick('sleep',${n})`)).join('')}</div>` : ''}
+      ${needEnergy ? `<div style="font-size:11px;color:var(--text-3);margin-bottom:6px">¿Con cuánta energía amaneciste?</div>
+        <div style="display:flex;gap:6px;margin-bottom:12px">${_ENERGY.map(([e, l], i) => `<button type="button" class="btn btn-sm ${_rdyForm.energy === i + 1 ? 'btn-primary' : 'btn-secondary'}" style="flex:1;flex-direction:column;gap:2px;padding:6px 2px" onclick="rdyPick('energy',${i + 1})"><span style="font-size:18px">${e}</span><span style="font-size:9px">${l}</span></button>`).join('')}</div>` : ''}
+      ${rest ? `<div style="font-size:11px;color:var(--text-3);margin-bottom:6px">¿Qué hiciste para recuperarte? (elige las que apliquen)</div>
+        <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px">${_REST_ACTS.map((a, i) => _rdyChip(Utils.escapeHtml(a), _rdyForm.acts.includes(a), `rdyToggleAct(${i})`, true)).join('')}</div>
+        <input class="input" id="rdy-note" maxlength="200" placeholder="Algo más que quieras anotar (opcional)" value="${Utils.escapeHtml(_rdyForm.note)}" oninput="_rdyForm.note=this.value" style="margin-bottom:10px">
+        <div style="font-size:10px;color:var(--text-4);margin-bottom:10px;line-height:1.5">El descanso de hoy cuenta como hecho automáticamente — esto solo ayuda a que el Coach conozca cómo te recuperas.</div>` : ''}
+      <button class="btn btn-primary" id="rdy-save" style="width:100%" onclick="rdySaveCheckin()">Guardar</button>
+    </div>`;
+}
+
 function _readinessHTML(readiness) {
   if (!readiness) return '';
-  const cfg = {
-    alto:  { color: 'var(--accent)',  emoji: '🟢', label: 'Alto' },
-    medio: { color: '#F59E0B',        emoji: '🟡', label: 'Medio' },
-    bajo:  { color: '#EF4444',        emoji: '🔴', label: 'Bajo' },
-  }[readiness.level] || { color: 'var(--text-3)', emoji: '⚪', label: '—' };
-
+  const cfg = _RDY_CFG[readiness.level] || _RDY_CFG.medio;
   return `
-    <div class="card section" style="border-color:${cfg.color}44">
-      <div style="display:flex;align-items:center;gap:14px">
-        <div style="font-size:32px">${cfg.emoji}</div>
-        <div style="flex:1">
-          <div style="font-weight:700;font-size:14px">Listo para entrenar: ${cfg.label}</div>
-          <div style="font-size:11px;color:var(--text-3);margin-top:2px">${readiness.reasons.join(' · ')}</div>
-        </div>
-        <div style="font-size:24px;font-weight:800;color:${cfg.color}">${readiness.score}</div>
-      </div>
+    <div class="card section" id="readiness-card" style="border-color:${cfg.hex}44">
+      <div id="rdy-main">${_rdyMainHTML(readiness, Date.now())}</div>
+      <div id="rdy-checkin">${_rdyCheckinHTML(readiness)}</div>
     </div>`;
+}
+
+function _rdySync(r) {
+  _rdy = r; _rdyAt = Date.now();
+  if (r.checkin) Utils.saveTodayCheckin(r.checkin);
+  const ck = r.checkin || {};
+  if (_rdyForm.sleep === null && ck.sleep != null) _rdyForm.sleep = ck.sleep;
+  if (_rdyForm.energy === null && ck.energy != null) _rdyForm.energy = ck.energy;
+  if (!_rdyForm.acts.length && ck.restActivities && ck.restActivities.length) _rdyForm.acts = ck.restActivities.slice();
+  if (!_rdyForm.note && ck.restNote) _rdyForm.note = ck.restNote;
+}
+
+// Se llama una vez pintado el Dashboard: anima el aro y arranca las actualizaciones solas.
+function _rdyMount(readiness) {
+  if (!readiness || !document.getElementById('readiness-card')) return;
+  _rdyWhyOpen = false; _rdyEditing = false;
+  _rdySync(readiness);
+  if (typeof gsap !== 'undefined') {
+    const ring = document.getElementById('rdy-ring'), num = document.getElementById('rdy-score');
+    if (ring) gsap.fromTo(ring, { strokeDashoffset: _RING_C }, { strokeDashoffset: _RING_C * (1 - readiness.score / 100), duration: 1.2, ease: 'power3.out', delay: 0.2 });
+    if (num) { const o = { v: 0 }; gsap.to(o, { v: readiness.score, duration: 1.2, ease: 'power3.out', delay: 0.2, onUpdate: () => { num.textContent = Math.round(o.v); }, onComplete: () => { num.textContent = readiness.score; } }); }
+  }
+  clearInterval(_rdyTimer);
+  _rdyTimer = setInterval(_rdyTick, 30000);
+  if (!_rdyHooked) {
+    _rdyHooked = true;
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && document.getElementById('readiness-card')) _rdyRefresh(); });
+  }
+}
+
+function _rdyTick() {
+  if (!document.getElementById('readiness-card')) { clearInterval(_rdyTimer); _rdyTimer = null; return; }
+  if (!_rdy) return;
+  const lv = _rdyLive();
+  if (Date.now() - _rdyAt > 5 * 60 * 1000 || (lv && lv.pct >= 100 && _rdy.mode !== 'antes')) return _rdyRefresh();
+  if (!lv) return;
+  const bar = document.getElementById('rdy-bar'), pct = document.getElementById('rdy-pct'), sub = document.getElementById('rdy-sub');
+  if (bar) bar.style.width = lv.pct + '%';
+  if (pct) pct.textContent = lv.pct + '%';
+  if (sub && _rdy.recovery) sub.innerHTML = `Al 100% <b>${_fmtClock(_rdy.recovery.readyAtMs)}</b> · faltan ~${_fmtHM(lv.left)}`;
+}
+
+async function _rdyRefresh(animate) {
+  if (_rdyBusy || !document.getElementById('readiness-card')) return;
+  _rdyBusy = true;
+  try {
+    const r = await API.getReadinessScore();
+    if (!r || r.score === undefined || !document.getElementById('readiness-card')) return;
+    const prevLevel = _rdy && _rdy.level;
+    _rdySync(r);
+    const card = document.getElementById('readiness-card'), main = document.getElementById('rdy-main');
+    if (card) card.style.borderColor = (_RDY_CFG[r.level] || _RDY_CFG.medio).hex + '44';
+    if (main) main.innerHTML = _rdyMainHTML(r, _rdyAt);
+    // El bloque de check-in solo se redibuja si cambió lo que falta — así nunca se borra lo que estás escribiendo.
+    const ck = document.getElementById('rdy-checkin');
+    if (ck && (animate || !ck.dataset.sig || ck.dataset.sig !== (r.missing || []).join(',') + '|' + (_rdyEditing ? 1 : 0))) {
+      ck.innerHTML = _rdyCheckinHTML(r); ck.dataset.sig = (r.missing || []).join(',') + '|' + (_rdyEditing ? 1 : 0);
+    }
+    if (typeof gsap !== 'undefined' && (animate || prevLevel !== r.level)) {
+      gsap.fromTo('#rdy-main', { opacity: 0.4, y: 4 }, { opacity: 1, y: 0, duration: 0.45, ease: 'power2.out' });
+      const ring = document.getElementById('rdy-ring');
+      if (ring) gsap.fromTo(ring, { strokeDashoffset: _RING_C }, { strokeDashoffset: _RING_C * (1 - r.score / 100), duration: 0.9, ease: 'power3.out' });
+    }
+  } catch(e) { /* sin señal: se queda con lo último y reintenta en el siguiente ciclo */ }
+  finally { _rdyBusy = false; }
+}
+
+function _rdyRepaintCheckin() { const ck = document.getElementById('rdy-checkin'); if (ck && _rdy) { ck.innerHTML = _rdyCheckinHTML(_rdy); ck.dataset.sig = (_rdy.missing || []).join(',') + '|' + (_rdyEditing ? 1 : 0); } }
+function rdyToggleWhy() { _rdyWhyOpen = !_rdyWhyOpen; const w = document.getElementById('rdy-why'), a = document.getElementById('rdy-why-arrow'); if (w) w.style.display = _rdyWhyOpen ? 'block' : 'none'; if (a) a.textContent = _rdyWhyOpen ? '▾' : '▸'; if (_rdyWhyOpen && typeof gsap !== 'undefined' && w) gsap.from(w, { opacity: 0, y: -6, duration: 0.3 }); }
+function rdyPick(kind, n) { Sounds.click(); _rdyForm[kind] = _rdyForm[kind] === n ? null : n; _rdyRepaintCheckin(); }
+function rdyToggleAct(i) { Sounds.click(); const a = _REST_ACTS[i], k = _rdyForm.acts.indexOf(a); if (k >= 0) _rdyForm.acts.splice(k, 1); else _rdyForm.acts.push(a); _rdyRepaintCheckin(); }
+function rdyEditCheckin() { _rdyEditing = true; _rdyRepaintCheckin(); }
+
+async function rdySaveCheckin() {
+  const rest = _isRestDayToday(), body = {};
+  if (_rdyForm.sleep !== null) body.sleep = _rdyForm.sleep;
+  if (_rdyForm.energy !== null) body.energy = _rdyForm.energy;
+  if (rest && (_rdyForm.acts.length || _rdyForm.note.trim())) { body.restActivities = _rdyForm.acts; body.restNote = _rdyForm.note.trim(); }
+  if (!Object.keys(body).length) { Toast.warning('Elige al menos una opción para guardar.'); return; }
+  const btn = document.getElementById('rdy-save'); if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
+  try {
+    const res = await API.saveCheckin(body);
+    if (res && res.success) {
+      Sounds.serieDone(); Haptics.medium(); Toast.success('Check-in guardado ☀️');
+      Utils.saveTodayCheckin({ sleep: _rdyForm.sleep, energy: _rdyForm.energy });
+      _rdyEditing = false;
+      API.clearCache();
+      await _rdyRefresh(true);
+      return;
+    }
+    Toast.warning((res && res.error) || 'No se pudo guardar el check-in.');
+  } catch(e) { Toast.warning('Sin conexión — intenta de nuevo cuando tengas señal.'); }
+  if (btn) { btn.disabled = false; btn.textContent = 'Guardar'; }
 }
 
 function _pullUpMilestoneHTML(pullUp) {
   if (!pullUp || !pullUp.attempts) return '';
-
   if (pullUp.achieved) {
+    // La celebración vive 14 días en el Dashboard; después queda en tus logros.
+    const days = Math.round((new Date(Utils.today() + 'T00:00:00') - new Date(pullUp.achievedDate + 'T00:00:00')) / 86400000);
+    if (days > 14) return '';
     return `
     <div class="card section" style="border-color:rgba(0,255,135,0.35);background:linear-gradient(135deg, rgba(0,255,135,0.08), transparent)">
       <div style="display:flex;align-items:center;gap:14px">
         <div style="font-size:36px">🏆</div>
         <div>
           <div style="font-weight:800;font-size:15px;color:var(--accent)">¡Primera dominada libre lograda!</div>
-          <div style="font-size:11px;color:var(--text-3);margin-top:2px">
-            ${Utils.formatDate(pullUp.achievedDate)}
-            · te costó ${pullUp.attemptsToSuccess} intento${pullUp.attemptsToSuccess === 1 ? '' : 's'}
-            ${pullUp.achievedReps > 1 ? ` · ${pullUp.achievedReps} repeticiones esa vez` : ''}
-          </div>
+          <div style="font-size:11px;color:var(--text-3);margin-top:2px">${Utils.formatDate(pullUp.achievedDate)} · sin asistencia${pullUp.achievedReps > 1 ? ` · ${pullUp.achievedReps} repeticiones` : ''}</div>
         </div>
       </div>
     </div>`;
   }
-
+  const prog = pullUp.lastAssist !== null && pullUp.firstAssist !== null
+    ? `Vas en <b>${pullUp.lastAssist} ${pullUp.assistUnit}</b> de asistencia (empezaste con ${pullUp.firstAssist}). Cuando llegues a 0, es libre.`
+    : `Intento #${pullUp.attempts} — todavía no, sigue así`;
   return `
     <div class="card section">
       <div style="display:flex;align-items:center;gap:14px">
         <div style="font-size:32px">🎯</div>
         <div style="flex:1">
-          <div style="font-weight:700;font-size:14px">Meta de Fase 2: primera dominada libre</div>
-          <div style="font-size:11px;color:var(--text-3);margin-top:2px">Intento #${pullUp.attempts} — todavía no, sigue así</div>
+          <div style="font-weight:700;font-size:14px">Meta: primera dominada libre</div>
+          <div style="font-size:11px;color:var(--text-3);margin-top:2px;line-height:1.5">${prog}</div>
         </div>
+      </div>
+    </div>`;
+}
+
+// Próximos logros con tu avance — para que se vea que la app sigue contando.
+let _nextAch = [];
+function _nextAchievementsHTML() {
+  if (!_nextAch.length) return '';
+  return `
+    <div class="card section">
+      <div class="card-header"><div><div class="card-title">🎯 Próximos logros</div><div class="card-subtitle">Lo que estás por desbloquear</div></div></div>
+      <div style="display:flex;flex-direction:column;gap:12px">
+        ${_nextAch.map(n => {
+          const pct = n.binary ? 0 : Math.min(100, Math.round(n.current / n.target * 100));
+          const nums = n.binary ? (n.hint || 'aún no') : `${Number(n.current).toLocaleString('es-MX')} / ${Number(n.target).toLocaleString('es-MX')}`;
+          return `<div>
+            <div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;margin-bottom:4px"><span>${n.icon} ${Utils.escapeHtml(n.label)}</span><span style="color:var(--text-3);text-align:right">${Utils.escapeHtml(nums)}</span></div>
+            ${n.binary ? '' : `<div style="height:6px;background:var(--bg-input);border-radius:99px;overflow:hidden"><div style="height:100%;width:${pct}%;border-radius:99px;background:linear-gradient(90deg, var(--purple), var(--accent))"></div></div>`}
+          </div>`;
+        }).join('')}
       </div>
     </div>`;
 }
@@ -320,9 +528,14 @@ async function initDashboard(container) {
   // dominadas, cadencia y dead hang (antes eran valores fijos de ejemplo).
   // metricsRes.history ya viene más-reciente-primero — [0] es lo último.
   const metricsHistory = metricsRes.history || [];
-  const latestMetrics = metricsHistory.length ? metricsHistory[0] : null;
+  // El último valor de CADA campo: con datos derivados de tus sesiones, la
+  // fecha más reciente puede traer dead hang pero no sprint (o al revés).
+  const latestMetrics = metricsHistory.length ? ['weight', 'pullUps', 'sprintSpeed', 'cadAvg', 'deadHang', 'plankMax'].reduce((acc, k) => {
+    const h = metricsHistory.find(x => x[k] !== null && x[k] !== undefined); acc[k] = h ? h[k] : null; return acc;
+  }, { date: metricsHistory[0].date }) : null;
 
   Store.set({ dashboard: data });
+  _nextAch = (achievementsRes && achievementsRes.next) || [];
   _renderDashboard(container, data, doneDayNames, recordsRes, sesRes.sessions || [], latestMetrics, cardioRes.sessions || [], streaksRes, overtrainingRes, insightsRes.insights || {}, profileRes.profile || {}, pullUpRes, achievementsRes.achievements || [], readinessRes);
 }
 
@@ -451,6 +664,7 @@ function _renderDashboard(container, data, doneDayNames, records, allSessions, l
   </div>
 
   ${_achievementsHTML(achievements)}
+  ${_nextAchievementsHTML()}
   ${_pullUpMilestoneHTML(pullUp)}
   ${_kmCarouselHTML(data.distanceStats, profile)}
 
@@ -769,6 +983,7 @@ function _renderDashboard(container, data, doneDayNames, records, allSessions, l
   // Renderizar chart FC tendencia — esperar a que el DOM esté pintado
   setTimeout(() => _renderFCChart(allSessions), 100);
   setTimeout(() => _initKmMaps(), 100);
+  _rdyMount(readiness); // tarjeta de "listo para entrenar": aro animado + actualización automática
 
   // Pull-to-refresh — mismo efecto que el botón de sincronizar de la
   // barra lateral, pero con el gesto nativo de "jalar para refrescar".

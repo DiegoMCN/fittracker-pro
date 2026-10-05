@@ -970,6 +970,10 @@ input[type="range"]::-moz-range-thumb {
      punto de quiebre + la excepción de .modal-overlay-info), ahora en
      un solo lugar en vez de repartida entre CSS y JS. */
   .modal-overlay-info .modal::before { display: none; }
+  /* Modales que se quedan CENTRADOS también en celular (ej. el día del calendario) */
+  .modal-overlay.modal-centered { align-items: center; padding: var(--space-5); }
+  .modal-overlay.modal-centered .modal { border-radius: var(--radius-xl); padding-top: 0; }
+  .modal-overlay.modal-centered .modal::before { display: none; }
   /* Respeta la isla dinámica / notch (arriba) y el home indicator (abajo)
      del iPhone — sin esto, el sidebar y las barras flotantes quedan
      tapados por encima/debajo de esas zonas del sistema. */

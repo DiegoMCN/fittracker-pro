@@ -1276,6 +1276,11 @@ const Workout = (() => {
   }
 
   // ── FINALIZAR SESIÓN ─────────────────────────────────────────────────
+  // Minutos medidos por la app, hasta que tocaste Terminar (no hasta que guardas).
+  function _measuredMinutes() {
+    return state && state.startedAt ? Math.max(0, Math.round(((state.endedAt || Date.now()) - state.startedAt) / 60000)) : 0;
+  }
+
   async function finishSession() {
     const totalSets = state.exercises.reduce((s, e) => s + e.sets.length, 0);
     const doneSets  = state.exercises.reduce((s, e) => s + e.sets.filter(x => x.done).length, 0);
@@ -1283,6 +1288,12 @@ const Workout = (() => {
     if (doneSets === 0) {
       if (!confirm('No has marcado ninguna serie como completada. ¿Terminar de todas formas?')) return;
     }
+
+    // La duración se fija AQUÍ, al terminar. Antes se calculaba al guardar —
+    // ya con el cronómetro de recuperación y el formulario de por medio — y
+    // cada sesión salía varios minutos más larga de lo que fue (eso infla la
+    // carga del ACWR, que es esfuerzo × minutos).
+    state.endedAt = Date.now();
 
     RecoveryTimer.start({
       onComplete: (vals) => _renderStatsForm(doneSets, totalSets, vals),
@@ -1334,8 +1345,13 @@ const Workout = (() => {
               </div>
               <div class="input-group" style="flex:1">
                 <label class="input-label">¿Cómo dormiste? (1-10)</label>
-                <input class="input" type="number" id="ws-sleep" min="1" max="10" placeholder="8">
+                <input class="input" type="number" id="ws-sleep" min="1" max="10" placeholder="8" value="${(Utils.todayCheckin() || {}).sleep ?? ''}">
               </div>
+            </div>
+            <div class="input-group">
+              <label class="input-label">Duración (min) — la de tu reloj</label>
+              <input class="input" type="number" id="ws-duration" min="1" max="600" value="${_measuredMinutes()}" data-measured="${_measuredMinutes()}">
+              <div id="ws-dur-hint" style="font-size:11px;color:var(--text-3);margin-top:5px;line-height:1.5">La app midió ${_measuredMinutes()} min. Si tu reloj marcó otro tiempo, cámbialo aquí — el reloj es la referencia.</div>
             </div>
             <div class="input-row">
               <div class="input-group" style="flex:1">
@@ -1369,25 +1385,25 @@ const Workout = (() => {
             <div class="input-row">
               <div class="input-group" style="flex:1">
                 <label class="input-label">Zona 1</label>
-                <input class="input" id="ws-z1" placeholder="45:35">
+                <input class="input" id="ws-z1" oninput="Utils.durationHint('ws')" placeholder="45:35">
               </div>
               <div class="input-group" style="flex:1">
                 <label class="input-label">Zona 2</label>
-                <input class="input" id="ws-z2" placeholder="01:36">
+                <input class="input" id="ws-z2" oninput="Utils.durationHint('ws')" placeholder="01:36">
               </div>
               <div class="input-group" style="flex:1">
                 <label class="input-label">Zona 3</label>
-                <input class="input" id="ws-z3" placeholder="00:15">
+                <input class="input" id="ws-z3" oninput="Utils.durationHint('ws')" placeholder="00:15">
               </div>
             </div>
             <div class="input-row">
               <div class="input-group" style="flex:1">
                 <label class="input-label">Zona 4</label>
-                <input class="input" id="ws-z4" placeholder="00:00">
+                <input class="input" id="ws-z4" oninput="Utils.durationHint('ws')" placeholder="00:00">
               </div>
               <div class="input-group" style="flex:1">
                 <label class="input-label">Zona 5</label>
-                <input class="input" id="ws-z5" placeholder="00:00">
+                <input class="input" id="ws-z5" oninput="Utils.durationHint('ws')" placeholder="00:00">
               </div>
             </div>
             <div style="font-size:10px;color:var(--text-3);margin:10px 0 6px">Recuperación post-esfuerzo</div>
@@ -1436,12 +1452,15 @@ const Workout = (() => {
     const stats = skip ? {} : {
       kcalAct: val('ws-kcalact'), kcalTot: val('ws-kcaltot'),
       fcAvg: val('ws-fcavg'), fcPeak: val('ws-fcpeak'), fcMin: val('ws-fcmin'),
-      effort: val('ws-effort'), sleep: val('ws-sleep'), weight: val('ws-weight'), comment: val('ws-comment'),
+      duration: val('ws-duration'), effort: val('ws-effort'), sleep: val('ws-sleep'), weight: val('ws-weight'), comment: val('ws-comment'),
       zone1: val('ws-z1'), zone2: val('ws-z2'), zone3: val('ws-z3'), zone4: val('ws-z4'), zone5: val('ws-z5'),
       fcPost0: val('ws-fcpost0'), fcPost1: val('ws-fcpost1'), fcPost2: val('ws-fcpost2'),
     };
 
-    const durationMin = state.startedAt ? Math.round((Date.now() - state.startedAt) / 60000) : 0;
+    // El tiempo del reloj que escribiste manda; si lo dejaste igual o omitiste el
+    // formulario, el que midió la app hasta que tocaste Terminar.
+    const typedMin = Math.round(Number(stats.duration));
+    const durationMin = (typedMin >= 1 && typedMin <= 600) ? typedMin : _measuredMinutes();
     const volume = state.exercises.reduce((sum, ex) =>
       sum + ex.sets.reduce((s, set) => {
         // Asistencia no cuenta como volumen movido — es peso que la
