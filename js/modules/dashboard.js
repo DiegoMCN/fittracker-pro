@@ -397,7 +397,11 @@ let _nextAch = [];
 // Se alimenta de la bitácora local de Spotify (js/spotify.js). Se oculta
 // entera mientras no haya datos: una tarjeta vacía que dice "aún no hay
 // nada" no aporta y le quita lugar a lo que sí importa.
-function _musicByDayHTML(music) {
+// Las filas de MUSICA_SESION que trajo initDashboard. Vive aquí, como
+// _nextAch, en vez de viajar como parámetro 15 de _renderDashboard.
+let _musicRows = [];
+
+function _musicByDayHTML() {
   if (typeof Spotify === 'undefined') return '';
   // Se arma con lo que está en el Sheet (la fuente de verdad, igual
   // desde cualquier dispositivo) más lo que este teléfono todavía no
@@ -405,7 +409,7 @@ function _musicByDayHTML(music) {
   // aparecería hasta el siguiente envío.
   let rows = [];
   try {
-    const delSheet = (music && music.entries) || [];
+    const delSheet = _musicRows || [];
     const pendientes = Spotify.getTrackLog?.() || [];
     rows = Spotify.topByDay({ limit: 3, entries: delSheet.concat(pendientes) }) || [];
   } catch (e) { return ''; }
@@ -585,6 +589,7 @@ async function initDashboard(container) {
 
   Store.set({ dashboard: data });
   _nextAch = (achievementsRes && achievementsRes.next) || [];
+  _musicRows = (musicRes && musicRes.entries) || [];
   _renderDashboard(container, data, doneDayNames, recordsRes, sesRes.sessions || [], latestMetrics, cardioRes.sessions || [], streaksRes, overtrainingRes, insightsRes.insights || {}, profileRes.profile || {}, pullUpRes, achievementsRes.achievements || [], readinessRes);
 }
 
@@ -714,7 +719,7 @@ function _renderDashboard(container, data, doneDayNames, records, allSessions, l
 
   ${_achievementsHTML(achievements)}
   ${_nextAchievementsHTML()}
-  ${_musicByDayHTML(musicRes)}
+  ${_musicByDayHTML()}
   ${_pullUpMilestoneHTML(pullUp)}
   ${_kmCarouselHTML(data.distanceStats, profile)}
 
