@@ -251,6 +251,8 @@ const Cardio = (() => {
     // Hora real a la que debe terminar la fase actual — igual que el
     // timer de descanso de Fuerza, para sobrevivir a la pantalla bloqueada.
     state.phaseEndAt = Date.now() + state.protocol.phases[0].duration * 1000;
+    // Foto de los récords ANTES de entrenar (ver workout.js).
+    RecordCelebration?.captureBaseline?.();
     WakeLock.request();
     Spotify?.sync?.(); // aparece la burbuja de música, si está conectada
     Sounds.hitPhase(state.protocol.phases[0].effort);
@@ -930,6 +932,8 @@ const Cardio = (() => {
     const protocolDay = state?.protocol?.day;
 
     try {
+      // Red de seguridad por si la app se recargó a media sesión.
+      await RecordCelebration?.ensureBaseline?.();
       const result = await API.saveCardio(payload);
       API.clearCache();
       Router.invalidateAll(); // lo que acabas de guardar puede afectar varios módulos (Dashboard, Métricas, etc.)

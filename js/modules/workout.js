@@ -328,6 +328,10 @@ const Workout = (() => {
     if (elapsedInterval) clearInterval(elapsedInterval);
     elapsedInterval = setInterval(_tick, 1000);
     _sessionJustStarted = true; // las tarjetas de ejercicio entran en cascada SOLO en este primer render
+    // Foto de los récords ANTES de entrenar — contra esto se compara
+    // al terminar para saber si rompiste algo. Si se pide después de
+    // guardar, el récord ya incluye lo de hoy y nunca se puede ganar.
+    RecordCelebration?.captureBaseline?.();
     _renderSession();
     Spotify?.sync?.(); // aparece la burbuja de música, si está conectada
     Toast.success('¡Sesión iniciada! 💪');
@@ -1498,6 +1502,8 @@ const Workout = (() => {
     };
 
     try {
+      // Red de seguridad por si la app se recargó a media sesión.
+      await RecordCelebration?.ensureBaseline?.();
       const result = await API.saveSession(payload);
       API.clearCache();
       Router.invalidateAll(); // lo que acabas de guardar puede afectar varios módulos (Dashboard, Métricas, etc.)

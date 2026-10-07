@@ -12,6 +12,49 @@ const RecordCelebration = (() => {
   let _queue = [];
   let _showing = false;
 
+  // ── LA FOTO DE "ANTES" ───────────────────────────────────────────────
+  // Este era EL bug por el que el festejo nunca salía, en ninguna sesión.
+  //
+  // La detección comparaba lo de hoy contra API.getMetrics() — pero esa
+  // llamada se hacía DESPUÉS de guardar la sesión y después de limpiar
+  // el caché, así que el servidor devolvía los récords YA ACTUALIZADOS
+  // con lo que acababa de pasar. Resultado: subías de 20 a 25 kg, y la
+  // app preguntaba "¿25 es más que el récord?" contra un récord que ya
+  // valía 25. Nunca. Jamás podía ganar, por construcción.
+  //
+  // La solución es obvia una vez que se ve: hay que guardar la foto de
+  // los récords ANTES de guardar la sesión, y comparar contra ella.
+  let _baseline = null;    // los récords tal como estaban al empezar
+  let _capturing = null;   // la petición en vuelo, para no pedirla dos veces
+
+  // Se llama al INICIAR la sesión. No bloquea nada — se va pidiendo
+  // mientras Diego entrena y para cuando guarda ya está lista.
+  function captureBaseline() {
+    _baseline = null;
+    _capturing = API.getMetrics()
+      .then(m => { _baseline = m?.records || {}; return _baseline; })
+      .catch(() => { _baseline = null; return null; })
+      .finally(() => { _capturing = null; });
+    return _capturing;
+  }
+
+  // Red de seguridad: se llama justo antes de guardar. Si la foto ya
+  // está, no cuesta nada; si la app se recargó a media sesión y se
+  // perdió, la pide ahora — que es el último momento en que todavía
+  // refleja el "antes".
+  async function ensureBaseline() {
+    if (_baseline) return _baseline;
+    if (_capturing) return _capturing;
+    return captureBaseline();
+  }
+
+  // Sin foto no se puede saber si algo fue récord. Antes de este
+  // arreglo, en ese caso se comparaba contra datos ya contaminados y
+  // salía "no hubo récord" — que se ve idéntico a no tener el dato,
+  // pero es una respuesta inventada. Mejor no festejar que festejar
+  // (o callar) por una comparación que no significa nada.
+  function _records() { return _baseline; }
+
   function _enqueue(renderFn) {
     _queue.push(renderFn);
     if (!_showing) _showNext();
@@ -27,8 +70,9 @@ const RecordCelebration = (() => {
   // ── DETECCIÓN — FUERZA ────────────────────────────────────────────────
   async function checkStrength(payload) {
     try {
-      const metrics = await API.getMetrics();
-      const prs = metrics.records?.exercisePRs || {};
+      const base = _records();
+      if (!base) { console.warn('[Celebración] sin foto previa de récords — no se puede saber si algo fue PR'); return; }
+      const prs = base.exercisePRs || {};
       const broken = [];
 
       (payload.exercises || []).forEach(ex => {
@@ -105,7 +149,7 @@ const RecordCelebration = (() => {
     overlay.style.cssText = `
       position:fixed;inset:0;z-index:300;display:flex;align-items:center;justify-content:center;
       background:rgba(8,8,15,0.85);backdrop-filter:blur(10px) saturate(140%);-webkit-backdrop-filter:blur(10px) saturate(140%);cursor:pointer;
-      animation:fade-in 300ms forwards;padding:20px;
+      padding:20px;
     `;
     overlay.innerHTML = `
       <canvas id="confetti-canvas" style="position:fixed;inset:0;pointer-events:none"></canvas>
@@ -129,6 +173,12 @@ const RecordCelebration = (() => {
 
     overlay.addEventListener('click', _close);
     document.body.appendChild(overlay);
+    // El fondo entra con GSAP. Antes decía `animation: fade-in 300ms`,
+    // pero ese @keyframes se eliminó del CSS cuando las animaciones
+    // pasaron a GSAP — quedó una referencia a algo que ya no existía,
+    // así que el fondo aparecía de golpe mientras la tarjeta sí entraba
+    // suave. Nadie lo nota como bug, solo se siente barato.
+    gsap.fromTo(overlay, { opacity: 0 }, { opacity: 1, duration: 0.3, ease: 'fittrackerFast' });
     _confetti(document.getElementById('confetti-canvas'));
 
     setTimeout(_close, 9000);
@@ -144,7 +194,7 @@ const RecordCelebration = (() => {
     overlay.style.cssText = `
       position:fixed;inset:0;z-index:300;display:flex;align-items:center;justify-content:center;
       background:rgba(8,8,15,0.8);backdrop-filter:blur(6px) saturate(140%);-webkit-backdrop-filter:blur(6px) saturate(140%);cursor:pointer;
-      animation:fade-in 300ms forwards;padding:20px;
+      padding:20px;
     `;
     overlay.innerHTML = `
       <canvas id="confetti-canvas" style="position:fixed;inset:0;pointer-events:none"></canvas>
@@ -160,6 +210,12 @@ const RecordCelebration = (() => {
 
     overlay.addEventListener('click', _close);
     document.body.appendChild(overlay);
+    // El fondo entra con GSAP. Antes decía `animation: fade-in 300ms`,
+    // pero ese @keyframes se eliminó del CSS cuando las animaciones
+    // pasaron a GSAP — quedó una referencia a algo que ya no existía,
+    // así que el fondo aparecía de golpe mientras la tarjeta sí entraba
+    // suave. Nadie lo nota como bug, solo se siente barato.
+    gsap.fromTo(overlay, { opacity: 0 }, { opacity: 1, duration: 0.3, ease: 'fittrackerFast' });
     _confetti(document.getElementById('confetti-canvas'));
 
     setTimeout(_close, 5000);
@@ -168,10 +224,11 @@ const RecordCelebration = (() => {
   // ── DETECCIÓN — CARDIO ───────────────────────────────────────────────
   async function checkCardio(stats) {
     try {
-      const metrics = await API.getMetrics();
+      const base = _records();
+      if (!base) { console.warn('[Celebración] sin foto previa de récords — no se puede saber si algo fue PR'); return; }
       const broken = [];
 
-      const prevRec = metrics.records?.fcRecovery?.value;
+      const prevRec = base.fcRecovery?.value;
       const newRec = (stats.fcPost1 && stats.fcPost2) ? Math.round(Number(stats.fcPost2) - Number(stats.fcPost1)) : null;
       if (newRec !== null && (prevRec === null || prevRec === undefined || newRec < prevRec)) {
         broken.push({
@@ -181,7 +238,7 @@ const RecordCelebration = (() => {
         });
       }
 
-      const prevCad = Number(metrics.records?.cadencePeak?.value) || 0;
+      const prevCad = Number(base.cadencePeak?.value) || 0;
       const newCad = parseFloat(stats.cadPeak) || 0;
       if (newCad > 0 && newCad > prevCad) {
         broken.push({
@@ -209,7 +266,7 @@ const RecordCelebration = (() => {
     overlay.style.cssText = `
       position:fixed;inset:0;z-index:300;display:flex;align-items:center;justify-content:center;
       background:rgba(8,8,15,0.82);backdrop-filter:blur(8px) saturate(140%);-webkit-backdrop-filter:blur(8px) saturate(140%);cursor:pointer;
-      animation:fade-in 300ms forwards;padding:20px;
+      padding:20px;
     `;
     overlay.innerHTML = `
       <canvas id="confetti-canvas" style="position:fixed;inset:0;pointer-events:none"></canvas>
@@ -237,6 +294,12 @@ const RecordCelebration = (() => {
 
     overlay.addEventListener('click', _close);
     document.body.appendChild(overlay);
+    // El fondo entra con GSAP. Antes decía `animation: fade-in 300ms`,
+    // pero ese @keyframes se eliminó del CSS cuando las animaciones
+    // pasaron a GSAP — quedó una referencia a algo que ya no existía,
+    // así que el fondo aparecía de golpe mientras la tarjeta sí entraba
+    // suave. Nadie lo nota como bug, solo se siente barato.
+    gsap.fromTo(overlay, { opacity: 0 }, { opacity: 1, duration: 0.3, ease: 'fittrackerFast' });
     _confetti(document.getElementById('confetti-canvas'));
 
     setTimeout(_close, 7000);
@@ -288,5 +351,6 @@ const RecordCelebration = (() => {
     (list || []).forEach(logro => _enqueue(onDone => showLogro(logro, onDone)));
   }
 
-  return { checkStrength, checkCardio, checkPullUpMilestone, checkNewAchievements };
+  return { checkStrength, checkCardio, checkPullUpMilestone, checkNewAchievements,
+           captureBaseline, ensureBaseline };
 })();
