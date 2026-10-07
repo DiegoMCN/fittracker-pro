@@ -9,6 +9,47 @@ const API = (() => {
   const _cache = new Map();
   const CACHE_TTL = 20 * 60 * 1000; // 20 minutos — antes 5. La invalidación real ya pasa en los 4 puntos donde algo cambia de verdad (terminar sesión, editar Bitácora, Perfil, Coach), así que alargar esto solo evita recargas innecesarias al ir y venir entre módulos, no arriesga mostrar datos viejos después de guardar algo.
   let _lastWasMock = false;
+  // Por qué falló la última llamada. No basta con "sin conexión": si la
+  // dirección del Apps Script ya no existe (pasa cada vez que se crea
+  // una implementación NUEVA en vez de publicar una versión nueva de la
+  // existente), el navegador reporta el fallo como un error de CORS y
+  // esconde el 404 — desde JavaScript se ve igualito que estar sin
+  // señal. Lo que SÍ se puede distinguir es la forma del error, y eso
+  // alcanza para decirle a Diego qué revisar en vez de mandarlo a
+  // buscar a ciegas.
+  let _lastFail = null;   // { kind, message }
+
+  function _classifyFail(err) {
+    const msg = String(err?.message || err || '');
+    if (err?.name === 'AbortError' || /aborted/i.test(msg)) return { kind: 'lento', message: msg };
+    // TypeError de fetch = la petición ni siquiera llegó a completarse:
+    // dirección muerta, CORS, o DNS. Es el caso de la URL equivocada.
+    if (err instanceof TypeError || /failed to fetch|load failed|networkerror/i.test(msg)) {
+      return { kind: 'direccion', message: msg };
+    }
+    if (/^HTTP \d+/.test(msg)) return { kind: 'servidor', message: msg };
+    return { kind: 'desconocido', message: msg };
+  }
+
+  // Texto para humanos, no para la consola.
+  function failureText() {
+    if (!_lastWasMock) return null;
+    if (_lastFail?.kind === 'sin_senal') {
+      return 'Tu teléfono no tiene conexión. En cuanto vuelva la señal, todo se actualiza solo.';
+    }
+    if (_lastFail?.kind === 'lento') {
+      return 'El servidor tardó demasiado en contestar. Si se repite, revisa tu señal.';
+    }
+    if (_lastFail?.kind === 'direccion') {
+      return 'No se pudo alcanzar el Apps Script. Lo más probable: la dirección publicada cambió. ' +
+             'En el editor de Apps Script ve a Implementar → Administrar implementaciones, copia la URL que termina en /exec, ' +
+             'y pégala en API_URL dentro de js/config.js.';
+    }
+    if (_lastFail?.kind === 'servidor') {
+      return `El servidor contestó con un error (${_lastFail.message}). Revisa el registro de ejecuciones en Apps Script.`;
+    }
+    return 'No hay conexión con el Sheet ahora mismo.';
+  }
   // Modo offline forzado manualmente desde la app — para cuando hay
   // señal pero está tan débil/lenta que ni vale la pena esperar el
   // timeout de 8s en cada solicitud; Diego lo activa a mano y todo se
@@ -97,6 +138,8 @@ const API = (() => {
         throw new Error('Sin conexión — esta acción no se guarda para después, intenta de nuevo cuando tengas señal');
       }
       _lastWasMock = true;
+      _lastFail = { kind: 'sin_senal', message: 'navigator.onLine === false' };
+      if (typeof window !== 'undefined' && typeof window._paintMockBanner === 'function') window._paintMockBanner();
       return _getMockData(params.action);
     }
 
@@ -105,6 +148,9 @@ const API = (() => {
       try {
         const data = await _attemptFetch(params, timeoutMs);
         _lastWasMock = false;
+        _lastFail = null;
+        // Volvió la conexión — se quita el aviso de datos de ejemplo.
+        if (typeof window !== 'undefined' && typeof window._paintMockBanner === 'function') window._paintMockBanner();
         if (useCache && params.method !== 'POST') _cacheSet(cacheKey, data);
         return data;
       } catch (err) {
@@ -130,7 +176,9 @@ const API = (() => {
 
     // GET: cae a datos de ejemplo para que la UI muestre algo mientras tanto
     _lastWasMock = true;
-    console.warn('[API] Usando datos de ejemplo (sin conexión al backend):', lastError.message);
+    _lastFail = _classifyFail(lastError);
+    console.warn('[API] Usando datos de EJEMPLO — lo que se ve en pantalla NO es real:', _lastFail.kind, lastError.message);
+    if (typeof window !== 'undefined' && typeof window._paintMockBanner === 'function') window._paintMockBanner();
     return _getMockData(params.action);
   }
 
@@ -140,6 +188,8 @@ const API = (() => {
       getVersion: { version: 'mock', schemaIssues: [] },
       getCoachJob: { status: 'desconocido' },
       getCoachLog: { rows: [] },
+      getMusicLog: { entries: [], missing: true },
+      saveMusicLog: { success: false, error: 'Sin conexión con el servidor' },
       getFormModel: null,
       interpretFormScenario: { success: false, cause: { message: 'Sin conexión con el servidor' } },
       saveFormTest: { success: false, error: 'Sin conexión con el servidor' },
@@ -271,6 +321,7 @@ const API = (() => {
   return {
     clearCache,
     isMock: () => _lastWasMock,
+    lastFailure: () => (_lastWasMock ? { ..._lastFail, text: failureText() } : null),
     rawPost: (params) => _attemptFetch(params),
     isOffline: () => _forceOffline || (typeof navigator !== 'undefined' && navigator.onLine === false),
     isForcedOffline: () => _forceOffline,
@@ -436,6 +487,11 @@ const API = (() => {
     // Progreso del consejo en curso (lo pregunta Coach IA cada pocos segundos)
     getCoachJob: (id) => _fetch({ action: 'getCoachJob', id }, { useCache: false, retries: 0 }),
     getCoachLog: () => _fetch({ action: 'getCoachLog' }, { useCache: false }),
+    getMusicLog: (limit = 1000) => _fetch({ action: 'getMusicLog', limit }),
+    // El lote de canciones de una sesión. Se encola si no hay señal,
+    // igual que cualquier otra escritura — el registro sobrevive a
+    // guardar la sesión sin conexión.
+    saveMusicLog: (entries) => _fetch({ action: 'saveMusicLog', method: 'POST', entries }, { useCache: false, retries: 1 }),
 
     // Simulador de forma
     getFormModel: () => _fetch({ action: 'getFormModel' }, { useCache: false }),

@@ -393,6 +393,54 @@ function _pullUpMilestoneHTML(pullUp) {
 
 // Próximos logros con tu avance — para que se vea que la app sigue contando.
 let _nextAch = [];
+// ── MÚSICA POR DÍA DE ENTRENAMIENTO ────────────────────────────────────
+// Se alimenta de la bitácora local de Spotify (js/spotify.js). Se oculta
+// entera mientras no haya datos: una tarjeta vacía que dice "aún no hay
+// nada" no aporta y le quita lugar a lo que sí importa.
+function _musicByDayHTML(music) {
+  if (typeof Spotify === 'undefined') return '';
+  // Se arma con lo que está en el Sheet (la fuente de verdad, igual
+  // desde cualquier dispositivo) más lo que este teléfono todavía no
+  // ha subido — si no, justo después de entrenar la sesión de hoy no
+  // aparecería hasta el siguiente envío.
+  let rows = [];
+  try {
+    const delSheet = (music && music.entries) || [];
+    const pendientes = Spotify.getTrackLog?.() || [];
+    rows = Spotify.topByDay({ limit: 3, entries: delSheet.concat(pendientes) }) || [];
+  } catch (e) { return ''; }
+  if (!rows.length) return '';
+
+  const esc = Utils.escapeHtml;
+  return `
+    <div class="card section">
+      <div class="card-header"><div>
+        <div class="card-title">🎧 Lo que suena en cada entreno</div>
+        <div class="card-subtitle">Lo más repetido en cada día del plan, según lo que de verdad sonó mientras entrenabas</div>
+      </div></div>
+      <div style="display:flex;flex-direction:column;gap:16px">
+        ${rows.map(r => `
+          <div>
+            <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:8px">
+              <span style="font-size:12px;font-weight:600">${r.icon} ${esc(r.label)}</span>
+              <span style="font-size:10px;color:var(--text-4)">${r.total} registro${r.total === 1 ? '' : 's'}</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px">
+              ${r.tracks.map((t, i) => `
+                <div style="display:flex;align-items:center;gap:10px;font-size:12px">
+                  <span style="color:var(--text-4);width:14px;text-align:right;flex-shrink:0">${i + 1}</span>
+                  <div style="min-width:0;flex:1">
+                    <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(t.name)}</div>
+                    <div style="font-size:10px;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(t.artist)}</div>
+                  </div>
+                  <span style="font-size:10px;color:var(--text-4);flex-shrink:0">×${t.count}</span>
+                </div>`).join('')}
+            </div>
+          </div>`).join('')}
+      </div>
+    </div>`;
+}
+
 function _nextAchievementsHTML() {
   if (!_nextAch.length) return '';
   return `
@@ -499,7 +547,7 @@ async function initDashboard(container) {
 
   // Se piden sin caché — recién guardaste una sesión y necesitas ver
   // el dato fresco, no uno de hace 5 minutos.
-  const [data, sesRes, recordsRes, metricsRes, cardioRes, streaksRes, overtrainingRes, insightsRes, profileRes, pullUpRes, achievementsRes, readinessRes] = await Promise.all([
+  const [data, sesRes, recordsRes, metricsRes, cardioRes, streaksRes, overtrainingRes, insightsRes, profileRes, pullUpRes, achievementsRes, readinessRes, musicRes] = await Promise.all([
     API.getDashboard(),
     API.getSessions(30),
     API.getPersonalRecords(),
@@ -512,6 +560,7 @@ async function initDashboard(container) {
     API.getPullUpMilestone(),
     API.getAchievements(),
     API.getReadinessScore(),
+    API.getMusicLog(1500),
   ]);
 
   // Sesiones reales de esta semana (Lun-Dom), para marcar los días
@@ -665,6 +714,7 @@ function _renderDashboard(container, data, doneDayNames, records, allSessions, l
 
   ${_achievementsHTML(achievements)}
   ${_nextAchievementsHTML()}
+  ${_musicByDayHTML(musicRes)}
   ${_pullUpMilestoneHTML(pullUp)}
   ${_kmCarouselHTML(data.distanceStats, profile)}
 

@@ -6,6 +6,7 @@
 const Workout = (() => {
 
   let state = null;          // Sesión activa (persiste entre navegaciones)
+  let _lastEx = null;        // último ejercicio en el que marcó una serie — es lo más cercano a "qué está haciendo ahorita", y es el contexto que acompaña a la música registrada
   let planData = null;       // Cache del plan semanal (desde el Sheet)
   let catalogData = null;    // Cache de EJERCICIOS — lectura DIRECTA, sin cruce con PLAN_SEMANAL
   let userNotesData = {};    // Última nota que Diego escribió de cada ejercicio (viene de REGISTRO_FUERZA vía getExercises)
@@ -910,6 +911,7 @@ const Workout = (() => {
   function toggleSetDone(exIdx, sIdx) {
     const set = state.exercises[exIdx].sets[sIdx];
     set.done = !set.done;
+    if (set.done) _lastEx = state.exercises[exIdx]?.name || null;
     // Solo anima al MARCAR (es la confirmación de "lo logré"), no al
     // desmarcar — deshacer algo no necesita el mismo festejo visual.
     _justCompletedSet = set.done ? { exIdx, sIdx } : null;
@@ -1269,7 +1271,8 @@ const Workout = (() => {
     clearInterval(elapsedInterval);
     clearInterval(restInterval);
     WakeLock.release();
-    Spotify?.sync?.(); // se va la burbuja y deja de consultar a Spotify
+    Spotify?.sync?.();          // deja de registrar música
+    Spotify?.flush?.();         // y manda al Sheet lo que juntó esta sesión
     state = null;
     const bar = document.getElementById('floating-session-bar');
     if (bar) bar.style.display = 'none';
@@ -1631,6 +1634,10 @@ const Workout = (() => {
     openCalculators, setCalcTab, recalcCalculators,
     switchPhase, lockedDayTap,
     hasActiveSession: () => !!(state && state.started && !state.finished),
+    // Lo que la bitácora de música necesita saber de esta sesión.
+    musicContext: () => (state && state.started && !state.finished)
+      ? { startedAt: state.startedAt, day: state.day, exercise: _lastEx }
+      : null,
   };
 })();
 

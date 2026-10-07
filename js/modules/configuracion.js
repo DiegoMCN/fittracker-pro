@@ -104,8 +104,8 @@ const Configuracion = (() => {
       <div class="card animate-slide-up" style="margin-top:20px">
         <div class="card-header">
           <div>
-            <div class="card-title">🎧 Spotify</div>
-            <div class="card-subtitle">Controla la música sin salirte de la sesión — aparece una burbuja flotante mientras entrenas</div>
+            <div class="card-title">🎧 Música de los entrenamientos</div>
+            <div class="card-subtitle">Anota qué sonaba en cada momento de la sesión — en qué minuto, en qué fase, a qué velocidad</div>
           </div>
         </div>
 
@@ -115,27 +115,31 @@ const Configuracion = (() => {
             <div>
               <div style="font-weight:600;font-size:13px">Conectado</div>
               <div style="font-size:11px;color:var(--text-3)">
-                ${s.device ? `Último dispositivo: ${esc(s.device)}` : 'Sin dispositivo activo ahora mismo'}
+                ${s.pending > 0
+                  ? `${s.pending} canción${s.pending === 1 ? '' : 'es'} por subir a tu Sheet`
+                  : 'Todo subido a tu Sheet'}
               </div>
             </div>
           </div>
 
           <label style="display:flex;align-items:center;gap:10px;font-size:13px;margin-bottom:14px;cursor:pointer">
             <input type="checkbox" ${s.enabled ? 'checked' : ''}
-                   onchange="Configuracion.setSpotifyBubble(this.checked)">
-            <span>Mostrar la burbuja durante las sesiones</span>
+                   onchange="Configuracion.setSpotifyLogging(this.checked)">
+            <span>Registrar la música durante las sesiones</span>
           </label>
 
           <div style="font-size:11px;color:var(--text-3);margin-bottom:12px;line-height:1.6">
-            La app guarda en este teléfono qué canción sonaba en cada momento de la sesión
-            (${s.tracks} registro${s.tracks === 1 ? '' : 's'} hasta ahora). No se sube a ningún lado —
-            es para poder cruzarlo más adelante en Patrones y ver si rindes distinto según lo que escuchas.
-            Para eso hacen falta varias semanas de datos primero.
+            Solo pide permisos de lectura: la app no puede pausar, saltar ni modificar nada de tu cuenta.
+            Lo que suena se junta en este teléfono durante la sesión y se manda a tu Sheet
+            (hoja <b>MUSICA_SESION</b>) al terminar, en una sola subida. Ahí vive de verdad: sobrevive
+            a reinstalar la app y se ve igual desde la compu. Con suficientes semanas, esto es lo que
+            permitiría armar playlists a tu medida — tu propio historial es la única fuente posible
+            desde que Spotify cerró sus recomendaciones a las apps nuevas.
           </div>
 
           <div style="display:flex;gap:8px">
-            <button class="btn btn-secondary" style="flex:1" onclick="Configuracion.clearSpotifyLog()">
-              🗑️ Borrar bitácora
+            <button class="btn btn-secondary" style="flex:1" onclick="Configuracion.flushSpotify()">
+              ☁️ Subir pendientes
             </button>
             <button class="btn btn-secondary" style="flex:1" onclick="Configuracion.disconnectSpotify()">
               Desconectar
@@ -143,39 +147,45 @@ const Configuracion = (() => {
           </div>
         ` : `
           <div style="font-size:12px;color:var(--text-3);margin-bottom:14px;line-height:1.6">
-            Necesita Spotify Premium (los controles de reproducción solo existen con Premium).
-            Al conectar, Spotify te va a pedir permiso para ver qué suena y para controlar la reproducción —
-            nada más. La app no puede ver tus playlists ni tu historial.
+            Al conectar, Spotify solo te va a pedir permiso para ver qué estás escuchando. Nada más —
+            la app no puede controlar la reproducción ni ver tus playlists.
           </div>
           <button class="btn btn-primary" style="width:100%" onclick="Spotify.connect()">
             🎧 Conectar Spotify
           </button>
           <div style="font-size:11px;color:var(--text-4);margin-top:12px;line-height:1.6">
-            Si al conectar sale <b>INVALID_CLIENT: Invalid redirect URI</b>, es que en el panel de
-            Spotify no está registrada exactamente esta dirección:<br>
+            Si sale <b>INVALID_CLIENT: Invalid redirect URI</b>, en el panel de Spotify no está
+            registrada exactamente esta dirección:<br>
             <code style="font-size:10px;word-break:break-all">${esc(s.redirectUri)}</code>
           </div>
         `}
       </div>`;
   }
 
-  function setSpotifyBubble(on) {
+  function setSpotifyLogging(on) {
     Spotify.setEnabled(on);
-    Toast.success(on ? 'La burbuja aparecerá en tus sesiones' : 'Burbuja desactivada');
+    Toast.success(on ? 'Se registrará la música de tus sesiones' : 'Registro de música desactivado');
   }
 
   function disconnectSpotify() {
-    if (!confirm('¿Desconectar Spotify de la app? La música sigue sonando, solo dejas de controlarla desde aquí.')) return;
+    if (!confirm('¿Desconectar Spotify? El registro que ya tienes se conserva.')) return;
     Spotify.disconnect();
     _render(document.getElementById('page-content'));
   }
 
-  function clearSpotifyLog() {
-    if (!confirm('¿Borrar la bitácora de canciones guardada en este teléfono?')) return;
-    Spotify.clearTrackLog();
-    Toast.success('Bitácora de canciones borrada');
+  // Lo que ya está en el Sheet se borra desde el Sheet, como cualquier
+  // otro dato de la app. Esto solo empuja lo que quedó atorado en el
+  // teléfono (por ejemplo, si la sesión terminó sin señal).
+  async function flushSpotify() {
+    const n = Spotify.pendingCount();
+    if (!n) { Toast.success('No hay nada pendiente — ya está todo en tu Sheet'); return; }
+    Toast.show(`Subiendo ${n} canción${n === 1 ? '' : 'es'}…`, 'info', 1500);
+    const r = await Spotify.flush();
+    if (r.saved > 0 || r.queued) Toast.success(r.queued ? 'Sin conexión — se subirá solo' : `${r.saved} subida${r.saved === 1 ? '' : 's'} a tu Sheet`);
+    else Toast.error('No se pudo subir — se queda guardado y se reintenta al terminar tu próxima sesión');
     _render(document.getElementById('page-content'));
   }
+
 
   async function _loadCoachLog() {
     const el = document.getElementById('cfg-coach-log');
@@ -415,7 +425,7 @@ const Configuracion = (() => {
   return {
     init, geocode, confirmSave, clearLocalData,
     setMotionDuration, setGlassIntensity, setCardRadius, setMotionPreset, resetMotion,
-    setSpotifyBubble, disconnectSpotify, clearSpotifyLog,
+    setSpotifyLogging, disconnectSpotify, flushSpotify,
   };
 })();
 

@@ -318,12 +318,12 @@ const Cardio = (() => {
     Sounds.sessionDone(); Haptics.done();
     WakeLock.release();
     RecoveryTimer.start({
-      onComplete: (vals) => { _renderStatsForm(vals); Spotify?.sync?.(); },
-      onSkip:     ()     => { _renderStatsForm(null); Spotify?.sync?.(); },
+      onComplete: (vals) => { _renderStatsForm(vals); Spotify?.sync?.(); Spotify?.flush?.(); },
+      onSkip:     ()     => { _renderStatsForm(null); Spotify?.sync?.(); Spotify?.flush?.(); },
     });
-    // La burbuja NO se va aquí: el cronómetro de recuperación sigue en
-    // pantalla y es justo cuando quiere bajarle a la música. Se retira
-    // cuando ese cronómetro termina o se salta (las dos líneas de arriba).
+    // El registro de música sigue durante el cronómetro de recuperación
+    // (son dos minutos de sesión como cualquier otro) y se manda al
+    // Sheet cuando ese cronómetro termina o se salta.
     Spotify?.sync?.();
   }
 
@@ -520,6 +520,7 @@ const Cardio = (() => {
     WakeLock.release();
     state = null;
     Spotify?.sync?.();
+    Spotify?.flush?.();  // aunque se cancele, lo que ya sonó se conserva
     const bar = document.getElementById('floating-session-bar');
     if (bar) bar.style.display = 'none';
     Sounds.error();
@@ -556,6 +557,23 @@ const Cardio = (() => {
 
   function onRouteChange() { _renderFloatingBar(); }
   function hasActiveSession() { return !!(state && state.started && !state.finished); }
+
+  // Lo que la bitácora de música necesita saber de esta sesión. La fase
+  // y la velocidad son el dato clave: son la "intensidad" real del
+  // momento, y sin ellas no se podría saber después qué sonaba cuando
+  // ibas al máximo contra cuando ibas trotando.
+  function musicContext() {
+    if (!hasActiveSession()) return null;
+    const p = state.protocol?.phases?.[state.phaseIdx] || null;
+    return {
+      startedAt: state.startedAt,
+      day: state.protocol?.day,
+      protocol: state.protocol?.name || state.protocolKey || null,
+      phase: p?.label || null,
+      speed: p?.speed || null,
+      effort: p?.effort || null,
+    };
+  }
 
   // ── FORMULARIO POST-SESIÓN (datos del Apple Watch) ────────────────────
   function _renderStatsForm(recovery) {
@@ -1042,7 +1060,7 @@ const Cardio = (() => {
 
   return {
     init, selectProtocol, selectHitDuration, backToPicker, startProtocol, togglePause, skipPhase,
-    discardSession, onRouteChange, hasActiveSession, skipStats, saveStats,
+    discardSession, onRouteChange, hasActiveSession, musicContext, skipStats, saveStats,
     toggleMetronome, adjustMetronome, renderSplitInputs, shareSession, onSpeedInput, toggleSpeedInfo,
   };
 })();
