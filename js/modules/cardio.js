@@ -252,6 +252,7 @@ const Cardio = (() => {
     // timer de descanso de Fuerza, para sobrevivir a la pantalla bloqueada.
     state.phaseEndAt = Date.now() + state.protocol.phases[0].duration * 1000;
     WakeLock.request();
+    Spotify?.sync?.(); // aparece la burbuja de música, si está conectada
     Sounds.hitPhase(state.protocol.phases[0].effort);
     if (tickInterval) clearInterval(tickInterval);
     tickInterval = setInterval(_tick, 1000);
@@ -315,9 +316,13 @@ const Cardio = (() => {
     Sounds.sessionDone(); Haptics.done();
     WakeLock.release();
     RecoveryTimer.start({
-      onComplete: (vals) => _renderStatsForm(vals),
-      onSkip: () => _renderStatsForm(null),
+      onComplete: (vals) => { _renderStatsForm(vals); Spotify?.sync?.(); },
+      onSkip:     ()     => { _renderStatsForm(null); Spotify?.sync?.(); },
     });
+    // La burbuja NO se va aquí: el cronómetro de recuperación sigue en
+    // pantalla y es justo cuando quiere bajarle a la música. Se retira
+    // cuando ese cronómetro termina o se salta (las dos líneas de arriba).
+    Spotify?.sync?.();
   }
 
   // ── RENDER SESIÓN ACTIVA ─────────────────────────────────────────────
@@ -512,6 +517,7 @@ const Cardio = (() => {
     document.removeEventListener('visibilitychange', _onCardioVisibilityChange);
     WakeLock.release();
     state = null;
+    Spotify?.sync?.();
     const bar = document.getElementById('floating-session-bar');
     if (bar) bar.style.display = 'none';
     Sounds.error();

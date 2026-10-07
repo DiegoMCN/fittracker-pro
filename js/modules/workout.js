@@ -329,6 +329,7 @@ const Workout = (() => {
     elapsedInterval = setInterval(_tick, 1000);
     _sessionJustStarted = true; // las tarjetas de ejercicio entran en cascada SOLO en este primer render
     _renderSession();
+    Spotify?.sync?.(); // aparece la burbuja de música, si está conectada
     Toast.success('¡Sesión iniciada! 💪');
   }
 
@@ -1264,6 +1265,7 @@ const Workout = (() => {
     clearInterval(elapsedInterval);
     clearInterval(restInterval);
     WakeLock.release();
+    Spotify?.sync?.(); // se va la burbuja y deja de consultar a Spotify
     state = null;
     const bar = document.getElementById('floating-session-bar');
     if (bar) bar.style.display = 'none';

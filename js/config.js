@@ -6,6 +6,21 @@ const CONFIG = {
   // URL del Apps Script deployado
   API_URL: 'https://script.google.com/macros/s/AKfycbzwQ7dai8WpW88YnDHEf6GJy6qwB_OIoHWORM8qrFYNnSJh4IRpuJMnkCKLEBhjXY3B/exec',
 
+  // ── SPOTIFY ──────────────────────────────────────────────────────────
+  // El Client ID es público por diseño (viaja en la URL de autorización,
+  // cualquiera que abra la app lo puede ver). El CLIENT SECRET no se usa
+  // aquí y NUNCA debe ponerse en este archivo — la app autoriza con PKCE
+  // precisamente para no necesitarlo.
+  //
+  // REDIRECT_URI tiene que coincidir CARÁCTER POR CARÁCTER con lo que
+  // esté registrado en el panel de Spotify (mayúsculas incluidas, con el
+  // /index.html y sin diagonal al final). Si no coincide, Spotify
+  // responde "INVALID_CLIENT: Invalid redirect URI" y no explica más.
+  SPOTIFY: {
+    CLIENT_ID:    '3ffb37fc16d7401a95c5618476c23793',
+    REDIRECT_URI: 'https://diegomcn.github.io/fittracker-pro/index.html',
+  },
+
   // Sheet IDs (nombre de cada hoja en tu Google Sheet)
   SHEETS: {
     FUERZA:   'REGISTRO_FUERZA',

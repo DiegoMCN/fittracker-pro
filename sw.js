@@ -7,7 +7,7 @@
 // cada cambio de contenido dentro de un archivo que ya existía.
 // ═══════════════════════════════════════════
 
-const CACHE_VERSION = 'fittracker-v13';
+const CACHE_VERSION = 'fittracker-v14';
 
 // El Cache API solo acepta esquemas http/https — una extensión de
 // Chrome instalada puede disparar solicitudes con esquema
@@ -51,6 +51,7 @@ const APP_SHELL = [
   './js/modules/nutricion.js',
   './js/modules/calendario.js',
   './js/modules/wrapped.js',
+  './js/spotify.js',
   './manifest.json',
   './assets/icons/icon-192.png',
   './assets/icons/icon-512.png',
@@ -92,6 +93,13 @@ self.addEventListener('fetch', (e) => {
 
   const url = new URL(req.url);
 
+  // Spotify: NI TOCARLO. El estado de reproducción cambia cada segundo,
+  // y la regla de "recursos externos" de más abajo es caché primero —
+  // si la dejáramos aplicar aquí, la burbuja se quedaría mostrando para
+  // siempre la primera canción que sonó. Tampoco tiene caso guardar una
+  // respuesta que viaja con un token que caduca en una hora.
+  if (url.hostname.endsWith('spotify.com') || url.hostname.endsWith('scdn.co')) return;
+
   // Apps Script (datos del Sheet): red primero, cae a la última copia
   // cacheada si no hay conexión — así Dashboard/Bitácora muestran algo
   // en vez de romperse.
@@ -99,11 +107,30 @@ self.addEventListener('fetch', (e) => {
     e.respondWith(
       fetch(req)
         .then(res => {
-          const clone = res.clone();
-          _cachePut(req, clone);
+          // Solo se guarda una respuesta BUENA. Antes se guardaba
+          // cualquier cosa: si Google alguna vez contestaba con una
+          // página de error (sesión caducada, script tronado, un
+          // mantenimiento de 10 segundos), esa página quedaba
+          // archivada como si fuera el dato del Sheet, y la siguiente
+          // vez sin señal se servía tal cual — la app recibía HTML
+          // donde esperaba JSON y reportaba un error que no tenía
+          // nada que ver con lo que estaba pasando.
+          if (res.ok && !res.redirected) _cachePut(req, res.clone());
           return res;
         })
-        .catch(() => caches.match(req))
+        .catch(err =>
+          // Y aquí estaba el engaño: si la red fallaba y NO había nada
+          // guardado, caches.match() devuelve undefined, y responder
+          // con undefined hace que el navegador le reporte a la página
+          // un fallo genérico — que Chrome rotula como error de CORS
+          // aunque el problema real haya sido otro completamente.
+          // Ahora, si no hay copia, se deja pasar el error de verdad
+          // para que api.js lo pueda clasificar y decir qué pasó.
+          caches.match(req).then(cached => {
+            if (cached) return cached;
+            throw err;
+          })
+        )
     );
     return;
   }

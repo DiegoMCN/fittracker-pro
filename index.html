@@ -241,6 +241,7 @@
 <script src="js/modules/nutricion.js"></script>
 <script src="js/modules/calendario.js"></script>
 <script src="js/modules/wrapped.js"></script>
+<script src="js/spotify.js"></script>
 
 <script>
 // ── CERRAR MODALES TOCANDO FUERA (estándar para TODOS los modales) ────────
@@ -437,9 +438,15 @@ const _initialPage = new URLSearchParams(location.search).get('page');
 const _validPages = ['dashboard','workout','cardio','plan','history','metrics','exercises'];
 (async () => {
   _updateOfflineIndicator();
+  // Si venimos de vuelta de Spotify, la URL trae ?code=... — hay que
+  // canjearlo ANTES de navegar, porque navegar limpia la barra de
+  // direcciones y el código solo sirve una vez. _initialPage ya se leyó
+  // arriba, así que el ?page= que traía la URL no se pierde.
+  try { await Spotify?.handleRedirect?.(); } catch (e) { console.warn('[Spotify] redirect', e); }
   await Promise.all([_loadProgramPhases(), _loadHitProtocols()]);
   _updateSidebarPhase(); // repinta con la fase real ya cargada
   Router.navigate(_validPages.includes(_initialPage) ? _initialPage : 'dashboard');
+  try { Spotify?.sync?.(); } catch (e) {} // por si se recargó la app con una sesión activa en curso
 })();
 </script>
 

@@ -85,10 +85,96 @@ const Configuracion = (() => {
           <div id="cfg-coach-log" style="font-size:12px;color:var(--text-3)">Cargando registro…</div>
         </div>
 
+        ${_spotifyPanelHTML()}
+
         ${_motionPanelHTML()}
       </div>`;
     _loadVersion();
     _loadCoachLog();
+  }
+
+  // ── SPOTIFY ──────────────────────────────────────────────────────────
+
+  function _spotifyPanelHTML() {
+    const s = (typeof Spotify !== 'undefined') ? Spotify.status() : null;
+    if (!s) return '';
+    const esc = Utils.escapeHtml;
+
+    return `
+      <div class="card animate-slide-up" style="margin-top:20px">
+        <div class="card-header">
+          <div>
+            <div class="card-title">🎧 Spotify</div>
+            <div class="card-subtitle">Controla la música sin salirte de la sesión — aparece una burbuja flotante mientras entrenas</div>
+          </div>
+        </div>
+
+        ${s.connected ? `
+          <div style="background:var(--bg-input);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:14px;display:flex;align-items:center;gap:10px">
+            <span style="font-size:18px">✅</span>
+            <div>
+              <div style="font-weight:600;font-size:13px">Conectado</div>
+              <div style="font-size:11px;color:var(--text-3)">
+                ${s.device ? `Último dispositivo: ${esc(s.device)}` : 'Sin dispositivo activo ahora mismo'}
+              </div>
+            </div>
+          </div>
+
+          <label style="display:flex;align-items:center;gap:10px;font-size:13px;margin-bottom:14px;cursor:pointer">
+            <input type="checkbox" ${s.enabled ? 'checked' : ''}
+                   onchange="Configuracion.setSpotifyBubble(this.checked)">
+            <span>Mostrar la burbuja durante las sesiones</span>
+          </label>
+
+          <div style="font-size:11px;color:var(--text-3);margin-bottom:12px;line-height:1.6">
+            La app guarda en este teléfono qué canción sonaba en cada momento de la sesión
+            (${s.tracks} registro${s.tracks === 1 ? '' : 's'} hasta ahora). No se sube a ningún lado —
+            es para poder cruzarlo más adelante en Patrones y ver si rindes distinto según lo que escuchas.
+            Para eso hacen falta varias semanas de datos primero.
+          </div>
+
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-secondary" style="flex:1" onclick="Configuracion.clearSpotifyLog()">
+              🗑️ Borrar bitácora
+            </button>
+            <button class="btn btn-secondary" style="flex:1" onclick="Configuracion.disconnectSpotify()">
+              Desconectar
+            </button>
+          </div>
+        ` : `
+          <div style="font-size:12px;color:var(--text-3);margin-bottom:14px;line-height:1.6">
+            Necesita Spotify Premium (los controles de reproducción solo existen con Premium).
+            Al conectar, Spotify te va a pedir permiso para ver qué suena y para controlar la reproducción —
+            nada más. La app no puede ver tus playlists ni tu historial.
+          </div>
+          <button class="btn btn-primary" style="width:100%" onclick="Spotify.connect()">
+            🎧 Conectar Spotify
+          </button>
+          <div style="font-size:11px;color:var(--text-4);margin-top:12px;line-height:1.6">
+            Si al conectar sale <b>INVALID_CLIENT: Invalid redirect URI</b>, es que en el panel de
+            Spotify no está registrada exactamente esta dirección:<br>
+            <code style="font-size:10px;word-break:break-all">${esc(s.redirectUri)}</code>
+          </div>
+        `}
+      </div>`;
+  }
+
+  function setSpotifyBubble(on) {
+    Spotify.setEnabled(on);
+    Toast.success(on ? 'La burbuja aparecerá en tus sesiones' : 'Burbuja desactivada');
+  }
+
+  function disconnectSpotify() {
+    if (!confirm('¿Desconectar Spotify de la app? La música sigue sonando, solo dejas de controlarla desde aquí.')) return;
+    Spotify.disconnect();
+    _render(document.getElementById('page-content'));
+  }
+
+  function clearSpotifyLog() {
+    if (!confirm('¿Borrar la bitácora de canciones guardada en este teléfono?')) return;
+    Spotify.clearTrackLog();
+    Toast.success('Bitácora de canciones borrada');
+    _render(document.getElementById('page-content'));
   }
 
   async function _loadCoachLog() {
@@ -329,6 +415,7 @@ const Configuracion = (() => {
   return {
     init, geocode, confirmSave, clearLocalData,
     setMotionDuration, setGlassIntensity, setCardRadius, setMotionPreset, resetMotion,
+    setSpotifyBubble, disconnectSpotify, clearSpotifyLog,
   };
 })();
 
