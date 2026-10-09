@@ -156,6 +156,12 @@ function _kmCarouselHTML(distanceStats, profile) {
 //  • cada 5 min, o al volver a la app, se vuelve a pedir al servidor;
 //  • al guardar tu check-in, al instante.
 let _rdy = null, _rdyAt = 0, _rdyTimer = null, _rdyBusy = false, _rdyHooked = false, _rdyWhyOpen = false, _rdyEditing = false, _rdyRingDone = false;
+// Último puntaje YA mostrado en pantalla. Sin esto, cada refresco
+// volvía a animar el número desde cero — y como el refresco también se
+// dispara al regresar a la app, parecía que la tarjeta se cargaba dos
+// veces. Ahora la cuenta de cero es solo la primera vez; después anima
+// del valor anterior al nuevo, y si no cambió no anima nada.
+let _rdyShown = null;
 const _rdyForm = { sleep: null, energy: null, acts: [], note: '' };
 const _REST_ACTS = Utils.REST_ACTIVITIES;
 const _ENERGY = [['😫', 'Sin energía'], ['😕', 'Baja'], ['😐', 'Normal'], ['🙂', 'Buena'], ['🤩', 'A tope']];
@@ -281,11 +287,18 @@ function _rdyMount(readiness) {
   if (!readiness || !document.getElementById('readiness-card')) return;
   _rdyWhyOpen = false; _rdyEditing = false;
   _rdySync(readiness);
-  if (typeof gsap !== 'undefined') {
+  const primera = _rdyShown === null;
+  const desde = primera ? 0 : _rdyShown;
+  if (typeof gsap !== 'undefined' && desde !== readiness.score) {
     const ring = document.getElementById('rdy-ring'), num = document.getElementById('rdy-score');
-    if (ring) gsap.fromTo(ring, { strokeDashoffset: _RING_C }, { strokeDashoffset: _RING_C * (1 - readiness.score / 100), duration: 1.2, ease: 'power3.out', delay: 0.2 });
-    if (num) { const o = { v: 0 }; gsap.to(o, { v: readiness.score, duration: 1.2, ease: 'power3.out', delay: 0.2, onUpdate: () => { num.textContent = Math.round(o.v); }, onComplete: () => { num.textContent = readiness.score; } }); }
+    const dur = primera ? 1.2 : 0.5;   // el repintado es un ajuste, no una entrada
+    const delay = primera ? 0.2 : 0;
+    if (ring) gsap.fromTo(ring, { strokeDashoffset: _RING_C * (1 - desde / 100) },
+      { strokeDashoffset: _RING_C * (1 - readiness.score / 100), duration: dur, ease: 'power3.out', delay });
+    if (num) { const o = { v: desde }; gsap.to(o, { v: readiness.score, duration: dur, ease: 'power3.out', delay,
+      onUpdate: () => { num.textContent = Math.round(o.v); }, onComplete: () => { num.textContent = readiness.score; } }); }
   }
+  _rdyShown = readiness.score;
   clearInterval(_rdyTimer);
   _rdyTimer = setInterval(_rdyTick, 30000);
   if (!_rdyHooked) {
@@ -400,6 +413,15 @@ let _nextAch = [];
 // Las filas de MUSICA_SESION que trajo initDashboard. Vive aquí, como
 // _nextAch, en vez de viajar como parámetro 15 de _renderDashboard.
 let _musicRows = [];
+
+// El saludo estaba escrito a mano como "Buenos días" y nunca cambiaba,
+// aunque abrieras la app a las 11 de la noche.
+function _saludo() {
+  const h = new Date().getHours();
+  if (h < 12) return '¡Buenos días';
+  if (h < 19) return '¡Buenas tardes';
+  return '¡Buenas noches';
+}
 
 function _musicByDayHTML() {
   if (typeof Spotify === 'undefined') return '';
@@ -613,7 +635,7 @@ function _renderDashboard(container, data, doneDayNames, records, allSessions, l
   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:12px">
     <div>
       <h1 style="font-size:22px;font-weight:800;background:linear-gradient(135deg,#fff,#B4B2CC);-webkit-background-clip:text;-webkit-text-fill-color:transparent">
-        ¡Buenos días, Diego 💪
+        ${_saludo()}, Diego 💪
       </h1>
       <p style="color:var(--text-3);font-size:13px;margin-top:4px">
         ${Utils.formatDate(Utils.today())} · ${data.weekStreak || 0} días de racha · ${CONFIG.CURRENT_PHASE.name}

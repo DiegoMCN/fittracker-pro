@@ -113,7 +113,17 @@ const Forma = (() => {
       }
     } catch(e) {}
     // La lectura del Temach se queda hasta que pidas otra.
+    // El navegador es solo la copia rápida; la buena vive en el Sheet,
+    // así que se ve igual desde cualquier dispositivo. Si el Sheet trae
+    // algo más reciente que lo guardado aquí, manda el Sheet.
     try { _ai = JSON.parse(localStorage.getItem(AI_KEY) || 'null'); } catch(e) { _ai = null; }
+    try {
+      const r = await API.getFormAdvice(1);
+      const s = r && r.advice && r.advice[0];
+      if (s && s.text && (!_ai || Date.parse(s.at || 0) > (_ai.at || 0))) {
+        _ai = { text: s.text, at: Date.parse(s.at) || Date.now(), name: s.scenario || '', day: s.date };
+      }
+    } catch(e) { /* sin conexión: se queda la copia del navegador */ }
     render(container);
   }
 

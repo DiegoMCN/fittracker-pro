@@ -523,7 +523,6 @@ const Router = (() => {
       const content = document.getElementById('page-content');
       if (!content) return;
 
-      content.innerHTML = '';
       _current = page;
       Store.set({ currentPage: page });
 
@@ -552,18 +551,25 @@ const Router = (() => {
       if (ttl)  ttl.textContent  = info.title;
       if (tsub) tsub.textContent = info.sub;
       if (mtl)  mtl.textContent  = info.title;
+      // El título del módulo entra palabra por palabra. Es el único
+      // texto de la app que se anima: da la sensación de que la pantalla
+      // se está armando, sin retrasar la lectura de ningún dato.
+      Motion.textIn?.(ttl, { delay: 0.12 });
+      Motion.textIn?.(mtl, { delay: 0.12 });
 
-      // Ejecutar módulo
-      if (_routes[page]) {
-        _routes[page](content, params);
-        Motion.pageIn(content);
-      } else {
-        content.innerHTML = `<div style="text-align:center;padding:60px;color:var(--text-3)">
-          <div style="font-size:48px;margin-bottom:16px">🚧</div>
-          <div style="font-weight:600">Módulo en construcción</div>
-          <div style="font-size:12px;margin-top:8px">${page}</div>
-        </div>`;
-      }
+      // Ejecutar módulo — el cambio de tarjeta (salida de la página
+      // vieja, entrada de la nueva) lo orquesta Motion.pageSwap, que
+      // también se encarga de vaciar el contenedor en el momento justo.
+      const render = _routes[page]
+        ? () => _routes[page](content, params)
+        : () => { content.innerHTML = `<div style="text-align:center;padding:60px;color:var(--text-3)">
+            <div style="font-size:48px;margin-bottom:16px">🚧</div>
+            <div style="font-weight:600">Módulo en construcción</div>
+            <div style="font-size:12px;margin-top:8px">${page}</div>
+          </div>`; };
+
+      if (typeof Motion !== 'undefined' && Motion.pageSwap) Motion.pageSwap(content, render);
+      else { content.innerHTML = ''; render(); }
 
       // Cerrar sidebar en mobile
       document.getElementById('sidebar')?.classList.remove('open');

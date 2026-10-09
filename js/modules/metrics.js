@@ -17,6 +17,17 @@ const Metrics = (() => {
   // sección de la página volvería a entrar en cascada solo porque
   // cambiaste el filtro de una gráfica al fondo.
   let _shouldStagger = false;
+  // Estancado / retroceso / bajón: tres casos distintos, antes todos
+  // salían como "meseta" (ver el detector en 02_Ejercicios_Plan.gs).
+  const _PL_COLOR = (k) => k === 'retroceso' ? '#EF4444' : k === 'caida' ? '#A855F7' : '#F59E0B';
+  const _PL_BORDE = (k) => k === 'retroceso' ? 'rgba(239,68,68,0.35)' : k === 'caida' ? 'rgba(168,85,247,0.35)' : 'rgba(245,158,11,0.35)';
+  const _PL_TXT = (p) => {
+    const pct = (p.changePct === null || p.changePct === undefined) ? '' : ` ${p.changePct > 0 ? '+' : ''}${p.changePct}%`;
+    if (p.kind === 'retroceso') return `🔻 bajando${pct} en ${p.sessions} sesiones`;
+    if (p.kind === 'caida') return `❗ bajón la última sesión${pct}`;
+    return `⚠️ estancado${pct} en ${p.sessions} sesiones`;
+  };
+
   let _muscleWindows = [];      // ventanas de 7 días con series por ejercicio (getMuscleWeeklySets)
   let _muscleWindowMode = 'w0'; // w0 = últimos 7 días, w1 = 7 días previos, avg = promedio 4 semanas
   let _muscleCharts = [];       // instancias de BodyChart (frente y espalda)
@@ -381,11 +392,11 @@ const Metrics = (() => {
                   ? Math.round(((lastPoint.oneRM - firstPoint.oneRM) / firstPoint.oneRM) * 1000) / 10
                   : ex.changePct;
                 return `
-                <div class="card" style="background:var(--bg-input);border-color:${ex.plateau ? 'rgba(245,158,11,0.35)' : 'transparent'}">
+                <div class="card" style="background:var(--bg-input);border-color:${ex.plateau ? _PL_BORDE(ex.plateau.kind) : 'transparent'}">
                   <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
                     <div style="min-width:0">
                       <div style="font-size:12px;font-weight:600;color:var(--text-1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${ex.name}</div>
-                      <div style="font-size:9px;color:var(--text-3)">${ex.sessions} sesiones${ex.plateau ? ` · <span style="color:#F59E0B;font-weight:600">🔻 meseta (${ex.plateau.sessions} sesiones sin subir)</span>` : ''}</div>
+                      <div style="font-size:9px;color:var(--text-3)">${ex.sessions} sesiones${ex.plateau ? ` · <span style="color:${_PL_COLOR(ex.plateau.kind)};font-weight:600">${_PL_TXT(ex.plateau)}</span>` : ''}</div>
                     </div>
                     <div style="text-align:right;flex-shrink:0">
                       <div style="font-size:13px;font-weight:700;color:var(--text-1)">${Utils.formatNum(displayVal, 1)}<span style="font-size:9px;color:var(--text-3)">kg</span></div>

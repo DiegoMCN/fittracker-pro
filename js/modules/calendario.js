@@ -144,7 +144,7 @@ const Calendario = (() => {
                 : restDone ? 'rgba(110,109,138,0.16)' : missed ? 'rgba(239,68,68,0.06)' : 'transparent';
 
               return `
-              <div class="${clickable ? 'calendar-day-active' : ''}" onclick="${clickable ? `Calendario.openDay('${dateStr}')` : ''}" title="${phase ? `Fase ${phase.number} — ${phase.name}` : ''}"
+              <div class="${clickable ? 'calendar-day-active' : ''}" onclick="${clickable ? `Calendario.openDay('${dateStr}', this)` : ''}" title="${phase ? `Fase ${phase.number} — ${phase.name}` : ''}"
                 style="position:relative;aspect-ratio:1;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
                 cursor:${clickable ? 'pointer' : 'default'};
                 background:${isToday ? 'var(--accent-glow)' : heatBg};
@@ -267,7 +267,10 @@ const Calendario = (() => {
     if (btn) { btn.disabled = false; btn.textContent = 'Guardar nota de descanso'; }
   }
 
-  function openDay(dateStr) {
+  // `origen` es la casilla del calendario que se tocó: el detalle del
+  // día crece desde ahí en vez de aparecer en el centro sin relación
+  // con el gesto.
+  function openDay(dateStr, origen) {
     Sounds.click();
     const daySessions = _sessions.filter(s => s.date === dateStr);
     const dayCardio = _cardio.filter(c => c.date === dateStr);
@@ -305,6 +308,10 @@ const Calendario = (() => {
         </div>
       </div>`;
     document.body.appendChild(overlay);
+    // Justo después de insertarlo y ANTES de que el observador de
+    // Motion lo detecte: así este modal se anima creciendo desde su
+    // casilla, y no con la entrada genérica encima.
+    Motion.modalFrom?.(overlay, origen);
 
     // Swipe para moverse al día anterior/siguiente sin cerrar y volver
     // a abrir el modal a mano — desliza sobre el modal mismo, no sobre

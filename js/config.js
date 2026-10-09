@@ -6,6 +6,14 @@ const CONFIG = {
   // URL del Apps Script deployado
   API_URL: 'https://script.google.com/macros/s/AKfycbzwQ7dai8WpW88YnDHEf6GJy6qwB_OIoHWORM8qrFYNnSJh4IRpuJMnkCKLEBhjXY3B/exec',
 
+  // ── WINTER ARC ───────────────────────────────────────────────────────
+  // La temporada que tiñe la app. El progreso entre estas dos fechas es
+  // lo único que decide el color y cuánta escarcha llevan las tarjetas.
+  WINTER_ARC: {
+    START: '2026-10-01',
+    END:   '2026-12-31',   // el arco cierra con el año, no con el invierno
+  },
+
   // ── SPOTIFY ──────────────────────────────────────────────────────────
   // El Client ID es público por diseño (viaja en la URL de autorización,
   // cualquiera que abra la app lo puede ver). El CLIENT SECRET no se usa
@@ -57,7 +65,7 @@ const CONFIG = {
   // hardcodeada (por eso antes se quedaba trabada en "Semana 3" para siempre).
   PROGRAM_START_DATE: '2026-08-24', // lunes de esta semana — fecha real confirmada de inicio (antes decía 17 de agosto por error, causaba un desfase de 1 semana en toda la app)
   // Debe coincidir con BACKEND_VERSION en 00_Core.gs — si no, Configuración avisa que el Apps Script publicado no está al día.
-  EXPECTED_BACKEND_VERSION: '2026.10.09-despliegue',
+  EXPECTED_BACKEND_VERSION: '2026.10.09-mesetas',
 
   // Fase actual del programa
   CURRENT_PHASE: {

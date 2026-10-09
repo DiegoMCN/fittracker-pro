@@ -184,6 +184,14 @@
       <button class="btn btn-primary btn-sm" onclick="Router.navigate('workout')">⚡</button>
     </div>
 
+    <!-- Aviso de datos falsos. Cuando la app no logra hablar con el Sheet,
+         api.js devuelve datos de EJEMPLO para que la pantalla no se vea
+         rota — pero eso es peligroso si no se avisa: se ven sesiones y
+         pesos que nunca existieron. Antes solo algunos módulos lo
+         avisaban y el Dashboard, que es donde más se vive, no era uno de
+         ellos. Ahora el aviso es uno solo y vale para toda la app. -->
+    <div id="mock-banner" style="display:none"></div>
+
     <!-- Contenido de página -->
     <div class="page-content" id="page-content">
       <!-- Router inyecta aquí -->
@@ -242,6 +250,7 @@
 <script src="js/modules/calendario.js"></script>
 <script src="js/modules/wrapped.js"></script>
 <script src="js/spotify.js"></script>
+<script src="js/winter.js"></script>
 
 <script>
 // ── CERRAR MODALES TOCANDO FUERA (estándar para TODOS los modales) ────────
@@ -298,6 +307,32 @@ function toggleForceOffline() {
 }
 window.addEventListener('online', _updateOfflineIndicator);
 window.addEventListener('offline', _updateOfflineIndicator);
+
+// ── AVISO DE DATOS DE EJEMPLO ───────────────────────────────────────────
+// Cuando api.js no logra hablar con el Sheet devuelve datos inventados
+// para que la pantalla no se vea rota. Eso está bien SIEMPRE Y CUANDO se
+// avise: si no, se ven sesiones, pesos y récords que nunca pasaron y uno
+// los da por buenos. api.js llama a esta función en cuanto cae al modo
+// de ejemplo, así que el aviso sale en cualquier módulo sin que cada uno
+// tenga que acordarse de revisarlo.
+window._paintMockBanner = function () {
+  const el = document.getElementById('mock-banner');
+  if (!el) return;
+  const fail = API.lastFailure?.();
+  if (!fail) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  el.style.display = '';
+  el.innerHTML = `
+    <div style="background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.45);
+                border-radius:12px;padding:12px 14px;margin:0 0 16px;display:flex;gap:10px;align-items:flex-start">
+      <span style="font-size:18px;line-height:1.2">⚠️</span>
+      <div style="font-size:12.5px;line-height:1.6">
+        <div style="font-weight:700;margin-bottom:2px">Esto NO son tus datos reales</div>
+        <div style="color:var(--text-3)">No hay conexión con tu Sheet, así que la app está mostrando
+        datos de ejemplo para no verse rota. No registres nada dando por bueno lo que ves aquí.</div>
+        <div style="color:var(--text-3);margin-top:6px">${Utils.escapeHtml(fail.text || '')}</div>
+      </div>
+    </div>`;
+};
 
 function closeSidebar() {
   document.getElementById('sidebar').classList.remove('open');
@@ -447,6 +482,10 @@ const _validPages = ['dashboard','workout','cardio','plan','history','metrics','
   _updateSidebarPhase(); // repinta con la fase real ya cargada
   Router.navigate(_validPages.includes(_initialPage) ? _initialPage : 'dashboard');
   try { Spotify?.sync?.(); } catch (e) {} // por si se recargó la app con una sesión activa en curso
+  // El tema de la temporada se aplica DESPUÉS de navegar: así, si toca
+  // cruce de etapa, el momento cae sobre una pantalla ya pintada y no
+  // sobre el esqueleto de carga.
+  try { WinterArc?.apply?.(); } catch (e) { console.warn('[WinterArc]', e); }
 })();
 </script>
 

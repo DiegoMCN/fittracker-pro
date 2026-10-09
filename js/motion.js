@@ -191,6 +191,105 @@ const Motion = (() => {
     gsap.fromTo(el, { opacity: 0, y: 10, scale: 0.985 }, { opacity: 1, y: 0, scale: 1, duration: d(MOTION_DUR.premium), ease: 'fittrackerPremium' });
   }
 
+  // ── CAMBIO DE MÓDULO ──────────────────────────────────────────────
+  // Antes el Router borraba el contenido de golpe y llamaba pageIn().
+  // Eso tenía dos problemas: la página vieja desaparecía sin despedirse
+  // (un parpadeo, no una transición), y pageIn() corría ANTES de que el
+  // módulo —casi todos son async— hubiera pintado nada, así que la
+  // animación de entrada se la llevaba el esqueleto de carga y el
+  // contenido real aparecía después, ya sin animación.
+  //
+  // Ahora es un cambio de tarjeta de verdad: la saliente se encoge y se
+  // va hacia arriba, la entrante sube desde abajo. Son 140 ms de salida
+  // — suficiente para que se perciba, poco para que estorbe en una app
+  // donde se navega todo el tiempo.
+  function pageSwap(container, render) {
+    if (!container) return;
+    const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const entrar = () => {
+      container.innerHTML = '';
+      try { render(); } catch (e) { console.error('[Motion] el módulo falló al renderizar:', e); }
+      // Arriba del todo: cambiar de módulo y aparecer a media página
+      // deja la sensación de que no pasó nada.
+      container.scrollTop = 0;
+      if (reduce) { gsap.set(container, { clearProps: 'all' }); return; }
+      gsap.fromTo(container,
+        { opacity: 0, y: 14, scale: 0.988 },
+        { opacity: 1, y: 0, scale: 1, duration: d(MOTION_DUR.premium), ease: 'fittrackerPremium',
+          clearProps: 'transform' });
+    };
+
+    if (reduce || !container.firstChild) { entrar(); return; }
+    gsap.to(container, {
+      opacity: 0, y: -8, scale: 0.994,
+      duration: d(MOTION_DUR.fast) * 0.8, ease: 'fittrackerFast',
+      onComplete: entrar,
+    });
+  }
+
+  // ── MODAL QUE CRECE DESDE DONDE LO TOCASTE ────────────────────────
+  // Para el calendario: el detalle del día nace de la casilla que
+  // tocaste y crece hasta su tamaño, en vez de aparecer en el centro
+  // sin relación con el gesto. Es la diferencia entre "salió un modal"
+  // y "ese día se abrió".
+  function modalFrom(overlay, origen) {
+    if (!overlay) return;
+    claim(overlay);   // que el observador no lo anime también
+    const card = overlay.querySelector('.modal');
+    const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    gsap.fromTo(overlay, { opacity: 0 }, { opacity: 1, duration: d(MOTION_DUR.fast), ease: 'fittrackerFast' });
+    if (!card) return;
+
+    const o = origen && origen.getBoundingClientRect && origen.getBoundingClientRect();
+    // Sin origen utilizable (o con poco movimiento) se cae a la entrada
+    // normal: vale más eso que una animación que sale de la nada.
+    if (reduce || !o || !o.width || !o.height) {
+      gsap.fromTo(card, { opacity: 0, scale: 0.95, y: 10 },
+        { opacity: 1, scale: 1, y: 0, duration: d(MOTION_DUR.spring), ease: 'fittrackerSpring' });
+      return;
+    }
+
+    const c = card.getBoundingClientRect();
+    const escala = Math.max(0.2, Math.min(1, o.width / Math.max(1, c.width)));
+    const dx = (o.left + o.width / 2) - (c.left + c.width / 2);
+    const dy = (o.top + o.height / 2) - (c.top + c.height / 2);
+
+    gsap.fromTo(card,
+      { opacity: 0, scale: escala, x: dx, y: dy },
+      { opacity: 1, scale: 1, x: 0, y: 0,
+        duration: d(MOTION_DUR.spring), ease: 'fittrackerSpring', clearProps: 'transform' });
+  }
+
+  // ── TEXTO QUE ENTRA PALABRA POR PALABRA ───────────────────────────
+  // Solo para títulos. Partir párrafos enteros se vería pretencioso y
+  // además retrasa la lectura de lo único que importa aquí: los datos.
+  //
+  // El contenedor conserva el texto completo en aria-label y las
+  // palabras van marcadas como decorativas — si no, un lector de
+  // pantalla leería el título deletreado palabra por palabra.
+  function textIn(el, { delay = 0 } = {}) {
+    if (!el) return;
+    const texto = (el.textContent || '').trim();
+    if (!texto) return;
+    const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduce) return;
+
+    el.setAttribute('aria-label', texto);
+    el.innerHTML = texto.split(/\s+/)
+      .map(w => `<span aria-hidden="true" style="display:inline-block;will-change:transform">${w}</span>`)
+      .join(' ');
+
+    gsap.fromTo(el.querySelectorAll('span'),
+      { opacity: 0, y: '0.45em' },
+      { opacity: 1, y: '0em', duration: d(MOTION_DUR.base), ease: 'fittrackerPremium',
+        stagger: 0.045, delay, clearProps: 'transform,will-change' });
+  }
+
+  // Marca un nodo como "ya animado a mano" para que el observador de
+  // abajo no le ponga encima su animación por defecto.
+  function claim(node) { if (node) _seen.add(node); }
+
   // ── TOQUE DE BOTONES (press / release) ────────────────────────────
   // Reemplaza el CSS `[onclick]:active` / `.btn:active` — un solo
   // listener delegado en todo el documento en vez de una regla CSS
@@ -401,6 +500,7 @@ const Motion = (() => {
 
   return {
     init, modalIn, closeModal, bounceIn, slideUp, toastIn, toastOut, pageIn, staggerIn, setPop, phasePop,
+    pageSwap, modalFrom, textIn, claim,
     setDuration, setEase, setGlassIntensity, setCardRadius, getSettings, resetSettings,
   };
 })();

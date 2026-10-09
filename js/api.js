@@ -189,6 +189,8 @@ const API = (() => {
       getCoachJob: { status: 'desconocido' },
       getCoachLog: { rows: [] },
       getMusicLog: { entries: [], missing: true },
+      getFormAdvice: { advice: [], missing: true },
+      getContextoAudit: { total: 0, bloques: [], porEstado: {} },
       saveMusicLog: { success: false, error: 'Sin conexión con el servidor' },
       getFormModel: null,
       interpretFormScenario: { success: false, cause: { message: 'Sin conexión con el servidor' } },
@@ -454,11 +456,19 @@ const API = (() => {
     // Gemini) por segunda vez. Si el guardado ya llegó al servidor pero
     // la respuesta tardó (Gemini puede tomar varios segundos), un
     // reintento automático duplicaría la fila en el Sheet.
+    // 60 s, no los 8 de siempre. Guardar una sesión no es una lectura
+    // rápida: el backend escribe las filas, recalcula los logros contra
+    // miles de registros y escribe las notas de cada ejercicio. Con 8
+    // segundos se rendía a media faena y el guardado se iba a la cola
+    // offline — el Sheet SÍ terminaba guardando todo, pero la app ya
+    // había mostrado "sin conexión" y se perdía la respuesta (con sus
+    // logros nuevos adentro). De ahí venía que nunca salieran los
+    // festejos.
     saveSession: (data) =>
-      _fetch({ action: 'saveSession', method: 'POST', ...data }, { useCache: false, retries: 0 }),
+      _fetch({ action: 'saveSession', method: 'POST', ...data }, { useCache: false, retries: 0, timeoutMs: 60000 }),
 
     saveCardio: (data) =>
-      _fetch({ action: 'saveCardio', method: 'POST', ...data }, { useCache: false, retries: 0 }),
+      _fetch({ action: 'saveCardio', method: 'POST', ...data }, { useCache: false, retries: 0, timeoutMs: 60000 }),
 
     saveMetrics: (data) =>
       _fetch({ action: 'saveMetrics', method: 'POST', ...data }, { useCache: false, retries: 0 }),
@@ -488,6 +498,10 @@ const API = (() => {
     getCoachJob: (id) => _fetch({ action: 'getCoachJob', id }, { useCache: false, retries: 0 }),
     getCoachLog: () => _fetch({ action: 'getCoachLog' }, { useCache: false }),
     getMusicLog: (limit = 1000) => _fetch({ action: 'getMusicLog', limit }),
+    getFormAdvice: (limit = 10) => _fetch({ action: 'getFormAdvice', limit }),
+    // Qué sabe la app y qué de eso le llega hoy a la IA. Lo lee
+    // Configuración; sirve cuando un consejo ignora algo que sí existe.
+    getContextoAudit: () => _fetch({ action: 'getContextoAudit' }, { useCache: false }),
     // El lote de canciones de una sesión. Se encola si no hay señal,
     // igual que cualquier otra escritura — el registro sobrevive a
     // guardar la sesión sin conexión.

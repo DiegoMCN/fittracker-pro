@@ -983,3 +983,121 @@ input[type="range"]::-moz-range-thumb {
   .toast-container { bottom: var(--space-4); right: var(--space-4); left: var(--space-4); }
   .toast { min-width: auto; max-width: 100%; }
 }
+
+/* ═══════════════════════════════════════════
+   WINTER ARC — escarcha progresiva
+   ═══════════════════════════════════════════
+   Todo cuelga de --winter-frost (0 a 1), que pone js/winter.js según
+   la etapa de la temporada. En 0 no se ve absolutamente nada, así que
+   apagar el tema no requiere quitar clases de ninguna tarjeta: el
+   mismo CSS simplemente deja de pintar.
+
+   La escarcha va SOLO en el borde superior de la tarjeta. Es donde se
+   acumularía el hielo de verdad, y deja el contenido intacto — una
+   textura sobre todo el fondo volvería ilegible cualquier dato, que
+   es justo lo que esta app no se puede permitir. */
+
+:root {
+  --winter-frost: 0;
+  --winter-ice: rgba(226,244,255,0.5);
+  /* LA SILUETA DE LA ESCARCHA vive en esta sola variable, y se usa como
+     MÁSCARA, no como imagen. Eso importa: una máscara solo define la
+     forma, y el color sale de --winter-ice, que cambia con la
+     temporada. Si fuera una imagen, el color iría pintado dentro del
+     SVG y se quedaría congelado en un tono mientras el resto de la app
+     se enfría.
+
+     Para cambiar el dibujo basta sustituir este valor por otro SVG
+     (data:image/svg+xml con la silueta en BLANCO sobre transparente,
+     o url('assets/escarcha.svg')) y ajustar las dos medidas de abajo.
+     Nada más del CSS se toca, y js/winter.js ni se entera. */
+  --winter-frost-art: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20240%2020%22%20preserveAspectRatio%3D%22none%22%3E%3ClinearGradient%20id%3D%22f%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%220%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23fff%22%2F%3E%3Cstop%20offset%3D%22.5%22%20stop-color%3D%22%23fff%22%20stop-opacity%3D%22.8%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23fff%22%20stop-opacity%3D%220%22%2F%3E%3C%2FlinearGradient%3E%3Cpath%20fill%3D%22url%28%23f%29%22%20d%3D%22M0%200h240v2.6L230.9%202.6C229.2%208.8%20227.8%2012.6%20227.0%2014.0C226.2%2012.6%20224.8%208.8%20223.0%202.6L223.0%202.6C221.5%204.3%20220.2%205.3%20219.5%205.6C218.8%205.3%20217.6%204.3%20216.0%202.6L211.0%202.6C209.4%203.8%20208.1%204.5%20207.4%204.8C206.7%204.5%20205.3%203.8%20203.7%202.6L166.0%202.6C164.8%207.8%20163.8%2010.9%20163.3%2012.1C162.7%2010.9%20161.7%207.8%20160.5%202.6L160.5%202.6C159.4%208.2%20158.5%2011.5%20158.0%2012.7C157.6%2011.5%20156.7%208.2%20155.6%202.6L155.6%202.6C154.2%2010.6%20153.1%2015.4%20152.5%2017.1C151.9%2015.4%20150.8%2010.6%20149.4%202.6L149.0%202.6C147.4%204.7%20146.2%206.0%20145.5%206.5C144.8%206.0%20143.5%204.7%20142.0%202.6L136.5%202.6C135.1%204.7%20133.9%206.0%20133.3%206.5C132.6%206.0%20131.5%204.7%20130.0%202.6L131.2%202.6C130.4%203.7%20129.7%204.4%20129.3%204.6C128.9%204.4%20128.2%203.7%20127.3%202.6L127.3%202.6C126.1%204.0%20125.1%204.8%20124.5%205.1C123.9%204.8%20122.9%204.0%20121.7%202.6L117.2%202.6C115.6%204.1%20114.3%205.1%20113.5%205.4C112.8%205.1%20111.5%204.1%20109.9%202.6L109.8%202.6C108.7%209.3%20107.8%2013.3%20107.3%2014.8C106.8%2013.3%20106.0%209.3%20104.9%202.6L103.3%202.6C101.4%203.6%2099.8%204.3%2098.9%204.5C98.0%204.3%2096.4%203.6%2094.5%202.6L94.5%202.6C92.7%206.2%2091.2%208.3%2090.4%209.1C89.6%208.3%2088.1%206.2%2086.3%202.6L86.3%202.6C85.4%206.6%2084.7%209.0%2084.3%209.9C83.9%209.0%2083.2%206.6%2082.3%202.6L78.3%202.6C76.9%205.7%2075.8%207.6%2075.2%208.3C74.6%207.6%2073.4%205.7%2072.1%202.6L75.2%202.6C74.1%207.0%2073.2%209.7%2072.7%2010.6C72.2%209.7%2071.3%207.0%2070.2%202.6L64.9%202.6C63.6%2010.4%2062.5%2015.1%2061.9%2016.8C61.2%2015.1%2060.1%2010.4%2058.8%202.6L58.8%202.6C57.3%206.3%2056.1%208.5%2055.4%209.3C54.7%208.5%2053.5%206.3%2052.0%202.6L48.3%202.6C47.5%207.3%2046.8%2010.2%2046.5%2011.2C46.1%2010.2%2045.4%207.3%2044.6%202.6L44.6%202.6C43.2%205.9%2042.1%207.9%2041.5%208.7C40.8%207.9%2039.7%205.9%2038.3%202.6L38.3%202.6C36.5%204.4%2035.0%205.5%2034.1%205.9C33.3%205.5%2031.8%204.4%2030.0%202.6L31.7%202.6C30.5%203.8%2029.5%204.5%2029.0%204.7C28.4%204.5%2027.5%203.8%2026.3%202.6L20.9%202.6C19.4%206.6%2018.2%208.9%2017.5%209.8C16.8%208.9%2015.6%206.6%2014.0%202.6L12.1%202.6C11.2%208.4%2010.5%2011.9%2010.1%2013.2C9.7%2011.9%209.0%208.4%208.1%202.6L8.1%202.6C7.1%203.6%206.3%204.2%205.9%204.4C5.5%204.2%204.7%203.6%203.8%202.6L3.8%202.6C2.9%206.6%202.3%209.1%201.9%209.9C1.5%209.1%200.8%206.6%200.0%202.6L0%202.6Z%22%2F%3E%3C%2Fsvg%3E");
+  --winter-frost-size: 240px 20px;
+  --winter-frost-height: 16px;
+
+/* Sin overflow:hidden — .card se usa en toda la app y varias llevan
+   contenido que debe poder salirse (menús, globos de ayuda). El pico
+   de hielo se recorta solo con su propio border-radius. */
+.card { position: relative; }
+
+/* Los témpanos: una fila de picos de hielo colgando del borde de
+   arriba, dibujados con un degradado cónico repetido. Crecen de 0 a
+   10px de alto y de 0 a 1 de opacidad conforme avanza la temporada. */
+.card::after {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: calc(var(--winter-frost-height) * var(--winter-frost));
+  pointer-events: none;
+  opacity: var(--winter-frost);
+  /* El color sale de aquí; la forma, de la máscara. Así el hielo se
+     tiñe solo conforme avanza la temporada. */
+  background: var(--winter-ice);
+  border-radius: var(--card-radius) var(--card-radius) 0 0;
+  -webkit-mask-image: var(--winter-frost-art);
+          mask-image: var(--winter-frost-art);
+  -webkit-mask-size: var(--winter-frost-size);
+          mask-size: var(--winter-frost-size);
+  -webkit-mask-repeat: repeat-x;
+          mask-repeat: repeat-x;
+  transition: height 600ms ease, opacity 600ms ease;
+}
+
+/* Aquí había un box-shadow con color-mix() para teñir de hielo el filo
+   superior. Se quitó: si el navegador no soporta color-mix, toda la
+   declaración se invalida y la tarjeta se queda SIN sombra — se vería
+   peor que no tener el efecto. El pico de hielo de arriba ya da la
+   sensación de frío sin arriesgar nada. */
+
+/* En las etapas más frías, las tarjetas de acento se congelan un poco
+   más: el hielo se agarra de donde ya hay relieve. */
+/* Que no se repita el mismo pedazo en tarjetas vecinas. La pieza mide
+   240px y se repite; si todas empezaran en 0, una columna de tarjetas
+   mostraría el mismo hielo calcado y se leería como una cenefa impresa,
+   no como hielo. Tres desfases bastan: con el patrón irregular que
+   llevan, ninguna pareja vecina se ve igual. */
+.card:nth-child(3n+2)::after { -webkit-mask-position: -83px 0;  mask-position: -83px 0; }
+.card:nth-child(3n)::after   { -webkit-mask-position: -161px 0; mask-position: -161px 0; }
+
+:root[data-winter="ventisca"] .card-accent::after,
+:root[data-winter="nucleo"]   .card-accent::after {
+  height: calc(var(--winter-frost-height) * 1.4 * var(--winter-frost));
+}
+
+/* ── EL MOMENTO DE ETAPA ── */
+.winter-moment {
+  position: fixed; inset: 0; z-index: 320;
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px; cursor: pointer;
+  background: radial-gradient(ellipse at 50% 0%, rgba(56,189,248,0.18), rgba(8,8,15,0.93) 60%);
+  backdrop-filter: blur(10px) saturate(130%);
+  -webkit-backdrop-filter: blur(10px) saturate(130%);
+}
+.winter-snow { position: fixed; inset: 0; pointer-events: none; }
+.winter-moment-card {
+  position: relative; text-align: center; max-width: 420px; width: 100%;
+  padding: 32px 26px;
+  border-radius: var(--card-radius);
+  background: rgba(19,19,31,0.72);
+  border: 1px solid var(--winter-ice);
+  box-shadow: 0 24px 70px rgba(0,0,0,0.6), inset 0 1px 0 var(--winter-ice);
+}
+.winter-moment-eyebrow {
+  font-size: 10px; letter-spacing: 1.4px; text-transform: uppercase;
+  color: var(--text-3); margin-bottom: 10px;
+}
+.winter-moment-title {
+  font-size: 34px; font-weight: 800; line-height: 1.05; margin-bottom: 10px;
+  background: linear-gradient(135deg, #FFFFFF, var(--accent));
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.winter-moment-lema { font-size: 13px; color: var(--text-2); line-height: 1.6; }
+.winter-moment-hint { font-size: 11px; color: var(--text-4); margin-top: 22px; }
+
+/* Quien prefiere menos movimiento se queda con el hielo quieto: la
+   escarcha es información (en qué etapa vas), la nieve es adorno. */
+@media (prefers-reduced-motion: reduce) {
+  .card::after { transition: none; }
+  .winter-snow { display: none; }
+}

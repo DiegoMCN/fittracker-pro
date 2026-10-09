@@ -85,12 +85,209 @@ const Configuracion = (() => {
           <div id="cfg-coach-log" style="font-size:12px;color:var(--text-3)">Cargando registro…</div>
         </div>
 
+        <div class="card animate-slide-up" style="margin-top:20px">
+          <div class="card-header">
+            <div>
+              <div class="card-title">🧠 Qué sabe la app y qué le llega a la IA</div>
+              <div class="card-subtitle">Cada dato que la app calcula, y si entra al consejo de hoy o no. Más contexto no es más preciso: lo que no cambió desde ayer se omite a propósito</div>
+            </div>
+          </div>
+          <div id="cfg-contexto" style="font-size:12px;color:var(--text-3)">Revisando…</div>
+        </div>
+
+        ${_winterPanelHTML()}
+
         ${_spotifyPanelHTML()}
 
         ${_motionPanelHTML()}
       </div>`;
     _loadVersion();
     _loadCoachLog();
+    _loadContexto();
+  }
+
+  // ── WINTER ARC ───────────────────────────────────────────────────────
+
+  function _winterPanelHTML() {
+    if (typeof WinterArc === 'undefined') return '';
+    const w = WinterArc.status();
+    const esc = Utils.escapeHtml;
+    const etapas = WinterArc.stages();
+
+    // Escala de etapas: cada una con el color real que va a tener la
+    // app en ese punto, para que se vea el recorrido completo de un
+    // vistazo en vez de tener que imaginárselo.
+    const escala = etapas.map((e, i) => {
+      const activa = i === w.stage.index;
+      const col = WinterArc.accentAt(e.desde);
+      return `<div style="flex:1;text-align:center;opacity:${activa ? 1 : 0.45}">
+        <div style="height:6px;border-radius:99px;background:${col};margin-bottom:6px;
+                    ${activa ? 'box-shadow:0 0 10px ' + col : ''}"></div>
+        <div style="font-size:9px;letter-spacing:0.3px;${activa ? 'font-weight:700' : ''}">${esc(e.nombre)}</div>
+      </div>`;
+    }).join('');
+
+    return `
+      <div class="card animate-slide-up" style="margin-top:20px">
+        <div class="card-header">
+          <div>
+            <div class="card-title">❄️ Winter Arc</div>
+            <div class="card-subtitle">La app se va enfriando contigo: el verde se vuelve hielo y las tarjetas se escarchan conforme avanza la temporada</div>
+          </div>
+        </div>
+
+        ${w.enabled ? `
+          <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:10px">
+            <div>
+              <span style="font-size:20px;font-weight:800;color:var(--accent)">${esc(w.stage.nombre)}</span>
+              <span style="font-size:11px;color:var(--text-3);margin-left:6px">etapa ${w.stage.index + 1} de ${w.stage.total}</span>
+            </div>
+            <span style="font-size:11px;color:var(--text-3)">${w.pct}% · faltan ${w.daysLeft} días</span>
+          </div>
+          <div style="font-size:12px;color:var(--text-2);line-height:1.6;margin-bottom:16px">${esc(w.stage.lema)}</div>
+
+          <div style="display:flex;gap:6px;margin-bottom:18px">${escala}</div>
+
+          ${w.next ? `<div style="font-size:11px;color:var(--text-3);margin-bottom:16px">
+            Sigue <b>${esc(w.next.nombre)}</b> al ${Math.round(w.next.desde * 100)}% de la temporada.
+          </div>` : `<div style="font-size:11px;color:var(--text-3);margin-bottom:16px">Estás en la última etapa del arco.</div>`}
+
+          <div class="input-group">
+            <label class="input-label">Adelantar la temporada${w.preview !== null ? ' — <b>vista previa activa</b>' : ''}</label>
+            <input type="range" min="0" max="100" value="${w.preview !== null ? Math.round(w.preview * 100) : w.pct}"
+                   oninput="Configuracion.previewWinter(this.value)">
+            <div style="font-size:10px;color:var(--text-4);margin-top:4px">
+              Mueve la barra para ver cómo se pondrá la app más adelante. No cambia tu progreso real.
+            </div>
+          </div>
+
+          ${_escarchasHTML(w)}
+
+          <div style="display:flex;gap:8px;margin-top:12px">
+            ${w.preview !== null ? `<button class="btn btn-secondary" style="flex:1" onclick="Configuracion.previewWinter(null)">
+              ↺ Volver a la fecha real
+            </button>` : ''}
+            <button class="btn btn-secondary" style="flex:1" onclick="WinterArc.showStageMoment(WinterArc.stage())">
+              ❄️ Ver el momento de etapa
+            </button>
+          </div>
+
+          <button class="btn btn-ghost" style="width:100%;margin-top:8px;font-size:12px" onclick="Configuracion.setWinter(false)">
+            Apagar el Winter Arc
+          </button>
+        ` : `
+          <div style="font-size:12px;color:var(--text-3);margin-bottom:14px;line-height:1.6">
+            Está apagado: la app se queda con el verde de siempre y las tarjetas sin escarcha.
+          </div>
+          <button class="btn btn-primary" style="width:100%" onclick="Configuracion.setWinter(true)">
+            ❄️ Encender el Winter Arc
+          </button>
+        `}
+      </div>`;
+  }
+
+  // El selector de escarcha. Cada opción se pinta sobre una tarjeta de
+  // verdad y con el hielo del punto de temporada que marque el
+  // deslizador de arriba — así se elige viendo cómo va a quedar, no
+  // adivinando por el nombre.
+  function _escarchasHTML(w) {
+    const esc = Utils.escapeHtml;
+    const p = w.preview !== null ? w.preview : w.pct / 100;
+    const real = WinterArc.frostAmountAt(p);
+    // En Umbral no hay hielo todavía, y sin esto el selector sería seis
+    // tarjetas en blanco idénticas: imposible elegir nada. Mientras la
+    // temporada no haya empezado a congelar, las muestras se enseñan
+    // como se verán en Helada, y se dice que es así.
+    const anticipo = real === 0;
+    const cantidad = anticipo ? 0.55 : real;
+    const hielo = WinterArc.iceAt(anticipo ? 0.35 : p);
+    const alto = (20 * cantidad).toFixed(1);
+
+    const ejemplos = [
+      ['Pico de cadencia', '182', 'spm'],
+      ['Volumen de la semana', '22.0', 't'],
+      ['Mejor recuperación', '−32', 'bpm'],
+      ['Racha actual', '8', 'sem'],
+      ['Sesiones totales', '51', ''],
+      ['Dead hang', '45', 'seg'],
+    ];
+
+    return `
+      <div style="margin-top:20px">
+        <div class="input-label" style="margin-bottom:10px">Silueta de la escarcha</div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          ${WinterArc.frosts().map((f, i) => {
+            const activa = f.key === w.frost;
+            const [et, val, uni] = ejemplos[i % ejemplos.length];
+            return `
+            <button type="button" onclick="Configuracion.setFrost('${esc(f.key)}')"
+              style="all:unset;cursor:pointer;display:block;border-radius:var(--card-radius);
+                     border:1px solid ${activa ? 'var(--accent)' : 'var(--border-card)'};
+                     ${activa ? 'box-shadow:0 0 0 1px var(--accent)' : ''}">
+              <div style="position:relative;overflow:hidden;background:var(--bg-card);
+                          border-radius:var(--card-radius) var(--card-radius) 0 0;padding:14px 16px 12px">
+                <div class="wa-prev" style="position:absolute;top:0;left:0;right:0;height:${alto}px;opacity:${cantidad.toFixed(2)};
+                            background:${hielo};
+                            -webkit-mask-image:${WinterArc.frostArt(f.key)};mask-image:${WinterArc.frostArt(f.key)};
+                            -webkit-mask-size:240px 20px;mask-size:240px 20px;
+                            -webkit-mask-repeat:repeat-x;mask-repeat:repeat-x"></div>
+                <div style="font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--text-3);margin-top:6px">${esc(et)}</div>
+                <div style="font-size:22px;font-weight:800;color:var(--accent)">${esc(val)}<span style="font-size:11px;color:var(--text-3);font-weight:600;margin-left:4px">${esc(uni)}</span></div>
+              </div>
+              <div style="padding:9px 16px 11px;background:var(--bg-input);
+                          border-radius:0 0 var(--card-radius) var(--card-radius)">
+                <div style="font-size:12px;font-weight:700;display:flex;align-items:center;gap:6px">
+                  ${esc(f.nombre)}${activa ? '<span style="font-size:10px;color:var(--accent);font-weight:600">· elegida</span>' : ''}
+                </div>
+                <div style="font-size:11px;color:var(--text-3);line-height:1.5;margin-top:2px">${esc(f.nota)}</div>
+              </div>
+            </button>`;
+          }).join('')}
+        </div>
+        <div style="font-size:10px;color:var(--text-4);margin-top:10px;line-height:1.6">
+          ${anticipo
+            ? 'En Umbral tus tarjetas todavía no llevan hielo — estas muestras se enseñan como se verán en Helada, para que puedas elegir. Mueve la barra de arriba para ver cualquier otro punto.'
+            : 'Así se verán tus tarjetas en ese punto de la temporada.'}
+        </div>
+      </div>`;
+  }
+
+  function setFrost(key) {
+    WinterArc.setFrost(key);
+    Sounds.click();
+    _render(document.getElementById('page-content'));
+  }
+
+  function setWinter(on) {
+    WinterArc.setEnabled(on);
+    Toast.success(on ? 'Winter Arc encendido ❄️' : 'Winter Arc apagado');
+    _render(document.getElementById('page-content'));
+  }
+
+  // Dos velocidades, a propósito. Los colores ya cambian solos al
+  // instante (son variables del documento que WinterArc reescribe), pero
+  // la escarcha de las muestras vive en estilos de cada tarjeta: si se
+  // esperara al repintado, el hielo iría a destiempo del color mientras
+  // arrastras. Así que la escarcha se toca de inmediato, y el repintado
+  // completo —que es el que trae los textos y las etapas— se hace al
+  // soltar. Repintar todo en cada movimiento perdería el foco del
+  // deslizador y el arrastre se sentiría roto.
+  function previewWinter(v) {
+    const p = v === null ? null : Number(v) / 100;
+    WinterArc.setPreview(p);
+
+    if (p !== null) {
+      const cantidad = WinterArc.frostAmountAt(p);
+      const hielo = WinterArc.iceAt(p);
+      document.querySelectorAll('.wa-prev').forEach(el => {
+        el.style.height = (20 * cantidad).toFixed(1) + 'px';
+        el.style.opacity = cantidad.toFixed(2);
+        el.style.background = hielo;
+      });
+    }
+
+    clearTimeout(previewWinter._t);
+    previewWinter._t = setTimeout(() => _render(document.getElementById('page-content')), 420);
   }
 
   // ── SPOTIFY ──────────────────────────────────────────────────────────
@@ -206,6 +403,73 @@ const Configuracion = (() => {
         <td style="padding:5px 6px;color:var(--text-3);min-width:180px">${esc(String(r.detail || '').slice(0, 160))}</td></tr>`).join('')}</tbody></table></div>`;
   }
 
+  // ── QUÉ SABE LA APP Y QUÉ LE LLEGA A LA IA ───────────────────────────
+  // El consejo puede ignorar un dato por tres razones muy distintas: no
+  // cambió, no viene al caso hoy, o NO EXISTE. Desde afuera las tres se
+  // ven igual (el consejo simplemente no lo menciona), y la tercera es la
+  // única que hay que arreglar. Esto las separa.
+  const _CTX_GRUPOS = [
+    { estado: 'incluido',     icono: '✅', titulo: 'Le llega hoy' },
+    { estado: 'presupuesto',  icono: '⏳', titulo: 'Esperando turno (no cupo en el presupuesto; entra en el siguiente consejo)' },
+    { estado: 'sin_cambio',   icono: '·',  titulo: 'No se repite: no cambió desde el consejo anterior' },
+    { estado: 'no_relevante', icono: '·',  titulo: 'No viene al caso hoy' },
+    { estado: 'sin_datos',    icono: '⚠️', titulo: 'Sin datos todavía' },
+  ];
+
+  async function _loadContexto() {
+    const el = document.getElementById('cfg-contexto');
+    if (!el) return;
+    let a = null;
+    try { a = await API.getContextoAudit(); } catch(e) {}
+    if (!a || !a.bloques || !a.bloques.length) {
+      el.innerHTML = 'No se pudo revisar. Necesita el Apps Script actualizado y haber corrido <b>setupSheets()</b> (crea la hoja <b>COACH_CONTEXTO</b>).';
+      return;
+    }
+    const esc = Utils.escapeHtml;
+    const bloques = a.bloques;
+
+    // Un bloque de nivel "siempre" sin datos es la falla que más importa:
+    // el consejo sale igual de fluido, pero sin su pieza principal.
+    const criticos = bloques.filter(b => b.estado === 'sin_datos' && b.nivel === 'siempre');
+    const aviso = criticos.length
+      ? `<div style="background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.35);border-radius:10px;padding:8px 10px;margin-bottom:10px;color:var(--text-2)">
+           ⚠️ <b>${criticos.length} dato(s) que deberían entrar SIEMPRE no tienen información:</b>
+           ${criticos.map(b => esc(b.tema)).join(', ')}. El consejo de hoy sale incompleto.
+         </div>`
+      : '';
+
+    const grupos = _CTX_GRUPOS.map(g => {
+      const items = bloques.filter(b => b.estado === g.estado).sort((x, y) => y.peso - x.peso);
+      if (!items.length) return '';
+      const chars = items.reduce((t, b) => t + (b.chars || 0), 0);
+      return `<div style="margin-top:10px">
+        <div style="color:var(--text-2);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.04em">
+          ${g.icono} ${esc(g.titulo)} · ${items.length}${chars ? ` · ${chars.toLocaleString('es-MX')} car.` : ''}
+        </div>
+        <div style="margin-top:4px;line-height:1.6">
+          ${items.map(b => `<span style="display:inline-block;margin:2px 4px 2px 0;padding:2px 8px;border-radius:999px;
+             border:1px solid var(--border);color:var(--text-3);font-size:11px">${esc(b.tema)}${b.chars ? ` <span style="color:var(--text-4)">${b.chars}</span>` : ''}</span>`).join('')}
+        </div>
+      </div>`;
+    }).join('');
+
+    const pct = a.presupuesto ? Math.min(100, Math.round(a.charsVariable / a.presupuesto * 100)) : 0;
+    el.innerHTML = aviso + `
+      <div style="color:var(--text-2)">
+        Hoy le llegan <b>${bloques.filter(b => b.estado === 'incluido').length}</b> de <b>${bloques.length}</b> datos,
+        <b>${(a.chars || 0).toLocaleString('es-MX')}</b> caracteres de contexto.
+      </div>
+      <div style="margin-top:6px">
+        <div style="height:5px;border-radius:3px;background:var(--border);overflow:hidden">
+          <div style="height:100%;width:${pct}%;background:var(--accent)"></div>
+        </div>
+        <div style="color:var(--text-4);font-size:11px;margin-top:3px">
+          Presupuesto de la parte variable: ${(a.charsVariable || 0).toLocaleString('es-MX')} de ${(a.presupuesto || 0).toLocaleString('es-MX')} caracteres.
+          Lo que decide seguridad (carga, sobrecarga, forma, qué tan listo estás) va aparte y nunca se recorta.
+        </div>
+      </div>` + grupos;
+  }
+
   // ¿El Apps Script publicado está al día, y al Sheet no le falta ninguna
   // columna? Antes no había forma de saberlo desde la app.
   async function _loadVersion() {
@@ -230,7 +494,21 @@ const Configuracion = (() => {
     const deployLine = dep === undefined ? '' : dep.length
       ? `<br>⚠️ <b>Al Apps Script publicado le falta o tiene desactualizado:</b><br>` + dep.map(d => `• <b>${Utils.escapeHtml(d.file)}</b> — le faltan ${d.missing.length} función(es), p. ej. ${Utils.escapeHtml(d.missing.slice(0, 2).join(', '))}`).join('<br>') + `<br><span style="color:var(--text-4)">Vuelve a pegar ese archivo completo, guarda y publica una nueva versión. Puedes revisar también con <b>verificarDespliegue()</b> en el editor.</span>`
       : '<br>✅ Todos los archivos del Apps Script están completos';
-    el.innerHTML = verLine + issueLine + deployLine;
+    // Un modelo de Gemini redirigido en la cadena no falla: simplemente
+    // deja de ser un respaldo de verdad, porque comparte cuota con el
+    // modelo al que redirige. Eso no se nota hasta que un día el consejo
+    // no sale. Si el servidor es viejo y no reporta el campo, no se
+    // afirma nada (la línea de versión ya avisa).
+    const gem = res.geminiIssues;
+    const gemLine = gem === undefined ? '' : gem.length
+      ? `<br>⚠️ <b>Modelos de Gemini que Google ya redirige:</b><br>` + gem.map(g =>
+          `• <b>${Utils.escapeHtml(g.model)}</b> → ${Utils.escapeHtml(g.replacement)}` +
+          (g.duplicate
+            ? ` — y <b>${Utils.escapeHtml(g.replacement)}</b> ya está en tu cadena: ese reintento comparte la misma cuota, así que no te sirve de respaldo.`
+            : ` — cámbialo por ${Utils.escapeHtml(g.replacement)}.`)
+        ).join('<br>') + `<br><span style="color:var(--text-4)">Se ajusta en Apps Script → Configuración del proyecto → Propiedades del script → <b>GEMINI_MODELS</b>. Si no tienes esa propiedad, basta con pegar el <b>06_CoachIA.gs</b> actualizado.</span>`
+      : '';
+    el.innerHTML = verLine + issueLine + deployLine + gemLine;
   }
 
   // ── MOVIMIENTO Y DISEÑO ──────────────────────────────────────────
@@ -426,6 +704,7 @@ const Configuracion = (() => {
     init, geocode, confirmSave, clearLocalData,
     setMotionDuration, setGlassIntensity, setCardRadius, setMotionPreset, resetMotion,
     setSpotifyLogging, disconnectSpotify, flushSpotify,
+    setWinter, previewWinter, setFrost,
   };
 })();
 

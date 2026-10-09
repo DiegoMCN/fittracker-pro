@@ -92,6 +92,30 @@ const Exercises = (() => {
   function _ago(d) { return d === 0 ? 'hoy' : d === 1 ? 'ayer' : `hace ${d} d`; }
   const _TREND = { mejora: ['📈', 'mejora', 'var(--accent)'], estable: ['➡️', 'estable', 'var(--text-3)'], baja: ['📉', 'baja', 'var(--danger)'] };
 
+  // ── ESTANCADO, RETROCESO O BAJÓN ─────────────────────────────────────
+  // Antes los tres salían como "⚠️ Meseta" con el mismo consejo (cambia
+  // el estímulo), y para un retroceso ese consejo está al revés: si vas
+  // bajando, lo primero es mirar fatiga y sueño, no meterle más variedad.
+  const _PL = {
+    estancado: { badge: '⚠️ Estancado', bg: 'rgba(245,158,11,0.18)', fg: '#F59E0B' },
+    retroceso: { badge: '🔻 Bajando',   bg: 'rgba(239,68,68,0.18)',  fg: '#EF4444' },
+    caida:     { badge: '❗ Bajón',      bg: 'rgba(168,85,247,0.18)', fg: '#A855F7' },
+  };
+  const _plOf = (k) => _PL[k] || _PL.estancado;
+  const _plBadge = (k) => _plOf(k).badge;
+  const _plBg = (k) => _plOf(k).bg;
+  const _plFg = (k) => _plOf(k).fg;
+  function _plTexto(m) {
+    const pct = (m.plateauPct === null || m.plateauPct === undefined) ? '' : ` (${m.plateauPct > 0 ? '+' : ''}${m.plateauPct}%)`;
+    if (m.plateauKind === 'retroceso') {
+      return `🔻 <b>Vienes bajando${pct}:</b> no es falta de variedad, es que la carga está cediendo. Revisa primero sueño, fatiga y cuánto estás acumulando esta semana; si todo eso está bien, baja el peso y vuelve a construir desde ahí.`;
+    }
+    if (m.plateauKind === 'caida') {
+      return `❗ <b>La última sesión se cayó${pct}</b> respecto a las anteriores, aunque la tendencia venía bien. Si fue a propósito (descarga, cambio de enfoque), todo en orden; si no, vale la pena recordar qué pasó ese día.`;
+    }
+    return `⚠️ <b>Estancado${pct}:</b> ${m.mode === 'tiempo' || m.mode === 'reps' ? 'sin marca nueva en tus últimas 4 sesiones.' : 'la carga no se movió en las últimas sesiones.'} Cambia el estímulo (rango de repeticiones, descanso o variante) para romperlo.`;
+  }
+
   // Mini-gráfica de progreso. La línea escala con el ancho de la tarjeta (el
   // trazo mantiene su grosor), y el punto de la última sesión es un div aparte
   // para que no se deforme al estirar el SVG.
@@ -140,7 +164,7 @@ const Exercises = (() => {
              <div style="display:none;width:100%;height:100%;align-items:center;justify-content:center;font-size:32px">🏋️</div>`
           : `<div style="font-size:32px;opacity:0.4">🏋️</div>`}
         ${hasVideo ? `<div style="position:absolute;top:8px;right:8px;background:var(--bg-overlay);border-radius:8px;padding:4px 8px;font-size:10px;display:flex;align-items:center;gap:4px">▶ video</div>` : ''}
-        ${m && m.plateau ? `<div style="position:absolute;top:8px;left:8px;background:rgba(245,158,11,0.18);color:#F59E0B;border-radius:8px;padding:4px 8px;font-size:10px;font-weight:600">⚠️ Meseta</div>` : ''}
+        ${m && m.plateau ? `<div style="position:absolute;top:8px;left:8px;background:${_plBg(m.plateauKind)};color:${_plFg(m.plateauKind)};border-radius:8px;padding:4px 8px;font-size:10px;font-weight:600">${_plBadge(m.plateauKind)}</div>` : ''}
       </div>
 
       <div style="padding:14px">
@@ -252,7 +276,7 @@ const Exercises = (() => {
           ${cell('Mejor', _valTxt(m, m.best), m.best ? Utils.formatDateShort(m.best.date) : '')}
           ${cell('Desde la 1ª', m.changePct === null ? '—' : (m.changePct > 0 ? '+' : '') + m.changePct + '%', tr ? `${tr[0]} ${tr[1]}` : 'pocas sesiones', m.changePct > 0 ? 'var(--accent)' : m.changePct < 0 ? 'var(--danger)' : 'var(--text-1)')}
         </div>
-        ${m.plateau ? `<div style="margin-bottom:12px;padding:10px 12px;border-radius:10px;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);font-size:12px;line-height:1.5">⚠️ <b>En meseta:</b> ${m.mode === 'tiempo' || m.mode === 'reps' ? 'sin marca nueva en tus últimas 4 sesiones.' : 'tu progreso se frenó en las últimas sesiones.'} Cambia el estímulo (rango de repeticiones, descanso o variante) para romperla.</div>` : ''}
+        ${m.plateau ? `<div style="margin-bottom:12px;padding:10px 12px;border-radius:10px;background:${_plBg(m.plateauKind)};border:1px solid ${_plFg(m.plateauKind)}55;font-size:12px;line-height:1.5">${_plTexto(m)}</div>` : ''}
         <div style="font-size:11px;color:var(--text-3);margin-bottom:6px">${m.metricLabel} por sesión${m.higherIsBetter ? '' : ' · <b>menos asistencia = más arriba = mejor</b>'}</div>
         <div style="position:relative;height:170px"><canvas id="ex-detail-chart"></canvas></div>
         <div style="margin-top:12px">

@@ -49,10 +49,20 @@ const OfflineQueue = (() => {
 
     _flushing = true;
     let synced = 0, failed = 0;
+    // ESTE era el agujero por el que se perdían los festejos: la
+    // respuesta de cada reenvío se tiraba a la basura, y adentro venían
+    // los logros que el backend acababa de otorgar. El Sheet quedaba
+    // correcto (por eso sí aparecían en la lista de logros) pero la
+    // celebración nunca se disparaba, porque nadie leyó esa respuesta.
+    const logros = [];
     try {
       for (const item of arr) {
         try {
-          await API.rawPost(item.params);
+          const res = await API.rawPost(item.params);
+          if (res && Array.isArray(res.newAchievements)) logros.push(...res.newAchievements);
+          if (res && res.achievementsError) {
+            console.error('[Logros] el servidor falló al revisarlos:', res.achievementsError);
+          }
           remove(item.id);
           synced++;
         } catch(e) {
@@ -64,7 +74,7 @@ const OfflineQueue = (() => {
     }
     if (synced > 0) API.clearCache();
     _updateBadge();
-    return { synced, failed };
+    return { synced, failed, newAchievements: logros };
   }
 
   function _updateBadge() {
@@ -84,9 +94,19 @@ const OfflineQueue = (() => {
 })();
 
 // ── AUTO-SYNC ──────────────────────────────────────────────────────────
+// Los logros que vinieron en los reenvíos se festejan igual que si la
+// sesión se hubiera guardado al primer intento — con un respiro, para
+// que no caigan encima del aviso de sincronización.
+function _celebrarPendientes(res) {
+  if (!res || !res.newAchievements || !res.newAchievements.length) return;
+  if (typeof RecordCelebration === 'undefined') return;
+  setTimeout(() => RecordCelebration.checkNewAchievements(res.newAchievements), 900);
+}
+
 window.addEventListener('online', async () => {
   OfflineQueue.updateBadge();
   const res = await OfflineQueue.flush();
+  _celebrarPendientes(res);
   if (res.synced > 0) {
     Toast.success(`${res.synced} registro(s) sincronizado(s) con tu Sheet 🎉`);
     // Si estamos viendo una página con datos, refresca la vista
@@ -105,5 +125,7 @@ window.addEventListener('offline', () => {
 
 document.addEventListener('DOMContentLoaded', () => {
   OfflineQueue.updateBadge();
-  if (navigator.onLine) OfflineQueue.flush();
+  // Al abrir la app también: si la sesión de ayer se quedó en la cola,
+  // es AQUÍ donde se sube — y donde se debía el festejo.
+  if (navigator.onLine) OfflineQueue.flush().then(_celebrarPendientes);
 });

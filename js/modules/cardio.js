@@ -965,6 +965,13 @@ const Cardio = (() => {
         _showCardioSummary(payload, false, protocolDay, result.weather, result.newAchievements || []);
         // Igual que en workout.js — un duplicado detectado por el
         // backend ya tuvo su celebración en el guardado original.
+        // Si el motor de logros tronó en el servidor, se dice. Antes
+        // esto era silencio absoluto y se veía igual que no haber
+        // ganado nada — tres rondas de este bug salieron de ahí.
+        if (result.achievementsError) {
+          console.error('[Logros] el servidor falló al revisarlos:', result.achievementsError);
+          Toast.warning('No se pudieron revisar los logros — corre diagnosticoLogros() en Apps Script');
+        }
         if (!result.duplicate) {
           RecordCelebration.checkNewAchievements(result.newAchievements);
           RecordCelebration.checkCardio(stats);
