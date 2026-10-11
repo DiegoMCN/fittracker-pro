@@ -28,6 +28,42 @@ const Metrics = (() => {
     return `⚠️ estancado${pct} en ${p.sessions} sesiones`;
   };
 
+  // Mejor kilómetro por tipo de sesión. El orden va de donde el pace SÍ
+  // significa algo (zona 2, carrera continua) a donde no (sprint, que son
+  // ráfagas con caminata entre ellas), y cada fila dice cuál es cuál.
+  const _PROTO_ORDEN = ['zona2', 'hit', 'sprint', 'otro'];
+  function _bestSplitHTML() {
+    const b = _bestSplit;
+    if (!b || !b.found || !b.byProtocol) return '';
+    const esc = Utils.escapeHtml;
+    const filas = Object.keys(b.byProtocol)
+      .sort((x, y) => _PROTO_ORDEN.indexOf(x) - _PROTO_ORDEN.indexOf(y))
+      .map(k => {
+        const v = b.byProtocol[k];
+        return `<div style="display:flex;align-items:baseline;gap:10px;padding:7px 0;border-top:1px solid var(--border)">
+          <div style="font-size:19px;font-weight:800;color:${v.meaningful ? 'var(--accent)' : 'var(--text-2)'};min-width:62px">${esc(v.pace)}</div>
+          <div style="flex:1;font-size:11px;color:var(--text-3);line-height:1.45">
+            <b style="color:var(--text-2)">${esc(v.label)}</b> · ${v.kmh} km/h · ${Utils.formatDate(v.date)}${v.fcAvg ? ` · FC ${v.fcAvg}bpm` : ''}
+            ${v.meaningful ? '' : '<br><span style="color:var(--text-4)">aquí un km es ráfaga + caminata: sirve para compararte contigo, no como velocidad</span>'}
+          </div>
+        </div>`;
+      }).join('');
+    return `<div class="card section" style="margin-bottom:24px">
+      <div class="card-header">
+        <div>
+          <div class="card-title">⚡ Mejor kilómetro por tipo de sesión</div>
+          <div class="card-subtitle">Cada tipo se compara solo contra sí mismo</div>
+        </div>
+        ${_infoBtn('record_km')}
+      </div>
+      ${filas}
+      <div style="margin-top:10px;font-size:10px;color:var(--text-4);line-height:1.5">
+        Tu meta de 20 km/h no se mide aquí: ninguna de estas sesiones es una contrarreloj de un kilómetro.
+        Se mide con tu velocidad máxima de sprint técnico, en Proyección de metas.
+      </div>
+    </div>`;
+  }
+
   let _muscleWindows = [];      // ventanas de 7 días con series por ejercicio (getMuscleWeeklySets)
   let _muscleWindowMode = 'w0'; // w0 = últimos 7 días, w1 = 7 días previos, avg = promedio 4 semanas
   let _muscleCharts = [];       // instancias de BodyChart (frente y espalda)
@@ -291,27 +327,17 @@ const Metrics = (() => {
           ${_renderExerciseRecords()}
         </div>
 
-        <!-- Récord de kilómetro más rápido — de toda la historia, no
-             solo de la sesión completa. Directamente ligado a la meta
-             de 20km/h: un split suelto puede ser tu velocidad real. -->
-        ${_bestSplit && _bestSplit.found ? `
-        <div class="card card-accent section" style="margin-bottom:24px">
-          <div class="card-header">
-            <div class="card-title">⚡ Kilómetro más rápido</div>
-            ${_infoBtn('record_km')}
-          </div>
-          <div style="display:flex;align-items:center;gap:16px">
-            <div style="text-align:center;flex-shrink:0">
-              <div style="font-size:28px;font-weight:800;color:var(--accent)">${_bestSplit.pace}</div>
-              <div style="font-size:10px;color:var(--text-3)">min/km</div>
-            </div>
-            <div style="flex:1;font-size:11px;color:var(--text-3)">
-              ${Utils.formatDate(_bestSplit.date)} · Km ${_bestSplit.splitNum}${_bestSplit.distanceKm < 1 ? ` (${_bestSplit.distanceKm}km)` : ''}
-              ${_bestSplit.fcAvg ? ` · FC ${_bestSplit.fcAvg}bpm` : ''}
-              <br>Equivale a ${Math.round((60/(_bestSplit.paceSec/60))*10)/10} km/h — ${_bestSplit.paceSec <= 180 ? 'ya al ritmo de tu meta de 20km/h 🎯' : `te faltan ${Utils.formatNum(_bestSplit.paceSec - 180, 0)}seg/km para tu meta`}
-            </div>
-          </div>
-        </div>` : ''}
+        <!-- Mejor kilómetro POR TIPO DE SESIÓN. Antes era un solo
+             "récord" de toda la historia comparado contra la meta de
+             20km/h, y salía de sprint técnico: 8.1 km/h, con el texto
+             "te faltan 266 seg/km". Pero en sprint un kilómetro es el
+             promedio de ráfagas de 20 seg + caminata, no una velocidad.
+             Ninguna de sus sesiones es contrarreloj de 1 km, así que no
+             hay récord que dar: hay un mejor kilómetro DENTRO de cada
+             tipo, que sí se compara contra sí mismo. Su meta de
+             velocidad se mide con la velocidad máxima del sprint
+             técnico, en Proyección de metas. -->
+        ${_bestSplitHTML()}
 
         <!-- Distribución de volumen por grupo muscular — sí es un "parte del
              todo" real, por eso aquí sí tiene sentido usar pastel/dona -->
@@ -627,7 +653,7 @@ const Metrics = (() => {
     mapa_calor: { title: '🗓️ Intensidad del último año', desc: 'Un cuadrito por día, más oscuro entre más entrenaste — la vista completa de qué tan consistente has sido en el año.' },
     zonas_cardio: { title: '💓 Distribución de zonas de cardio', desc: 'Cuánto tiempo total has pasado en cada zona de frecuencia cardíaca — te dice si tu cardio es mayormente base aeróbica o puro esfuerzo alto.' },
     balance_muscular: { title: '🕸️ Balance muscular', desc: 'Tu volumen relativo por grupo muscular en forma de radar — fácil de comparar entre grupos y ver si alguno se quedó atrás.' },
-    record_km: { title: '⚡ Kilómetro más rápido', desc: 'Tu mejor kilómetro de toda tu historia, sin importar en qué sesión haya pasado — un split suelto dentro de una carrera larga puede ser tu velocidad real más alta.' },
+    record_km: { title: '⚡ Mejor kilómetro por tipo de sesión', desc: 'Tu mejor kilómetro DENTRO de cada tipo de sesión, porque entre tipos no son comparables: en sprint técnico un "kilómetro" es el promedio de ráfagas de 20 segundos más la caminata entre ellas, en HIT es intervalos, y en zona 2 corres lento a propósito. Antes esto era un solo récord de toda tu historia comparado contra tu meta de 20 km/h, y salía de sprint técnico: te decía 8.1 km/h cuando tu velocidad real de sprint es 17.4. Tu meta de velocidad se mide con la velocidad máxima del sprint técnico, en Proyección de metas.' },
   };
 
   function showInsight(key) {

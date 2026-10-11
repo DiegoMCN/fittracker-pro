@@ -620,7 +620,12 @@ const History = (() => {
           <div class="input-row">
             <div class="input-group" style="flex:1">
               <label class="input-label">Al terminar</label>
-              <input class="input" type="number" id="ce-fcpost0" placeholder="opcional">
+              <!-- Precargado: antes salía siempre vacío (FC_Post0 no se
+                   guardaba), y al enviar el formulario la recuperación
+                   se recalculaba con la fórmula vieja de 1→2 min,
+                   pisando el valor bueno. En la sesión del 8 de octubre
+                   pasaba de −22 a −7 con solo editar las notas. -->
+              <input class="input" type="number" id="ce-fcpost0" placeholder="opcional" value="${s.fcPost0 || ''}">
             </div>
             <div class="input-group" style="flex:1">
               <label class="input-label">1 min</label>

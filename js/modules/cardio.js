@@ -12,17 +12,84 @@ const Cardio = (() => {
   const EFFORT_COLOR = { easy: 'var(--z2)', moderate: 'var(--z3)', max: 'var(--z5)', z2: 'var(--z2)' };
   const EFFORT_LABEL = { easy: 'Suave', moderate: 'Moderado', max: 'MÁXIMO', z2: 'Zona 2' };
 
-  // Ritmo sugerido del metrónomo — arranca cerca de tu cadencia base
-  // real y sube progresivamente semana a semana hacia la meta del
-  // programa (170 spm), sin pasarse. Es un algoritmo simple a propósito:
-  // rampa lineal acotada, fácil de ajustar si el ritmo se siente mal.
+  // ── RITMO DEL METRÓNOMO ───────────────────────────────────────────
+  // Antes salía de una rampa: BASELINE.cadenceAvg (109 spm, medidos en
+  // marzo) + 4 spm por semana del programa. En la semana 7 eso daba 133
+  // spm, cuando su promedio real ya era 147 y sus picos llegan a 182.
+  // La app le pedía correr MÁS LENTO de lo que corre solo — un número
+  // con forma de dato que no medía nada.
+  //
+  // Ahora el objetivo lo calcula el backend con su historial real (ver
+  // getCadenceTarget en 03_Metricas.gs): un escalón arriba de su
+  // promedio reciente, sin pasar la meta ni pedirle más de lo que ya
+  // demostró. Se guarda en el teléfono para que una sesión sin señal
+  // arranque con el último objetivo conocido en vez de con el inventado.
+  let _cadTarget = null;
+  const CAD_CACHE_KEY = 'fittracker_cadence_target';
+
+  function _loadCadenceTarget() {
+    try {
+      const raw = localStorage.getItem(CAD_CACHE_KEY);
+      if (raw) _cadTarget = JSON.parse(raw);
+    } catch (e) {}
+    // No bloquea el render: si llega después, el siguiente render lo usa.
+    API.getCadenceTarget?.().then(t => {
+      if (!t || !t.target) return;
+      _cadTarget = t;
+      try { localStorage.setItem(CAD_CACHE_KEY, JSON.stringify(t)); } catch (e) {}
+      // Si la sesión no arrancó todavía, se actualiza el ritmo propuesto.
+      if (state && !state.started) { state.metronome.bpm = t.target; _renderPicker(document.getElementById('page-content')); }
+    }).catch(() => {});
+  }
+
+  // De dónde sale el número, en una línea. Un objetivo sin explicación
+  // es indistinguible de un número inventado — y durante siete semanas
+  // este número FUE inventado, así que ahora se muestra el porqué.
+  function _cadWhy() {
+    const t = _cadTarget;
+    if (!t || !t.avg) return 'objetivo del programa';
+    const esc = (s) => Utils.escapeHtml(String(s));
+    const base = `tu promedio va en ${esc(t.avg)}`;
+    if (t.canReachGoal) return `${base} · ya picas a ${esc(t.peak)}, falta sostenerlo`;
+    return `${base} · meta ${esc(t.goal)}`;
+  }
+
+  // Lo PEDIDO contra lo LOGRADO, al cerrar la sesión. Esta es la lectura
+  // que faltaba: la app ya guardaba la cadencia promedio, pero sin con
+  // qué compararla no decía si la señal externa sirvió de algo.
+  function _cadVerdictHTML(payload) {
+    const min = Number(payload.metronomeMin) || 0;
+    const bpm = Number(payload.metronomeBpm) || 0;
+    const logrado = Number(payload.cadAvg) || 0;
+    if (!min || !bpm) return '';
+    const dif = logrado ? logrado - bpm : null;
+    let linea, color;
+    if (dif === null) {
+      linea = `Corriste <b>${min} min</b> con el metrónomo a <b>${bpm} spm</b>. Captura tu cadencia promedio para ver qué tanto lo sostuviste.`;
+      color = 'var(--text-3)';
+    } else if (dif >= -3) {
+      linea = `Corriste <b>${min} min</b> con el metrónomo en <b>${bpm} spm</b> y promediaste <b>${logrado}</b>. Lo sostuviste — la próxima sube el metrónomo.`;
+      color = 'var(--accent)';
+    } else if (dif >= -10) {
+      linea = `Corriste <b>${min} min</b> con el metrónomo en <b>${bpm} spm</b> y promediaste <b>${logrado}</b>: te quedaste ${Math.abs(dif)} spm abajo. Vas cerca; repite este ritmo antes de subirlo.`;
+      color = 'var(--warning)';
+    } else {
+      linea = `Corriste <b>${min} min</b> con el metrónomo en <b>${bpm} spm</b> y promediaste <b>${logrado}</b>: ${Math.abs(dif)} spm abajo. El ritmo quedó alto para sostenerlo — bájalo y constrúyelo desde ahí.`;
+      color = 'var(--danger)';
+    }
+    return `<div class="card" style="margin-bottom:20px;text-align:left;border-color:${color}55">
+      <div style="font-size:10px;color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">🥁 Cadencia: pedido vs. logrado</div>
+      <div style="font-size:12px;line-height:1.5;color:var(--text-2)">${linea}</div>
+    </div>`;
+  }
+
   function _suggestedCadenceBpm() {
-    const base = CONFIG.BASELINE?.cadenceAvg || 109;
-    const target = CONFIG.GOALS?.cadence?.target || 170;
-    const week = CONFIG.CURRENT_PHASE?.currentWeek || 1;
-    const weeklyIncrement = 4; // spm que se le pide subir por semana
-    const suggested = base + (week - 1) * weeklyIncrement;
-    return Math.round(Math.min(suggested, target));
+    if (_cadTarget && _cadTarget.target) return Math.round(_cadTarget.target);
+    // Sin objetivo del servidor ni caché: se usa la meta menos un margen
+    // prudente, no la línea base de marzo. Vale más quedarse corto en un
+    // caso raro que pedirle correr más lento de lo que ya corre.
+    const meta = CONFIG.GOALS?.cadence?.target || 170;
+    return Math.round(meta - 15);
   }
 
   function _freshState(protocolKey) {
@@ -38,12 +105,49 @@ const Cardio = (() => {
       paused: false,
       // Datos manuales que Diego captura post-sesión (desde su Apple Watch)
       manualStats: { fcAvg:'', fcPeak:'', fcPost1:'', fcPost2:'', cadAvg:'', cadPeak:'', velMax:'', distance:'' },
-      metronome: { active: false, bpm: _suggestedCadenceBpm() },
+      // `segments` acumula a qué ritmo llevó el metrónomo y cuántos segundos.
+      // Es lo que después permite comparar lo que la app le PIDIÓ contra
+      // la cadencia que de verdad LOGRÓ, sin pedirle capturar nada extra.
+      metronome: { active: false, bpm: _suggestedCadenceBpm(), segments: [], onSince: null },
     };
+  }
+
+  // ── CONTABILIDAD DEL METRÓNOMO ────────────────────────────────────
+  // El sostén es el problema real (sus picos ya pasan 170, su promedio
+  // no), así que importa cuánto tiempo corrió con la señal puesta.
+  function _cadOn() {
+    if (!state || state.metronome.onSince) return;
+    state.metronome.onSince = Date.now();
+  }
+  function _cadOff() {
+    if (!state || !state.metronome.onSince) return;
+    const sec = Math.round((Date.now() - state.metronome.onSince) / 1000);
+    state.metronome.onSince = null;
+    if (sec < 5) return;   // un toque accidental no es un segmento
+    const last = state.metronome.segments[state.metronome.segments.length - 1];
+    if (last && last.bpm === state.metronome.bpm) last.sec += sec;
+    else state.metronome.segments.push({ bpm: state.metronome.bpm, sec });
+  }
+
+  // Resumen para guardar: minutos totales con el metrónomo puesto y el
+  // ritmo promedio ponderado por tiempo (no el último que quedó en
+  // pantalla, que es lo que se vería si solo guardáramos state.bpm).
+  function _cadSummary() {
+    if (!state || !state.metronome) return { min: 0, bpm: null };
+    const segs = state.metronome.segments.slice();
+    if (state.metronome.onSince) {
+      const sec = Math.round((Date.now() - state.metronome.onSince) / 1000);
+      if (sec >= 5) segs.push({ bpm: state.metronome.bpm, sec });
+    }
+    const totalSec = segs.reduce((t, s) => t + s.sec, 0);
+    if (!totalSec) return { min: 0, bpm: null };
+    const ponderado = segs.reduce((t, s) => t + s.bpm * s.sec, 0) / totalSec;
+    return { min: Math.round(totalSec / 60 * 10) / 10, bpm: Math.round(ponderado) };
   }
 
   // ── INIT ──────────────────────────────────────────────────────────────
   function init(container) {
+    _loadCadenceTarget();
     if (state && state.started && !state.finished) { _renderActive(); return; }
     _pickerShouldStagger = true;
     _renderPicker(container);
@@ -404,6 +508,7 @@ const Cardio = (() => {
             <div style="text-align:left">
               <div style="font-size:10px;color:var(--text-3);font-weight:600;text-transform:uppercase;letter-spacing:.05em">🥁 Metrónomo de cadencia</div>
               <div style="font-size:20px;font-weight:800;color:${state.metronome.active ? 'var(--accent)' : 'var(--text-1)'}">${state.metronome.bpm}<span style="font-size:11px;color:var(--text-3);font-weight:500"> spm</span></div>
+              <div style="font-size:9px;color:var(--text-4);line-height:1.4">${_cadWhy()}</div>
             </div>
           </div>
           <div style="display:flex;align-items:center;gap:6px">
@@ -449,13 +554,13 @@ const Cardio = (() => {
     Sounds.click();
     if (state.paused) {
       Toast.warning('Pausado'); WakeLock.release();
-      if (state.metronome.active) _stopMetronome(); // se pausa junto con la sesión
+      if (state.metronome.active) { _cadOff(); _stopMetronome(); } // se pausa junto con la sesión
     } else {
       // Al reanudar, recalcula la hora de fin con el tiempo que quedaba
       // congelado — no sigue contando desde donde se pausó en reloj real.
       state.phaseEndAt = Date.now() + state.phaseRemaining * 1000;
       Toast.success('Reanudado'); WakeLock.request();
-      if (state.metronome.active) _startMetronomeTicking();
+      if (state.metronome.active) { _cadOn(); _startMetronomeTicking(); }
     }
     _renderActive();
   }
@@ -464,15 +569,18 @@ const Cardio = (() => {
   function toggleMetronome() {
     state.metronome.active = !state.metronome.active;
     Sounds.click();
-    if (state.metronome.active) _startMetronomeTicking();
-    else _stopMetronome();
+    if (state.metronome.active) { _cadOn(); _startMetronomeTicking(); }
+    else { _cadOff(); _stopMetronome(); }
     _renderActive();
   }
 
   function adjustMetronome(delta) {
+    // Se cierra el segmento con el ritmo VIEJO antes de cambiarlo: si no,
+    // los minutos corridos a 155 se contarían al ritmo nuevo.
+    if (state.metronome.active) _cadOff();
     state.metronome.bpm = Math.max(60, Math.min(220, state.metronome.bpm + delta));
     Sounds.click();
-    if (state.metronome.active) _startMetronomeTicking(); // reinicia con el nuevo ritmo
+    if (state.metronome.active) { _cadOn(); _startMetronomeTicking(); } // reinicia con el nuevo ritmo
     _renderActive();
   }
 
@@ -506,10 +614,54 @@ const Cardio = (() => {
     metronomeInterval = null;
   }
 
+  // ── ¿AGUANTÓ EL HIT COMPLETO? ─────────────────────────────────────
+  // Esta es LA métrica del HIT: la matriz es 10/15/25 min × nivel 0 a 5,
+  // y el éxito es aguantarlo entero. Y la app nunca lo guardó: skipPhase
+  // solo avanzaba con un toast, así que saltarse 8 de 10 fases se veía
+  // idéntico a terminarlas. Ahora se cuenta.
   function skipPhase() {
     Sounds.click();
+    const ph = state.protocol.phases[state.phaseIdx];
+    // Segundos que le quedaban a la fase cuando la saltó: es la medida
+    // real de cuánto se dejó sin hacer, no "una fase menos".
+    state.skipped = state.skipped || [];
+    state.skipped.push({
+      idx: state.phaseIdx,
+      effort: ph ? ph.effort : '',
+      left: Math.max(0, Math.round(state.phaseRemaining)),
+    });
+    if (state.metronome.active) _cadOff();   // el segmento se cierra aquí
     state.phaseEndAt = Date.now(); // se resuelve en el próximo tick
     Toast.show('Saltando fase...', 'info', 1200);
+    if (state.metronome.active) _cadOn();
+  }
+
+  // Resumen de qué tanto del protocolo completó. Se calcula con los
+  // segundos planeados contra los que de verdad corrió, no con el conteo
+  // de fases: saltarse 10 segundos de caminata no es lo mismo que
+  // saltarse un intervalo máximo de 60.
+  function _hitCompletion() {
+    if (!state || !state.protocol || !state.protocol.phases) return null;
+    const fases = state.protocol.phases;
+    const planSeg = fases.reduce((s, p) => s + (Number(p.duration) || 0), 0);
+    const saltadas = state.skipped || [];
+    const perdidoSeg = saltadas.reduce((s, x) => s + x.left, 0);
+    // Fases duras saltadas: las "max" son las que de verdad cuestan, y
+    // saltarse una dice algo muy distinto a saltarse un descanso.
+    const durasSaltadas = saltadas.filter(x => x.effort === 'max').length;
+    const hechoSeg = Math.max(0, planSeg - perdidoSeg);
+    return {
+      planMin: Math.round(planSeg / 60 * 10) / 10,
+      hechoMin: Math.round(hechoSeg / 60 * 10) / 10,
+      pct: planSeg > 0 ? Math.round((hechoSeg / planSeg) * 100) : null,
+      fasesPlan: fases.length,
+      fasesSaltadas: saltadas.length,
+      durasSaltadas,
+      // "Completo" con tolerancia: 2% del protocolo (12 seg en uno de 10
+      // min) cubre el margen de pulsar el botón, sin perdonar un
+      // intervalo entero.
+      completo: planSeg > 0 && perdidoSeg <= planSeg * 0.02 && durasSaltadas === 0,
+    };
   }
 
   function discardSession() {
@@ -907,6 +1059,11 @@ const Cardio = (() => {
       velMax: val('cs-velmax'), velProm: val('cs-velprom'), distance,
       caloriasActivas: val('cs-cal-active'), caloriasTotales: val('cs-cal-total'), paceProm: val('cs-pace'),
       splits: _collectSplits(),
+      // A qué ritmo llevó el metrónomo y cuánto tiempo. No se le pide
+      // capturar nada: la app ya lo sabe porque ella puso el metrónomo.
+      metronome: _cadSummary(),
+      // Si aguantó el protocolo completo. En HIT es LA métrica.
+      completion: _hitCompletion(),
       notes: val('cs-notes'),
     });
   }
@@ -942,6 +1099,11 @@ const Cardio = (() => {
       caloriasTotales: stats.caloriasTotales || '',
       paceProm: stats.paceProm || '',
       splits: stats.splits || [],
+      metronomeMin: (stats.metronome && stats.metronome.min) || '',
+      metronomeBpm: (stats.metronome && stats.metronome.bpm) || '',
+      completo: stats.completion ? (stats.completion.completo ? 'sí' : 'no') : '',
+      completoPct: stats.completion ? stats.completion.pct : '',
+      fasesSaltadas: stats.completion ? stats.completion.fasesSaltadas : '',
       notes: stats.notes || '',
     };
 
@@ -1027,6 +1189,8 @@ const Cardio = (() => {
             <div class="metric-value" style="color:var(--purple-light)">${payload.cadAvg}<span class="metric-unit">spm</span></div>
           </div>` : ''}
         </div>
+
+        ${_cadVerdictHTML(payload)}
 
         ${(protocolDay != null && CONFIG.PLAN_EXERCISES?.[protocolDay]?.length > 0) ? `
         <button class="btn btn-primary btn-lg animate-pulse-glow" style="width:100%;margin-bottom:12px" onclick="Workout.quickStartDay(${protocolDay})">

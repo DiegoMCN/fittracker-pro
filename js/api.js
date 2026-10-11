@@ -191,6 +191,7 @@ const API = (() => {
       getMusicLog: { entries: [], missing: true },
       getFormAdvice: { advice: [], missing: true },
       getContextoAudit: { total: 0, bloques: [], porEstado: {} },
+      getCadenceTarget: { target: 155, avg: null, peak: null, goal: 170, sessions: 0, source: 'sin_datos' },
       saveMusicLog: { success: false, error: 'Sin conexión con el servidor' },
       getFormModel: null,
       interpretFormScenario: { success: false, cause: { message: 'Sin conexión con el servidor' } },
@@ -502,6 +503,9 @@ const API = (() => {
     // Qué sabe la app y qué de eso le llega hoy a la IA. Lo lee
     // Configuración; sirve cuando un consejo ignora algo que sí existe.
     getContextoAudit: () => _fetch({ action: 'getContextoAudit' }, { useCache: false }),
+    // Objetivo de cadencia para el metrónomo, calculado de su historial
+    // real (antes era una rampa sobre una línea base de marzo).
+    getCadenceTarget: () => _fetch({ action: 'getCadenceTarget' }),
     // El lote de canciones de una sesión. Se encola si no hay señal,
     // igual que cualquier otra escritura — el registro sobrevive a
     // guardar la sesión sin conexión.
