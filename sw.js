@@ -46,7 +46,6 @@ const APP_SHELL = [
   './js/modules/metrics.js',
   './js/modules/profile.js',
   './js/modules/configuracion.js',
-  './js/modules/import.js',
   './js/modules/coach.js',
   './js/modules/nutricion.js',
   './js/modules/calendario.js',

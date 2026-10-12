@@ -340,6 +340,13 @@ const Spotify = (() => {
       name: t.name,
       artist: (t.artists || []).map(a => a.name).join(', '),
       ms: t.duration_ms,
+      // La carátula YA viene en la respuesta de "qué suena ahora" y se
+      // estaba tirando. Guardarla cuesta cero llamadas de más, y sin
+      // ella la tarjeta de música no puede enseñar portadas: pedirlas
+      // después obliga a preguntarle a Spotify canción por canción.
+      // Se toma la imagen más chica del álbum — es una miniatura.
+      cover: (t.album && t.album.images && t.album.images.length)
+        ? t.album.images[t.album.images.length - 1].url : null,
       kind: ctx.kind,
       day: (typeof ctx.day === 'number') ? ctx.day : new Date().getDay(),
       protocol: ctx.protocol || null,

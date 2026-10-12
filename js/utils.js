@@ -542,7 +542,6 @@ const Router = (() => {
         exercises: { title: 'Ejercicios', sub: 'Catálogo y cargas' },
         perfil:    { title: 'Perfil', sub: 'Datos básicos y composición corporal' },
         config:    { title: 'Configuración', sub: 'Preferencias de la app' },
-        import:    { title: 'Importar CSV', sub: 'Carga masiva desde Apple Watch' },
       };
       const info = titles[page] || { title: page, sub: '' };
       const ttl  = document.getElementById('topbar-title');

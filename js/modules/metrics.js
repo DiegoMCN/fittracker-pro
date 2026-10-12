@@ -11,6 +11,11 @@ const Metrics = (() => {
   let _exerciseProgress = [];
   let _volumeByGroup = [];
   let _goalProjections = { goals: {}, targets: {} };
+  // Qué forma tiene la tarjeta de distribución de volumen: 'dona' o
+  // 'arana'. Se recuerda entre visitas porque es preferencia de lectura,
+  // no un estado de los datos. Si localStorage no está disponible
+  // (ventana privada), arranca en dona y ya.
+  let _volShape = (() => { try { return localStorage.getItem('ft_vol_shape') === 'arana' ? 'arana' : 'dona'; } catch (e) { return 'dona'; } })();
   // true SOLO en la carga inicial — setExerciseFilter/setExerciseViewMode
   // también llaman render() completo (solo cambia una sección, pero no
   // hay un render dirigido para esa parte sola), y sin esto CADA
@@ -157,9 +162,9 @@ const Metrics = (() => {
             <div class="metric-delta ${bestRec.value <= -10 ? 'up' : 'flat'}">${bestRec.date ? Utils.formatDateShort(bestRec.date) : 'objetivo: -20'}</div>
           </div>
           <div class="metric-card">
-            <div class="metric-label">Pico de cadencia</div>
+            <div class="metric-label">Pico típico de cadencia</div>
             <div class="metric-value" style="color:var(--purple-light)">${bestCad.value ?? '—'}<span class="metric-unit">spm</span></div>
-            <div class="metric-delta flat">${bestCad.date ? Utils.formatDateShort(bestCad.date) : 'objetivo: 170+'}</div>
+            <div class="metric-delta flat">${bestCad.value ? 'mediana de tus sprints' : 'objetivo: 170+'}</div>
           </div>
           <div class="metric-card">
             <div class="metric-label">Sesiones totales</div>
@@ -168,11 +173,14 @@ const Metrics = (() => {
           </div>
         </div>
 
-        <!-- Métricas corporales (velocidad, dominadas, cadencia, dead hang) -->
+        <!-- Marcas de rendimiento: velocidad, dominadas, cadencia, dead
+             hang, plancha. Se llamaba "Métricas corporales", pero de
+             corporal no tiene nada — eso es la composición corporal y
+             vive en Perfil. Esto es lo que RINDES. -->
         <div class="card section" style="margin-bottom:24px">
           <div class="card-header">
             <div>
-              <div class="card-title">Métricas corporales</div>
+              <div class="card-title">Tus marcas</div>
               <div class="card-subtitle">${_metricsHistory.length ? `Se llena sola con tus sesiones · último dato: ${Utils.formatDate(_metricsHistory[0].date)}` : 'Sin registros todavía'}</div>
             </div>
             ${_infoBtn('perf_trend')}
@@ -343,8 +351,16 @@ const Metrics = (() => {
              técnico, en Proyección de metas. -->
         ${_bestSplitHTML()}
 
-        <!-- Distribución de volumen por grupo muscular — sí es un "parte del
-             todo" real, por eso aquí sí tiene sentido usar pastel/dona -->
+        <!-- Distribución de volumen — UNA tarjeta con dos vistas.
+             Antes eran dos tarjetas separadas, la dona aquí y un radar
+             de "balance muscular" 150 líneas abajo, dibujando EL MISMO
+             arreglo (_volumeByGroup) y preguntando lo mismo con otras
+             palabras. Ahora es un interruptor: mismos datos, dos formas
+             de verlos.
+             Ojo con lo que NO responde: "¿qué músculo se quedó atrás?"
+             se contesta en el Mapa muscular, que cuenta series efectivas
+             por MÚSCULO (1 al principal, 0.5 a los secundarios). Esto
+             cuenta kilos por la ETIQUETA del grupo, que es otra cosa. -->
         ${_volumeByGroup.length > 0 ? `
         <div class="card section" style="margin-bottom:24px">
           <div class="card-header">
@@ -352,10 +368,21 @@ const Metrics = (() => {
               <div class="card-title">🥧 Distribución de volumen</div>
               <div class="card-subtitle">De qué grupo muscular viene tu volumen total movido</div>
             </div>
-            ${_infoBtn('volumen_distribucion')}
+            <div style="display:flex;align-items:center;gap:8px">
+              ${_volumeByGroup.length >= 3 ? `
+              <div style="display:flex;background:var(--bg-input);border-radius:9px;padding:2px;gap:2px">
+                ${[['dona','🥧','Dona'],['arana','🕸️','Araña']].map(([k,ic,lab]) => `
+                  <button onclick="Metrics.setVolumeShape('${k}')" data-volshape="${k}" title="${lab}" style="
+                    all:unset;cursor:pointer;padding:4px 9px;border-radius:7px;font-size:12px;line-height:1.4;
+                    background:${_volShape === k ? 'var(--bg-card)' : 'transparent'};
+                    color:${_volShape === k ? 'var(--text-1)' : 'var(--text-3)'};
+                    font-weight:${_volShape === k ? '700' : '400'}">${ic}</button>`).join('')}
+              </div>` : ''}
+              ${_infoBtn('volumen_distribucion')}
+            </div>
           </div>
-          <div style="position:relative;height:220px;width:100%;overflow:hidden">
-            <canvas id="volume-distribution-chart"></canvas>
+          <div style="position:relative;height:${_volShape === 'arana' ? 280 : 220}px;width:100%;overflow:hidden">
+            <canvas id="volume-shape-chart"></canvas>
           </div>
         </div>
 
@@ -493,21 +520,6 @@ const Metrics = (() => {
           </div>
           <div style="position:relative;height:200px;width:100%;overflow:hidden">
             <canvas id="cardio-zones-chart"></canvas>
-          </div>
-        </div>` : ''}
-
-        <!-- Radar de balance muscular -->
-        ${_volumeByGroup.length >= 3 ? `
-        <div class="card section">
-          <div class="card-header">
-            <div>
-              <div class="card-title">🕸️ Balance muscular</div>
-              <div class="card-subtitle">Volumen relativo por grupo — ¿algún grupo se quedó atrás?</div>
-            </div>
-            ${_infoBtn('balance_muscular')}
-          </div>
-          <div style="position:relative;height:280px;width:100%;overflow:hidden">
-            <canvas id="muscle-radar-chart"></canvas>
           </div>
         </div>` : ''}
 
@@ -650,13 +662,20 @@ const Metrics = (() => {
     volumen: { title: '🏋️ Volumen', desc: 'El peso total que moviste por sesión (peso × repeticiones) — la tendencia de fondo de tu fuerza, más confiable que ver un solo ejercicio suelto.' },
     recuperacion: { title: '💚 Recuperación', desc: 'Qué tanto baja tu FC en los 2 minutos después de esforzarte — entre más baje, mejor está respondiendo tu corazón al entrenamiento.' },
     exercise_progress: { title: '📈 Progresión por ejercicio', desc: 'El peso (o 1RM estimado) de cada ejercicio a través de tus sesiones — toca cualquier mini-gráfica para ver el detalle completo de ese ejercicio.' },
-    volumen_distribucion: { title: '🥧 Distribución de volumen', desc: 'De qué grupo muscular viene tu volumen total — te dice si algún grupo está recibiendo mucho más (o menos) trabajo que los demás.', insightKey: 'volumen_distribucion' },
+    volumen_distribucion: { title: '🥧 Distribución de volumen', desc: 'De qué grupo muscular vienen los kilos que has movido. Dos formas de ver lo mismo: la dona para el reparto del total, la araña para comparar grupos de un vistazo. Ojo con lo que NO dice: esto cuenta kilos por la etiqueta del grupo, y 1,000 kg de prensa no son 1,000 kg de curl. Para saber qué músculo se quedó atrás, el Mapa muscular, que cuenta series efectivas por músculo.', insightKey: 'volumen_distribucion' },
     mapa_muscular: { title: '🧍 Mapa muscular', desc: 'Cada serie completada suma a los músculos que trabaja: 1 serie al principal, 0.5 a los secundarios. El nivel (0-10) es la suma de la semana dividida entre 2. Referencias: 3-4 = mantenimiento (6-9 series), 5-7 = zona productiva (10-15 series), 8-9 = productiva alta, 10 = 20+ series, vigila la recuperación. Toca un músculo para ver de qué ejercicios vino y cómo va contra la semana anterior.', insightKey: 'mapa_muscular' },
     acwr: { title: '⚖️ Carga de entrenamiento (ACWR)', desc: 'Compara la carga de tu última semana completa contra el promedio semanal de las 3 semanas anteriores. La carga de cada sesión es tu esfuerzo percibido (1-10) × los minutos, en fuerza Y cardio. Fuera del rango 0.8-1.3 es zona de riesgo de lesión. Necesita 4 semanas de historial para ser confiable: al empezar sale alto porque tu base todavía no existe.' },
     volumen_semanal: { title: '📊 Volumen semanal', desc: 'Tu volumen total por semana — la vista clásica de periodización, para ver si vas en fase de acumulación o de descarga.' },
     mapa_calor: { title: '🗓️ Intensidad del último año', desc: 'Un cuadrito por día, más oscuro entre más entrenaste — la vista completa de qué tan consistente has sido en el año.' },
     zonas_cardio: { title: '💓 Distribución de zonas de cardio', desc: 'Cuánto tiempo total has pasado en cada zona de frecuencia cardíaca — te dice si tu cardio es mayormente base aeróbica o puro esfuerzo alto.' },
-    balance_muscular: { title: '🕸️ Balance muscular', desc: 'Tu volumen relativo por grupo muscular en forma de radar — fácil de comparar entre grupos y ver si alguno se quedó atrás.' },
+    // 'balance_muscular' se quitó al unir el radar con la dona: era una
+    // tarjeta aparte dibujando el mismo arreglo, y el backend hasta le
+    // pedía a la IA "dale un ángulo distinto" para que no se repitiera
+    // con la otra. Lo que esa tarjeta decía responder — qué grupo se
+    // quedó atrás — lo contesta el Mapa muscular, que cuenta por
+    // músculo. La clave sigue viva en el backend y hay que retirarla de
+    // MODULE_INSIGHT_KEYS y del catálogo de 06_CoachIA, para dejar de
+    // gastar una llamada diaria a Gemini en una tarjeta que ya no está.
     record_km: { title: '⚡ Mejor kilómetro por tipo de sesión', desc: 'Tu mejor kilómetro DENTRO de cada tipo de sesión, porque entre tipos no son comparables: en sprint técnico un "kilómetro" es el promedio de ráfagas de 20 segundos más la caminata entre ellas, en HIT es intervalos, y en zona 2 corres lento a propósito. Antes esto era un solo récord de toda tu historia comparado contra tu meta de 20 km/h, y salía de sprint técnico: te decía 8.1 km/h cuando tu velocidad real de sprint es 17.4. Tu meta de velocidad se mide con la velocidad máxima del sprint técnico, en Proyección de metas.' },
   };
 
@@ -710,14 +729,13 @@ const Metrics = (() => {
     _chartVolume();
     _chartRecovery();
     _chartPerformanceTrend();
-    _chartVolumeDistribution();
+    _chartVolumeShape();
     _renderMuscleMap();
     _filteredExercises().forEach((ex, i) => _chartExerciseMini(ex, i));
     _chartACWRTrend();
     _chartWeeklyVolume();
     _renderHeatmap();
     _chartCardioZones();
-    _chartMuscleRadar();
   }
 
   function _chartFCStrength() {
@@ -901,11 +919,19 @@ const Metrics = (() => {
     });
   }
 
+  // Las dos vistas de la MISMA tarjeta, sobre el MISMO lienzo.
+  // _setupCanvas destruye la gráfica anterior, así que alternar no deja
+  // basura ni duplica instancias de Chart.
+  function _chartVolumeShape() {
+    if (_volShape === 'arana' && _volumeByGroup.length >= 3) _chartMuscleRadar();
+    else _chartVolumeDistribution();
+  }
+
   // Dona — distribución de volumen total por grupo muscular. Es un
   // "parte del todo" real (suma 100%), por eso aquí sí se presta un
   // pastel/dona en vez de forzarlo donde no aporta.
   function _chartVolumeDistribution() {
-    const canvas = _setupCanvas('volume-distribution-chart');
+    const canvas = _setupCanvas('volume-shape-chart');
     if (!canvas || _volumeByGroup.length === 0) return;
 
     const palette = ['#00FF87','#7C3AED','#06B6D4','#F59E0B','#EF4444','#EC4899','#3B82F6','#10B981','#F97316'];
@@ -1165,6 +1191,27 @@ const Metrics = (() => {
     </div>`;
   }
 
+  // Cambia entre dona y araña sin recargar la pantalla: solo redibuja
+  // el lienzo y repinta los dos botones. Un render() completo volvería
+  // a montar las 20 tarjetas y a correr la cascada de entrada por un
+  // cambio que afecta una sola gráfica.
+  function setVolumeShape(shape) {
+    if (shape !== 'dona' && shape !== 'arana') return;
+    if (shape === _volShape) return;
+    Sounds.click();
+    _volShape = shape;
+    try { localStorage.setItem('ft_vol_shape', shape); } catch (e) {}
+    const caja = document.getElementById('volume-shape-chart')?.parentElement;
+    if (caja) caja.style.height = (shape === 'arana' ? 280 : 220) + 'px';
+    document.querySelectorAll('[data-volshape]').forEach(b => {
+      const activo = b.dataset.volshape === shape;
+      b.style.background = activo ? 'var(--bg-card)' : 'transparent';
+      b.style.color      = activo ? 'var(--text-1)' : 'var(--text-3)';
+      b.style.fontWeight = activo ? '700' : '400';
+    });
+    _chartVolumeShape();
+  }
+
   function setMuscleWindow(mode) {
     Sounds.click();
     _muscleWindowMode = mode;
@@ -1334,7 +1381,7 @@ const Metrics = (() => {
 
   // ── RADAR DE BALANCE MUSCULAR ──────────────────────────────────────────
   function _chartMuscleRadar() {
-    const canvas = _setupCanvas('muscle-radar-chart');
+    const canvas = _setupCanvas('volume-shape-chart');
     if (!canvas || _volumeByGroup.length < 3) return;
 
     const top = _volumeByGroup.slice(0, 8);
@@ -1564,7 +1611,7 @@ const Metrics = (() => {
     }
   }
 
-  return { init, openCapture, saveCapture, openExerciseDetail, setExerciseFilter, setExerciseViewMode, showInsight, setMuscleWindow };
+  return { init, openCapture, saveCapture, openExerciseDetail, setExerciseFilter, setExerciseViewMode, showInsight, setMuscleWindow, setVolumeShape };
 })();
 
 function initMetrics(container) { Metrics.init(container); }

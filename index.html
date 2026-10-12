@@ -103,10 +103,6 @@
         <span class="nav-icon">⚙️</span>
         <span>Configuración</span>
       </div>
-      <div class="nav-item" data-page="import" onclick="Router.navigate('import')">
-        <span class="nav-icon">📥</span>
-        <span>Importar CSV</span>
-      </div>
     </div>
 
     <!-- Indicador de fase -->
@@ -244,7 +240,6 @@
 <script src="js/modules/patrones.js"></script>
 <script src="js/modules/profile.js"></script>
 <script src="js/modules/configuracion.js"></script>
-<script src="js/modules/import.js"></script>
 <script src="js/modules/coach.js"></script>
 <script src="js/modules/nutricion.js"></script>
 <script src="js/modules/calendario.js"></script>
@@ -391,7 +386,6 @@ Router.register('patrones',  (container) => initPatrones(container));
 Router.register('exercises', (container) => initExercises(container));
 Router.register('perfil',    (container) => initProfile(container));
 Router.register('config',    (container) => initConfiguracion(container));
-Router.register('import',    (container) => initImport(container));
 
 // ── SERVICE WORKER (PWA / offline) ───────────────────────────────────────
 // file:// no soporta Service Workers — solo registra en http(s).

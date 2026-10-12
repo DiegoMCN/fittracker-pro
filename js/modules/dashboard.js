@@ -116,13 +116,31 @@ function _kmCarouselHTML(distanceStats, profile) {
     { key: 'year',  label: 'Este año',   km: stats.year },
   ];
 
+  // DOS MONTAJES, uno por tamaño de pantalla. En el teléfono el
+  // deslizable de siempre: una tarjeta a la vez con su mapa, que es lo
+  // que cabe. En la compu los cuatro números juntos — ahí sobra ancho y
+  // deslizar para ver un dato que cabría de un vistazo es trabajo de
+  // más.
+  //
+  // En escritorio va UN mapa, el del año, no cuatro. Cuatro mapas de
+  // 230px de ancho no se leen y cuestan cuatro veces los mosaicos; el
+  // del año contiene a los otros tres, y cada tarjeta ya dice en texto
+  // dónde cae su tramo.
+  //
+  // El cambio lo hace CSS, no JavaScript, para que redimensionar la
+  // ventana funcione sin recargar. _initKmMaps se salta los mapas
+  // ocultos (offsetParent nulo), así que solo se construye el del
+  // montaje que de verdad se está viendo.
+  const año = periods[3];
   return `
     <div class="card section" style="padding:0;overflow:hidden">
       <div style="padding:16px 16px 4px 16px">
         <div class="card-title">🏃 Kilómetros corridos</div>
-        <div class="card-subtitle">Tus km sobre la carretera desde ${homeCity || 'tu ciudad'} rumbo a CDMX — desliza para hoy, semana, mes y año</div>
+        <div class="card-subtitle km-sub-movil">Tus km sobre la carretera desde ${homeCity || 'tu ciudad'} rumbo a CDMX — desliza para hoy, semana, mes y año</div>
+        <div class="card-subtitle km-sub-pc">Tus km sobre la carretera desde ${homeCity || 'tu ciudad'} rumbo a CDMX</div>
       </div>
-      <div id="km-carousel" data-home-lat="${homeLat}" data-home-lng="${homeLng}" data-home-city="${Utils.escapeHtml(homeCity)}" style="display:flex;overflow-x:auto;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;gap:0" onscroll="Dashboard_onKmScroll(this)">
+
+      <div id="km-carousel" class="km-movil" data-home-lat="${homeLat}" data-home-lng="${homeLng}" data-home-city="${Utils.escapeHtml(homeCity)}" style="display:flex;overflow-x:auto;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;gap:0" onscroll="Dashboard_onKmScroll(this)">
         ${periods.map(p => `
           <div style="flex:0 0 100%;scroll-snap-align:start;padding:12px 16px 18px 16px;box-sizing:border-box">
             <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:4px">
@@ -138,8 +156,25 @@ function _kmCarouselHTML(distanceStats, profile) {
             `}
           </div>`).join('')}
       </div>
-      <div style="display:flex;justify-content:center;gap:6px;padding:4px 0 14px 0">
+      <div class="km-movil" style="display:flex;justify-content:center;gap:6px;padding:4px 0 14px 0">
         ${periods.map((p,i) => `<span class="km-dot" data-idx="${i}" style="width:6px;height:6px;border-radius:99px;background:${i===0 ? 'var(--accent)' : 'var(--border)'};transition:background 0.2s"></span>`).join('')}
+      </div>
+
+      <div class="km-pc" id="km-pc" data-home-lat="${homeLat}" data-home-lng="${homeLng}" data-home-city="${Utils.escapeHtml(homeCity)}" style="padding:12px 16px 18px 16px">
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px">
+          ${periods.map(p => `
+            <div style="background:var(--bg-input);border:1px solid var(--border);border-radius:14px;padding:12px">
+              <div style="font-size:26px;font-weight:800;color:${p.km > 0 ? 'var(--accent)' : 'var(--text-3)'};line-height:1">${p.km.toFixed(p.km < 10 ? 1 : 0)}</div>
+              <div style="font-size:10px;color:var(--text-3);letter-spacing:.04em;margin-top:3px">KM · ${p.label.toUpperCase()}</div>
+            </div>`).join('')}
+        </div>
+        ${año.km > 0 ? `
+        <div id="km-place-pcyear" style="font-size:12px;color:var(--text-2);margin-bottom:10px;min-height:17px">Ubicando tu punto en la carretera…</div>
+        <div id="km-map-pcyear" data-km="${año.km}" data-period="pcyear"
+          style="height:210px;border-radius:12px;overflow:hidden;background:var(--bg-input)"></div>
+        ` : `
+        <div style="font-size:12px;color:var(--text-3)">Sin carreras registradas todavía este año.</div>
+        `}
       </div>
     </div>`;
 }
@@ -423,48 +458,153 @@ function _saludo() {
   return '¡Buenas noches';
 }
 
+// ── LO QUE SONÓ EN TU ÚLTIMA SESIÓN ─────────────────────────────────────
+// Antes: las 3 canciones más repetidas de CADA día del plan, en texto
+// chico, mezclando semanas. Ahora: solo la última sesión, con carátula,
+// y el número de repeticiones en grande, que es el dato que se lee de
+// un vistazo.
+//
+// Lo que NO está y por qué: el BPM. Spotify cerró su endpoint de
+// audio-features en noviembre de 2024 y responde 403 a las apps sin
+// acceso heredado — no es algo que se pueda sacar de los datos que ya
+// tenemos. Hay un hueco en la tarjeta esperándolo por si algún día
+// llega de otra fuente.
+let _musLast = { fecha: null, tipos: '', tracks: [], total: 0, linea: [] };
+
+function _musFmtMin(seg) {
+  if (seg === null || seg === undefined || isNaN(seg)) return '';
+  const m = Math.floor(seg / 60);
+  return `min ${m}`;
+}
+
+// La carátula si la hay; si no, un cuadro con la inicial. Las sesiones
+// viejas no la tienen porque la columna se agregó el 11-oct: de aquí en
+// adelante sí.
+function _musCover(t, size) {
+  const esc = Utils.escapeHtml;
+  if (t.cover) {
+    return `<img src="${esc(t.cover)}" alt="" loading="lazy" style="
+      width:${size}px;height:${size}px;border-radius:9px;object-fit:cover;flex-shrink:0;background:var(--bg-input)">`;
+  }
+  const letra = (t.name || '?').trim().charAt(0).toUpperCase();
+  return `<div style="width:${size}px;height:${size}px;border-radius:9px;flex-shrink:0;
+    background:var(--bg-input);display:flex;align-items:center;justify-content:center;
+    font-size:${Math.round(size * 0.42)}px;font-weight:700;color:var(--text-3)">${esc(letra)}</div>`;
+}
+
 function _musicByDayHTML() {
   if (typeof Spotify === 'undefined') return '';
-  // Se arma con lo que está en el Sheet (la fuente de verdad, igual
-  // desde cualquier dispositivo) más lo que este teléfono todavía no
-  // ha subido — si no, justo después de entrenar la sesión de hoy no
-  // aparecería hasta el siguiente envío.
-  let rows = [];
+  let todas = [];
   try {
-    const delSheet = _musicRows || [];
-    const pendientes = Spotify.getTrackLog?.() || [];
-    rows = Spotify.topByDay({ limit: 3, entries: delSheet.concat(pendientes) }) || [];
+    // El Sheet es la fuente de verdad; se le suma lo que este teléfono
+    // todavía no ha subido, para que la sesión de hoy aparezca sin
+    // esperar al siguiente envío.
+    todas = (_musicRows || []).concat(Spotify.getTrackLog?.() || []);
   } catch (e) { return ''; }
-  if (!rows.length) return '';
+  todas = todas.filter(t => t && t.date && t.name);
+  if (!todas.length) return '';
+
+  // Solo la ÚLTIMA sesión.
+  const fecha = todas.map(t => String(t.date).slice(0, 10)).sort().reverse()[0];
+  const dia = todas.filter(t => String(t.date).slice(0, 10) === fecha);
+  if (!dia.length) return '';
+
+  // ¿Fue fuerza, cardio, o las dos? Sale de lo que la propia bitácora
+  // anotó en cada canción, no de adivinar por la hora.
+  const kinds = [...new Set(dia.map(t => String(t.kind || '').toLowerCase()).filter(Boolean))];
+  const tipos = kinds.length >= 2 ? 'Fuerza + Cardio'
+    : kinds[0] === 'cardio' ? 'Cardio'
+    : kinds[0] === 'fuerza' ? 'Fuerza' : 'Sesión';
+
+  // Una entrada por vez que sonó: se agrupa por canción y se cuenta.
+  const porTrack = {};
+  dia.forEach(t => {
+    const k = t.id || t.name;
+    if (!porTrack[k]) porTrack[k] = { name: t.name, artist: t.artist, cover: t.cover || '', uri: t.uri || '', veces: 0, primera: t.sec };
+    porTrack[k].veces++;
+    if (t.sec !== null && t.sec !== undefined && (porTrack[k].primera === null || t.sec < porTrack[k].primera)) porTrack[k].primera = t.sec;
+  });
+  const tracks = Object.values(porTrack).sort((a, b) => b.veces - a.veces || (a.primera - b.primera));
+
+  _musLast = {
+    fecha, tipos, total: dia.length, tracks,
+    linea: dia.slice().sort((a, b) => (a.sec || 0) - (b.sec || 0)),
+  };
 
   const esc = Utils.escapeHtml;
+  const top = tracks.slice(0, 4);
+  const restan = tracks.length - top.length;
+
   return `
     <div class="card section">
-      <div class="card-header"><div>
-        <div class="card-title">🎧 Lo que suena en cada entreno</div>
-        <div class="card-subtitle">Lo más repetido en cada día del plan, según lo que de verdad sonó mientras entrenabas</div>
-      </div></div>
-      <div style="display:flex;flex-direction:column;gap:16px">
-        ${rows.map(r => `
-          <div>
-            <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:8px">
-              <span style="font-size:12px;font-weight:600">${r.icon} ${esc(r.label)}</span>
-              <span style="font-size:10px;color:var(--text-4)">${r.total} registro${r.total === 1 ? '' : 's'}</span>
+      <div class="card-header">
+        <div>
+          <div class="card-title">🎧 Lo que sonó</div>
+          <div class="card-subtitle">${esc(tipos)} · ${Utils.formatDate(fecha)} · ${tracks.length} canciones, ${dia.length} reproducciones</div>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        ${top.map(t => `
+          <div style="display:flex;align-items:center;gap:12px">
+            ${_musCover(t, 48)}
+            <div style="min-width:0;flex:1">
+              <div style="font-size:14px;font-weight:700;color:var(--text-1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(t.name)}</div>
+              <div style="font-size:11px;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(t.artist || '')}${t.primera !== null && t.primera !== undefined ? ` · desde el ${_musFmtMin(t.primera)}` : ''}</div>
             </div>
-            <div style="display:flex;flex-direction:column;gap:6px">
-              ${r.tracks.map((t, i) => `
-                <div style="display:flex;align-items:center;gap:10px;font-size:12px">
-                  <span style="color:var(--text-4);width:14px;text-align:right;flex-shrink:0">${i + 1}</span>
-                  <div style="min-width:0;flex:1">
-                    <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(t.name)}</div>
-                    <div style="font-size:10px;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(t.artist)}</div>
-                  </div>
-                  <span style="font-size:10px;color:var(--text-4);flex-shrink:0">×${t.count}</span>
-                </div>`).join('')}
+            <div style="text-align:right;flex-shrink:0">
+              <div style="font-size:26px;font-weight:800;color:var(--accent);line-height:1">${t.veces}</div>
+              <div style="font-size:9px;color:var(--text-3);letter-spacing:.04em">${t.veces === 1 ? 'VEZ' : 'VECES'}</div>
             </div>
           </div>`).join('')}
       </div>
+      <button onclick="Dashboard_openMusic()" style="
+        all:unset;box-sizing:border-box;cursor:pointer;display:block;width:100%;text-align:center;
+        margin-top:14px;padding:10px;border:1px dashed var(--border);border-radius:12px;
+        font-size:12px;font-weight:700;color:var(--text-2)">
+        Ver la sesión completa${restan > 0 ? ` · ${restan} canción${restan === 1 ? '' : 'es'} más` : ''}
+      </button>
     </div>`;
+}
+
+// Toda la sesión en orden: qué sonó, en qué minuto y durante qué
+// ejercicio o fase. Eso es lo que no cabe en la tarjeta.
+function Dashboard_openMusic() {
+  const esc = Utils.escapeHtml;
+  const L = _musLast;
+  if (!L.fecha) return;
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay modal-centered';
+  overlay.innerHTML = `
+    <div class="modal" style="max-width:520px">
+      <div class="modal-header">
+        <div class="modal-title">🎧 ${esc(L.tipos)} · ${Utils.formatDate(L.fecha)}</div>
+        <button class="btn btn-ghost btn-icon" onclick="Motion.closeModal(this.closest('.modal-overlay'))">✕</button>
+      </div>
+      <div class="modal-body">
+        <div style="font-size:11px;font-weight:700;color:var(--text-3);letter-spacing:.04em;margin-bottom:10px">MÁS REPETIDAS</div>
+        <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:22px">
+          ${L.tracks.map(t => `
+            <div style="display:flex;align-items:center;gap:11px">
+              ${_musCover(t, 40)}
+              <div style="min-width:0;flex:1">
+                <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(t.name)}</div>
+                <div style="font-size:10px;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(t.artist || '')}</div>
+              </div>
+              <div style="font-size:18px;font-weight:800;color:var(--accent);flex-shrink:0">${t.veces}×</div>
+            </div>`).join('')}
+        </div>
+        <div style="font-size:11px;font-weight:700;color:var(--text-3);letter-spacing:.04em;margin-bottom:10px">EN ORDEN</div>
+        <div style="display:flex;flex-direction:column;gap:7px">
+          ${L.linea.map(t => `
+            <div style="display:flex;align-items:baseline;gap:10px;font-size:12px">
+              <span style="color:var(--text-3);flex-shrink:0;width:52px;font-variant-numeric:tabular-nums">${_musFmtMin(t.sec)}</span>
+              <span style="min-width:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(t.name)}</span>
+              <span style="color:var(--text-3);flex-shrink:0;max-width:40%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(t.exercise || t.phase || '')}</span>
+            </div>`).join('')}
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
 }
 
 function _nextAchievementsHTML() {
@@ -485,26 +625,143 @@ function _nextAchievementsHTML() {
     </div>`;
 }
 
-// Logros desbloqueados — fila de insignias con scroll horizontal, no
-// ensucia el Dashboard cuando todavía no hay ninguno (se oculta
-// entera). El detalle de cada uno sale al tocarlo.
-function _achievementsHTML(achievements) {
+// ── LOGROS ──────────────────────────────────────────────────────────────
+// Antes era una fila de insignias de 72px con solo el icono y la fecha,
+// las 18 juntas, y al tocar una salía un Toast. No se sabía qué era cada
+// medalla sin tocarla, y 18 medallas idénticas a scroll no dicen nada.
+//
+// Ahora: tarjeta con medalla, título y fecha; las 5 más recientes en el
+// Dashboard y una sexta de "ver todos"; y al tocar, un modal centrado
+// con qué significa ese logro y cuál sigue en esa familia.
+const _ACH_QUE_ES = {
+  sesiones: 'Cada sesión que terminas y guardas cuenta una, sea de fuerza o de cardio.',
+  racha:    'Semanas seguidas entrenando. Se rompe si una semana queda sin ninguna sesión.',
+  volumen:  'La suma de peso × repeticiones de todas tus series. La asistencia no cuenta: ése es peso que la máquina te quita, no que tú mueves.',
+  pr:       'Cada vez que superas tu mejor marca en un ejercicio.',
+  hit:      'La primera vez que completas un protocolo de HIT de ese nivel, de principio a fin.',
+  fase:     'El arranque de cada fase del programa.',
+  dominada: 'Tu primera dominada sin asistencia.',
+};
+
+let _achAll = [];   // todos los desbloqueados, para el modal
+let _achNext = [];  // los próximos, para decir qué sigue en cada familia
+
+function _achHace(fecha) {
+  const d = Math.round((Date.now() - new Date(fecha + 'T12:00:00').getTime()) / 86400000);
+  if (d <= 0) return 'hoy';
+  if (d === 1) return 'ayer';
+  if (d < 30) return `hace ${d} días`;
+  const m = Math.round(d / 30);
+  return m === 1 ? 'hace un mes' : `hace ${m} meses`;
+}
+
+// Una tarjeta de logro. `grande` la usa el modal de "todos".
+function _achCard(a) {
+  return `
+    <button onclick="Dashboard_openAchievement('${a.key}')" style="
+      all:unset;box-sizing:border-box;cursor:pointer;display:flex;flex-direction:column;gap:6px;
+      background:var(--bg-input);border:1px solid var(--border);border-radius:14px;padding:12px;
+      min-height:104px;justify-content:space-between">
+      <div style="font-size:28px;line-height:1">${a.icon}</div>
+      <div>
+        <div style="font-size:12px;font-weight:700;color:var(--text-1);line-height:1.25">${a.detail || a.key}</div>
+        <div style="font-size:10px;color:var(--text-3);margin-top:3px">${Utils.formatDate(a.date)}</div>
+      </div>
+    </button>`;
+}
+
+function _achievementsHTML(achievements, next) {
   if (!achievements || !achievements.length) return '';
+  _achAll = achievements;
+  _achNext = next || [];
+  const visibles = achievements.slice(0, 5);
+  const restan = achievements.length - visibles.length;
   return `
     <div class="card section">
       <div class="card-header">
-        <div class="card-title">⭐ Logros (${achievements.length})</div>
+        <div>
+          <div class="card-title">⭐ Logros</div>
+          <div class="card-subtitle">${achievements.length} desbloqueados · toca uno para ver qué significa</div>
+        </div>
       </div>
-      <div style="display:flex;gap:10px;overflow-x:auto;padding-bottom:4px">
-        ${achievements.map(a => `
-          <div onclick="Toast.success('${(a.detail || '').replace(/'/g, "\\'")}')" style="
-            flex-shrink:0;width:72px;text-align:center;cursor:pointer;
-            background:var(--bg-input);border:1px solid var(--border);border-radius:12px;padding:10px 6px">
-            <div style="font-size:26px">${a.icon}</div>
-            <div style="font-size:9px;color:var(--text-3);margin-top:4px">${Utils.formatDate(a.date)}</div>
-          </div>`).join('')}
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px">
+        ${visibles.map(_achCard).join('')}
+        ${restan > 0 ? `
+        <button onclick="Dashboard_openAllAchievements()" style="
+          all:unset;box-sizing:border-box;cursor:pointer;display:flex;flex-direction:column;
+          align-items:center;justify-content:center;gap:6px;min-height:104px;
+          background:transparent;border:1px dashed var(--border);border-radius:14px;padding:12px;text-align:center">
+          <div style="font-size:22px;line-height:1">⋯</div>
+          <div style="font-size:12px;font-weight:700;color:var(--text-2)">Ver todos</div>
+          <div style="font-size:10px;color:var(--text-3)">${restan} más</div>
+        </button>` : ''}
       </div>
     </div>`;
+}
+
+// Qué sigue en la misma familia. El backend manda `next` con icono y
+// etiqueta pero sin el tipo, y cada familia usa un icono distinto
+// (📅 sesiones, 🔥 racha, 🏋️ volumen, 🏆 pr, 📈 hit, 🎯 fase) — así que
+// se emparejan por icono. Si algún día dos familias comparten icono,
+// esto empieza a mostrar el siguiente de la familia equivocada.
+function _achSiguiente(a) {
+  return _achNext.find(n => n.icon === a.icon) || null;
+}
+
+function Dashboard_openAchievement(key) {
+  const a = _achAll.find(x => x.key === key);
+  if (!a) return;
+  const sig = _achSiguiente(a);
+  const pct = sig && sig.target ? Math.min(100, Math.round(sig.current / sig.target * 100)) : null;
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay modal-centered';
+  overlay.innerHTML = `
+    <div class="modal" style="max-width:380px">
+      <div class="modal-header">
+        <div class="modal-title">Logro desbloqueado</div>
+        <button class="btn btn-ghost btn-icon" onclick="Motion.closeModal(this.closest('.modal-overlay'))">✕</button>
+      </div>
+      <div class="modal-body" style="text-align:center">
+        <div style="font-size:56px;line-height:1;margin:4px 0 12px">${a.icon}</div>
+        <div style="font-size:17px;font-weight:800;color:var(--text-1);line-height:1.3">${a.detail || a.key}</div>
+        <div style="font-size:12px;color:var(--text-3);margin-top:6px">${Utils.formatDate(a.date)} · ${_achHace(a.date)}</div>
+        ${_ACH_QUE_ES[a.type] ? `
+        <div style="text-align:left;background:var(--bg-input);border-radius:12px;padding:12px;margin-top:16px">
+          <div style="font-size:10px;font-weight:700;color:var(--text-3);letter-spacing:.04em;margin-bottom:5px">CÓMO SE GANA</div>
+          <div style="font-size:12px;color:var(--text-2);line-height:1.45">${_ACH_QUE_ES[a.type]}</div>
+        </div>` : ''}
+        ${sig ? `
+        <div style="text-align:left;background:var(--bg-input);border-radius:12px;padding:12px;margin-top:10px">
+          <div style="font-size:10px;font-weight:700;color:var(--text-3);letter-spacing:.04em;margin-bottom:5px">EL QUE SIGUE</div>
+          <div style="font-size:12px;color:var(--text-2);line-height:1.45">${sig.label}</div>
+          ${pct !== null ? `
+          <div style="height:6px;background:var(--border);border-radius:3px;margin-top:8px;overflow:hidden">
+            <div style="height:100%;width:${pct}%;background:var(--accent);border-radius:3px"></div>
+          </div>
+          <div style="font-size:10px;color:var(--text-3);margin-top:5px">${sig.current} de ${sig.target}</div>` : ''}
+        </div>` : ''}
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+}
+
+function Dashboard_openAllAchievements() {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay modal-centered';
+  overlay.innerHTML = `
+    <div class="modal" style="max-width:560px">
+      <div class="modal-header">
+        <div class="modal-title">⭐ Tus ${_achAll.length} logros</div>
+        <button class="btn btn-ghost btn-icon" onclick="Motion.closeModal(this.closest('.modal-overlay'))">✕</button>
+      </div>
+      <div class="modal-body">
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px">
+          ${_achAll.map(_achCard).join('')}
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
 }
 
 function Dashboard_onKmScroll(el) {
@@ -525,7 +782,12 @@ async function _initKmMaps() {
   const card = document.getElementById('km-carousel'); if (!card) return;
   const homeLat = Number(card.dataset.homeLat), homeLng = Number(card.dataset.homeLng);
   const home = card.dataset.homeCity || 'tu casa';
-  const els = Array.from(document.querySelectorAll('[id^="km-map-"]')).filter(el => !el.dataset.mapInit);
+  // Solo los mapas VISIBLES: el Dashboard pinta el montaje de teléfono
+  // y el de escritorio a la vez, y CSS esconde uno. Sin este filtro se
+  // construirían los cinco, y Leaflet dentro de un contenedor oculto
+  // mide 0×0 y queda roto si después se muestra.
+  const els = Array.from(document.querySelectorAll('[id^="km-map-"]'))
+    .filter(el => !el.dataset.mapInit && el.offsetParent !== null);
   if (!els.length) return;
   els.forEach(el => { el.dataset.mapInit = '1'; });
   let route; try { route = await _kmRoute(homeLat, homeLng); } catch(e) { return; }
@@ -636,8 +898,12 @@ function _renderDashboard(container, data, doneDayNames, records, allSessions, l
   // antes "thisWeek.calories" (del backend) solo sumaba fuerza, y las
   // dos tarjetas no tenían comparativo contra la semana pasada.
   const wc = _weeklyComparison(allSessions, allCardio);
-  const rec       = data.recentRecovery || { delta: -14 };
-  const recClass  = rec.delta <= -10 ? 'up' : rec.delta <= -5 ? 'flat' : 'down';
+  // La ÚLTIMA recuperación de cardio (no la mejor, no la de fuerza).
+  // `isRecord` viene del backend comparándola contra su propio récord;
+  // antes la etiqueta "Récord personal" se pintaba con cualquier valor
+  // bajo −10, así que casi siempre mentía.
+  const rec       = data.recentRecovery || null;
+  const recClass  = !rec ? 'flat' : rec.delta <= -10 ? 'up' : rec.delta <= -5 ? 'flat' : 'down';
 
   container.innerHTML = `
   <!-- Bienvenida -->
@@ -689,17 +955,28 @@ function _renderDashboard(container, data, doneDayNames, records, allSessions, l
       <div style="font-size:11px;color:var(--text-3)">${weekPct}% completado · ${thisWeek.target - thisWeek.sessions} sesiones restantes</div>
     </div>
 
-    <!-- Recuperación cardíaca -->
-    <div class="metric-card" style="--accent-color:var(--z${rec.delta <= -10 ? 2 : rec.delta <= -5 ? 3 : 5})">
+    <!-- Recuperación cardíaca — la ÚLTIMA sesión de CARDIO. Mide cuánto
+         te bajó el pulso de al terminar a 2 min después. La de fuerza va
+         por separado: son categorías distintas aunque midan lo mismo. -->
+    <div class="metric-card" style="--accent-color:var(--z${!rec ? 4 : rec.delta <= -10 ? 2 : rec.delta <= -5 ? 3 : 5})">
       <div class="metric-label">Recuperación FC</div>
+      ${!rec ? `
+      <div style="display:flex;align-items:baseline;gap:4px;margin:8px 0">
+        <span class="metric-value" style="color:var(--text-3)">—</span>
+      </div>
+      <div style="font-size:11px;color:var(--text-3)">Aún sin una sesión de cardio con los dos pulsos registrados</div>
+      ` : `
       <div style="display:flex;align-items:baseline;gap:4px;margin:8px 0">
         <span class="metric-value" style="color:${rec.delta <= -10 ? 'var(--success)' : rec.delta <= -5 ? 'var(--warning)' : 'var(--danger)'}">${rec.delta}</span>
         <span class="metric-unit">bpm / 2min</span>
       </div>
       <div class="metric-delta ${recClass}">
-        ${rec.delta <= -10 ? '🔥 Récord personal' : rec.delta <= -5 ? '📈 Mejorando' : '📊 En desarrollo'}
+        ${rec.isRecord ? '🔥 Récord personal' : rec.delta <= -10 ? '📈 Buena' : rec.delta <= -5 ? '📈 Mejorando' : '📊 En desarrollo'}
       </div>
-      <div style="font-size:11px;color:var(--text-3);margin-top:6px">Objetivo: -20 bpm · ${Utils.formatDateShort(rec.date)}</div>
+      <div style="font-size:11px;color:var(--text-3);margin-top:6px">
+        Objetivo: -20 bpm · ${Utils.formatDateShort(rec.date)}${rec.isRecord || rec.best === undefined ? '' : ` · tu récord: ${rec.best}`}
+      </div>
+      `}
     </div>
 
     <!-- Última sesión -->
@@ -748,7 +1025,7 @@ function _renderDashboard(container, data, doneDayNames, records, allSessions, l
     </div>
   </div>
 
-  ${_achievementsHTML(achievements)}
+  ${_achievementsHTML(achievements, _nextAch)}
   ${_nextAchievementsHTML()}
   ${_musicByDayHTML()}
   ${_pullUpMilestoneHTML(pullUp)}
@@ -1087,7 +1364,10 @@ function _realRecordsList(records) {
     list.push({ icon:'❤️', label:'Mejor recuperación FC', value:`${records.fcRecovery.value} bpm`, date:Utils.formatDateShort(records.fcRecovery.date), color:'var(--success)', sub:'2 min post-esfuerzo' });
   }
   if (records?.cadencePeak?.value > 0) {
-    list.push({ icon:'🦵', label:'Pico de cadencia', value:`${records.cadencePeak.value} spm`, date:Utils.formatDateShort(records.cadencePeak.date), color:'var(--purple-light)', sub:'Sesión de cardio' });
+    // "Típico", no máximo: es la mediana de los picos de sus sprints
+    // (ver _cadenciaPicoTipico en el backend). El máximo histórico eran
+    // 210 spm de una mala lectura del reloj.
+    list.push({ icon:'🦵', label:'Pico típico de cadencia', value:`${records.cadencePeak.value} spm`, date:Utils.formatDateShort(records.cadencePeak.date), color:'var(--purple-light)', sub:'Mediana de tus sprints' });
   }
   if (records?.z3Time?.value > 0) {
     list.push({ icon:'⏱', label:'Mayor tiempo en Z3+', value:`${records.z3Time.value} min`, date:Utils.formatDateShort(records.z3Time.date), color:'var(--warning)', sub:'Zona cardiovascular alta' });

@@ -1101,3 +1101,15 @@ input[type="range"]::-moz-range-thumb {
   .card::after { transition: none; }
   .winter-snow { display: none; }
 }
+
+/* ── KILÓMETROS: un montaje por tamaño de pantalla ────────────────────
+   El Dashboard pinta los dos y aquí se decide cuál se ve. Se hace con
+   CSS y no con JavaScript para que redimensionar la ventana funcione
+   sin recargar; _initKmMaps se salta los mapas que queden ocultos.
+   El corte son 768px, el mismo que ya usa el resto de la app. */
+.km-pc, .km-sub-pc { display: none; }
+@media (min-width: 769px) {
+  .km-movil, .km-sub-movil { display: none !important; }
+  .km-pc { display: block; }
+  .km-sub-pc { display: block; }
+}

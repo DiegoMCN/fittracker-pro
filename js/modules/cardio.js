@@ -27,6 +27,30 @@ const Cardio = (() => {
   let _cadTarget = null;
   const CAD_CACHE_KEY = 'fittracker_cadence_target';
 
+  // Última sesión registrada POR PROTOCOLO, para poder desplegar el
+  // consejo del Coach de ese protocolo en su tarjeta. El consejo ya
+  // existe: se escribe en REGISTRO_CARDIO.Nota_Coach al guardar cada
+  // sesión. Lo único que faltaba era enseñarlo donde se decide qué
+  // entrenar, en vez de dejarlo enterrado en la Bitácora.
+  let _ultimaPorProto = {};
+  let _consejoAbierto = null;
+
+  function _loadHistorial() {
+    API.getCardio?.(60).then(r => {
+      const ses = (r && r.sessions) || [];
+      const m = {};
+      // getCardio devuelve de más reciente a más vieja: la primera que
+      // aparece de cada protocolo es la última que hizo.
+      ses.forEach(x => {
+        const k = x.protocol || x.protocolo || x.type;
+        if (!k || m[k]) return;
+        m[k] = x;
+      });
+      _ultimaPorProto = m;
+      if (state && !state.started) _renderPicker(document.getElementById('page-content'));
+    }).catch(() => {});
+  }
+
   function _loadCadenceTarget() {
     try {
       const raw = localStorage.getItem(CAD_CACHE_KEY);
@@ -148,6 +172,7 @@ const Cardio = (() => {
   // ── INIT ──────────────────────────────────────────────────────────────
   function init(container) {
     _loadCadenceTarget();
+    _loadHistorial();
     if (state && state.started && !state.finished) { _renderActive(); return; }
     _pickerShouldStagger = true;
     _renderPicker(container);
@@ -212,8 +237,57 @@ const Cardio = (() => {
           ${isToday ? '<span style="font-size:10px;background:var(--accent);color:var(--bg-primary);padding:2px 8px;border-radius:99px;font-weight:700">HOY</span>' : ''}
           <span style="color:var(--text-4)">→</span>
         </div>
-        ${p.notes ? `<div style="font-size:11px;color:var(--text-3);background:var(--bg-card);border-radius:8px;padding:8px 10px;line-height:1.5">💡 ${p.notes}</div>` : ''}
+        ${_consejoHTML(key, p)}
       </div>`;
+  }
+
+  // El consejo de la IA para ESTE protocolo, plegado.
+  //
+  // Antes se pintaba siempre abierto, y son párrafos de 600-800
+  // caracteres: con varias tarjetas en pantalla el consejo tapaba
+  // justo lo que uno viene a hacer aquí, que es elegir qué entrenar.
+  //
+  // Dos fuentes, por orden: la nota que el Coach escribe PARA el
+  // protocolo (HIT_PROTOCOLOS.Notas, comparando contra la última vez
+  // que lo hiciste) y, si ese protocolo no tiene, la nota de su última
+  // sesión (REGISTRO_CARDIO.Nota_Coach). La segunda existía desde hace
+  // semanas y no se enseñaba en ningún lado fuera de la Bitácora —
+  // por eso sprint técnico y zona 2 no tenían consejo aquí.
+  //
+  // El clic no debe propagarse al contenedor: ése arranca el protocolo.
+  function _consejoHTML(key, p) {
+    const u = _ultimaPorProto[key];
+    const texto = (p && p.notes) ? String(p.notes) : (u && u.coachNote ? String(u.coachNote) : '');
+    if (!texto.trim()) return '';
+    const dePerfil = !!(p && p.notes);
+    const abierto = _consejoAbierto === key;
+    const esc = Utils.escapeHtml;
+    const datos = (!dePerfil && u) ? [
+      u.fcAvg ? `FC ${u.fcAvg} bpm` : null,
+      (u.rec2min !== null && u.rec2min !== undefined && u.rec2min !== '') ? `recuperación ${u.rec2min} bpm` : null,
+      u.cadAvg ? `${u.cadAvg} spm` : null,
+    ].filter(Boolean).join(' · ') : '';
+    const fecha = (!dePerfil && u && u.date) ? Utils.formatDateShort(u.date) : '';
+    return `
+      <div onclick="event.stopPropagation();Cardio.toggleConsejo('${key}')" style="
+        background:var(--bg-card);border-radius:8px;padding:8px 10px;cursor:pointer">
+        <div style="display:flex;align-items:center;gap:7px;font-size:11px;color:var(--text-3)">
+          <span style="display:inline-block;transition:transform .15s;transform:rotate(${abierto ? '90' : '0'}deg)">▸</span>
+          <span style="font-weight:600;color:var(--text-2)">💡 ${dePerfil ? 'Consejo del Coach para este protocolo' : 'Qué dijo el Coach la última vez'}</span>
+          ${fecha ? `<span style="margin-left:auto">${fecha}</span>` : ''}
+        </div>
+        ${abierto ? `
+        <div style="font-size:12px;color:var(--text-2);line-height:1.55;margin-top:9px">${esc(texto)}</div>
+        ${datos ? `<div style="font-size:10px;color:var(--text-3);margin-top:8px">Esa sesión: ${esc(datos)}</div>` : ''}
+        ` : ''}
+      </div>`;
+  }
+
+  function toggleConsejo(key) {
+    // Uno a la vez: abrir el segundo cierra el primero.
+    _consejoAbierto = (_consejoAbierto === key) ? null : key;
+    Sounds.click();
+    _renderPicker(document.getElementById('page-content'));
   }
 
   function _renderPicker(container) {
@@ -1233,6 +1307,7 @@ const Cardio = (() => {
     init, selectProtocol, selectHitDuration, backToPicker, startProtocol, togglePause, skipPhase,
     discardSession, onRouteChange, hasActiveSession, musicContext, skipStats, saveStats,
     toggleMetronome, adjustMetronome, renderSplitInputs, shareSession, onSpeedInput, toggleSpeedInfo,
+    toggleConsejo,
   };
 })();
 
