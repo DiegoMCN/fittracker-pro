@@ -77,7 +77,21 @@ const API = (() => {
 
   // Un solo intento de red — usado tanto por el retry loop como por la
   // cola offline al reintentar items pendientes.
-  const FETCH_TIMEOUT_MS = 8000; // antes no había timeout — esperaba lo que el navegador tardara solo en darse por vencido, a veces minutos en una señal débil
+  // 20s. Antes 8s, y antes de eso no había ninguno (el navegador esperaba
+  // lo que quisiera, a veces minutos en una señal débil).
+  //
+  // Por qué 8s se quedó corto: 8s se eligió cuando el backend era más
+  // chico. Medido el 11-oct contra el Apps Script real, sin nada más
+  // corriendo: la PRIMERA petición del día tarda ~5.7s aunque no haga
+  // casi nada (getVersion), porque Apps Script arranca el contenedor en
+  // frío. getMetrics sola, sin competencia, tardó 7.55s — 450ms de
+  // margen contra el límite. O sea que la app se rendía por 450ms y
+  // enseñaba datos inventados cuando el servidor venía en camino.
+  //
+  // El costo de esperar más es que una pantalla tarde unos segundos.
+  // El costo de rendirse antes es que Diego vea números falsos y crea
+  // que son suyos. No se parecen en gravedad.
+  const FETCH_TIMEOUT_MS = 20000;
 
   // timeoutMs: 8s para todo lo normal. El consejo de la IA pasa uno propio
   // (5.5 min): Gemini tarda ~15s solo para responder "OK" y bastante más
@@ -155,7 +169,16 @@ const API = (() => {
         return data;
       } catch (err) {
         lastError = err;
-        if (attempt < retries) await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+        // Un timeout NO es un paquete perdido: el servidor sí recibió la
+        // petición y probablemente sigue trabajando en ella. Volver a
+        // dispararla de inmediato mete una ejecución MÁS a una cola que
+        // ya va lenta — y como el Dashboard pide 13 cosas a la vez, 3
+        // intentos cada una son 39 ejecuciones peleándose por el mismo
+        // Apps Script. El reintento convertía la lentitud en atasco.
+        // Por eso un timeout se reintenta UNA sola vez, y esperando más.
+        const esTimeout = err?.name === 'AbortError' || /aborted/i.test(String(err?.message || ''));
+        if (esTimeout && attempt >= 1) break;
+        if (attempt < retries) await new Promise(r => setTimeout(r, (esTimeout ? 3000 : 1000) * (attempt + 1)));
       }
     }
 
@@ -177,7 +200,10 @@ const API = (() => {
     // GET: cae a datos de ejemplo para que la UI muestre algo mientras tanto
     _lastWasMock = true;
     _lastFail = _classifyFail(lastError);
-    console.warn('[API] Usando datos de EJEMPLO — lo que se ve en pantalla NO es real:', _lastFail.kind, lastError.message);
+    // El nombre de la acción va PRIMERO: sin él, el aviso en consola dice
+    // que algo falló pero no qué, y no hay manera de saber si se cayó una
+    // tarjeta del Dashboard o la pantalla entera.
+    console.warn(`[API] ${params.action}: usando datos de EJEMPLO — lo que se ve en pantalla NO es real:`, _lastFail.kind, lastError.message);
     if (typeof window !== 'undefined' && typeof window._paintMockBanner === 'function') window._paintMockBanner();
     return _getMockData(params.action);
   }
@@ -331,6 +357,46 @@ const API = (() => {
     setForceOffline: (val) => {
       _forceOffline = !!val;
       localStorage.setItem('fittracker_force_offline', _forceOffline ? '1' : '0');
+    },
+
+    // Trae en UNA petición todo lo que una pantalla va a pedir, y lo
+    // deja sembrado en el caché con la misma clave que usaría cada
+    // llamada suelta. Después de esto, el Promise.all del módulo no
+    // toca la red: cada API.getLoQueSea() encuentra su respuesta ya
+    // guardada y vuelve al instante.
+    //
+    // Por eso los módulos casi no cambian — una línea antes de su
+    // Promise.all y ya. No hay que reescribir cómo pide sus datos cada
+    // pantalla, que es justo lo que no quiero tocar mientras el mapa
+    // de datos sigue cambiando de dónde sale cada número.
+    //
+    // Usa _attemptFetch y NO _fetch, a propósito: _fetch cae a datos de
+    // ejemplo cuando falla y pintaría el aviso de "esto no es real"
+    // aunque después todo se cargue bien por el camino de siempre.
+    // Esto es una optimización; si no sale, se calla y deja que el
+    // módulo pida como siempre. También por eso devuelve true/false en
+    // vez de lanzar.
+    prefetch: async (pantalla) => {
+      if (_forceOffline || (typeof navigator !== 'undefined' && navigator.onLine === false)) return false;
+      try {
+        // 25s: hace el trabajo de 12 endpoints en una sola ejecución.
+        const res = await _attemptFetch({ action: 'getBootstrap', pantalla }, 25000);
+        if (!res || !Array.isArray(res.items)) return false;
+        let n = 0;
+        res.items.forEach(it => {
+          if (!it || it.error || it.data === undefined) return;
+          // MISMA forma de clave que _fetch: { action, ...params } en
+          // ese orden. Si el backend manda otros parámetros que los que
+          // pide el módulo, la clave no coincide y esa tarjeta pide por
+          // su cuenta — se pierde el ahorro, no los datos.
+          _cacheSet(JSON.stringify({ action: it.action, ...(it.params || {}) }), it.data);
+          n++;
+        });
+        return n > 0;
+      } catch (e) {
+        // Backend viejo sin getBootstrap, timeout, lo que sea.
+        return false;
+      }
     },
 
     getVersion: () =>
