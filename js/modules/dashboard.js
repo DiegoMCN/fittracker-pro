@@ -571,8 +571,16 @@ async function initDashboard(container) {
       </div>
     </div>`;
 
-  // Se piden sin caché — recién guardaste una sesión y necesitas ver
-  // el dato fresco, no uno de hace 5 minutos.
+  // Una sola petición trae los 12 bloques de abajo y los deja en el
+  // caché con la clave que cada uno usaría (ver API.prefetch y
+  // appscript-dividido/16_Bootstrap.gs). El Promise.all que sigue no
+  // cambia: cada llamada encuentra lo suyo ya guardado y vuelve al
+  // instante. Si el prefetch no sale, cada una pide como siempre.
+  // getReadinessScore queda fuera a propósito — se pide sin caché
+  // porque cambia con las horas, así que sigue siendo su propia
+  // petición. Son 2 en total, no 13.
+  await API.prefetch('dashboard');
+
   const [data, sesRes, recordsRes, metricsRes, cardioRes, streaksRes, overtrainingRes, insightsRes, profileRes, pullUpRes, achievementsRes, readinessRes, musicRes] = await Promise.all([
     API.getDashboard(),
     API.getSessions(30),
