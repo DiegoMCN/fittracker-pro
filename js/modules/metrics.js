@@ -87,12 +87,10 @@ const Metrics = (() => {
         ${[1,2].map(() => `<div class="skeleton" style="height:280px;border-radius:16px"></div>`).join('')}
       </div>`;
 
-    // Los 12 bloques de abajo llegan en UNA petición y quedan en el
-    // caché (ver API.prefetch y appscript-dividido/16_Bootstrap.gs);
-    // el Promise.all queda igual y no toca la red. Si falla, cada uno
-    // pide por su cuenta como antes.
-    await API.prefetch('metrics');
-
+    // En paralelo a propósito — ver la nota en dashboard.js: medido,
+    // 12 peticiones en paralelo tardan la mitad que una sola con
+    // getBootstrap, porque Apps Script sí atiende varias ejecuciones
+    // del mismo usuario al mismo tiempo.
     const [sesRes, cardioRes, metricsRes, progressRes, loadRes, weeklyVolRes, heatmapRes, zonesRes, bestSplitRes, insightsRes, muscleRes, projectionsRes] = await Promise.all([
       API.getSessions(50), API.getCardio(50), API.getMetrics(), API.getExerciseProgress(),
       API.getTrainingLoad(), API.getWeeklyVolume(12), API.getIntensityHeatmap(365), API.getCardioZoneDistribution(60),

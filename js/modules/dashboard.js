@@ -571,16 +571,17 @@ async function initDashboard(container) {
       </div>
     </div>`;
 
-  // Una sola petición trae los 12 bloques de abajo y los deja en el
-  // caché con la clave que cada uno usaría (ver API.prefetch y
-  // appscript-dividido/16_Bootstrap.gs). El Promise.all que sigue no
-  // cambia: cada llamada encuentra lo suyo ya guardado y vuelve al
-  // instante. Si el prefetch no sale, cada una pide como siempre.
-  // getReadinessScore queda fuera a propósito — se pide sin caché
-  // porque cambia con las horas, así que sigue siendo su propia
-  // petición. Son 2 en total, no 13.
-  await API.prefetch('dashboard');
-
+  // Se piden en paralelo A PROPÓSITO, y está medido (11-oct, contra el
+  // Apps Script real, en caliente):
+  //   12 peticiones en paralelo ......... 4.0 s
+  //   1 sola con getBootstrap ........... 8.3 s
+  // Apps Script SÍ atiende varias ejecuciones del mismo usuario a la
+  // vez, así que partir el trabajo en 12 peticiones compra paralelismo
+  // real. Juntarlas las vuelve secuenciales dentro de una ejecución, y
+  // lo que se ahorra en lecturas de hoja repetidas (42 → 18) no alcanza
+  // a pagar el paralelismo que se pierde.
+  // getBootstrap existe en el backend y sirve — pero como camino de
+  // respaldo cuando esto se atasca, no como camino normal.
   const [data, sesRes, recordsRes, metricsRes, cardioRes, streaksRes, overtrainingRes, insightsRes, profileRes, pullUpRes, achievementsRes, readinessRes, musicRes] = await Promise.all([
     API.getDashboard(),
     API.getSessions(30),
