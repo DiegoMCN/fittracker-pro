@@ -29,16 +29,13 @@ const CONFIG = {
     REDIRECT_URI: 'https://diegomcn.github.io/fittracker-pro/index.html',
   },
 
-  // Sheet IDs (nombre de cada hoja en tu Google Sheet)
-  SHEETS: {
-    FUERZA:   'REGISTRO_FUERZA',
-    CARDIO:   'REGISTRO_CARDIO',
-    SESION:   'REGISTRO_SESION',
-    METRICAS: 'METRICAS_CLAVE',
-    EJERCICIOS: 'EJERCICIOS',
-    PLAN:     'PLAN_SEMANAL',
-    RECORDS:  'RECORDS_PERSONALES'
-  },
+  // El bloque SHEETS salió de aquí: nombraba las hojas del Google Sheet
+  // y NADIE en el frontend lo usaba (el frontend habla con el backend por
+  // `action`, nunca con hojas). Era una segunda lista de nombres de hoja
+  // compitiendo con SHEET_SCHEMAS en 07_Setup_Diagnosticos.gs, que es la
+  // de verdad, y además la única mención que quedaba de
+  // RECORDS_PERSONALES — una hoja con 0 filas que el backend ya no
+  // conoce. Dos listas de lo mismo es cómo se desincronizan.
 
   // Plan de la semana (sincronizado con tu plan actual)
   WEEK_PLAN: {

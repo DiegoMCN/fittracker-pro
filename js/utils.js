@@ -57,13 +57,25 @@ const Sounds = (() => {
 })();
 
 // ── VIBRATION ────────────────────────────────────────────────────────────
-const Haptics = {
-  light()   { navigator.vibrate?.(50); },
-  medium()  { navigator.vibrate?.(100); },
-  heavy()   { navigator.vibrate?.([100, 50, 100]); },
-  success() { navigator.vibrate?.([200, 100, 200]); },
-  done()    { navigator.vibrate?.([500, 200, 500, 200, 1000]); },
-};
+// Solo DESPUÉS de que tocaste la pantalla. Chrome bloquea
+// navigator.vibrate mientras no haya una interacción real con la página
+// y escribe un [Intervention] en consola cada vez — ruido que tapa los
+// errores que sí importan. No era un fallo: la vibración simplemente no
+// podía ocurrir todavía. Esto lo calla sin cambiar lo que hace.
+const Haptics = (() => {
+  let listo = false;
+  const marcar = () => { listo = true; };
+  ['pointerdown', 'keydown', 'touchstart'].forEach(ev =>
+    document.addEventListener(ev, marcar, { once: true, passive: true }));
+  const v = (patron) => { if (!listo) return; try { navigator.vibrate?.(patron); } catch (e) {} };
+  return {
+    light()   { v(50); },
+    medium()  { v(100); },
+    heavy()   { v([100, 50, 100]); },
+    success() { v([200, 100, 200]); },
+    done()    { v([500, 200, 500, 200, 1000]); },
+  };
+})();
 
 // ── WAKE LOCK ─────────────────────────────────────────────────────────────
 const WakeLock = (() => {

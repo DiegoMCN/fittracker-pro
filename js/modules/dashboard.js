@@ -699,12 +699,25 @@ function _achievementsHTML(achievements, next) {
     </div>`;
 }
 
-// Qué sigue en la misma familia. El backend manda `next` con icono y
-// etiqueta pero sin el tipo, y cada familia usa un icono distinto
-// (📅 sesiones, 🔥 racha, 🏋️ volumen, 🏆 pr, 📈 hit, 🎯 fase) — así que
-// se emparejan por icono. Si algún día dos familias comparten icono,
-// esto empieza a mostrar el siguiente de la familia equivocada.
+// Qué sigue en la misma familia, emparejado por TIPO.
+//
+// Antes se emparejaba por ICONO, porque `next` no mandaba el tipo. Eso
+// funcionaba de milagro: dependía de que ninguna familia repitiera
+// emoji, y el icono es presentación — cambiarle el emoji a una familia
+// rompía el emparejamiento sin que nada lo avisara. Y un logro con un
+// Tipo que LOGRO_DEFS no conoce cae al icono de respaldo '⭐', así que
+// dos de esos se habrían emparejado entre sí.
+//
+// El respaldo por icono se deja SOLO para un backend viejo que todavía
+// no manda `type`: así la tarjeta sigue sirviendo mientras no se pega
+// el Apps Script nuevo, en vez de quedarse sin "lo que sigue".
 function _achSiguiente(a) {
+  if (!a || !_achNext.length) return null;
+  const porTipo = _achNext.find(n => n.type && a.type && n.type === a.type);
+  if (porTipo) return porTipo;
+  // Si el backend ya manda tipos y ninguno coincide, NO se adivina por
+  // icono: mostrar el de otra familia es peor que no mostrar nada.
+  if (_achNext.some(n => n.type)) return null;
   return _achNext.find(n => n.icon === a.icon) || null;
 }
 

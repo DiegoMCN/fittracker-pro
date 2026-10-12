@@ -79,7 +79,7 @@ const Configuracion = (() => {
           <div class="card-header">
             <div>
               <div class="card-title">🤖 Registro del Coach IA</div>
-              <div class="card-subtitle">Cada intento contra cada modelo: si funcionó, por qué falló y cuánto tardó — para entender por qué se pasa de un modelo a otro</div>
+              <div class="card-subtitle">Los últimos dos días de intentos: contra qué modelo, si funcionó, por qué falló y cuánto tardó — para entender por qué se pasa de un modelo a otro. Lo anterior está detrás del botón</div>
             </div>
           </div>
           <div id="cfg-coach-log" style="font-size:12px;color:var(--text-3)">Cargando registro…</div>
@@ -89,7 +89,7 @@ const Configuracion = (() => {
           <div class="card-header">
             <div>
               <div class="card-title">🧠 Qué sabe la app y qué le llega a la IA</div>
-              <div class="card-subtitle">Cada dato que la app calcula, y si entra al consejo de hoy o no. Más contexto no es más preciso: lo que no cambió desde ayer se omite a propósito</div>
+              <div class="card-subtitle">Más contexto no es más preciso: lo que no cambió desde ayer se omite a propósito. El detalle de cada dato está en el botón</div>
             </div>
           </div>
           <div id="cfg-contexto" style="font-size:12px;color:var(--text-3)">Revisando…</div>
@@ -384,6 +384,9 @@ const Configuracion = (() => {
   }
 
 
+  // Cuántos DÍAS de registro se ven sin desplegar.
+  const COACH_LOG_DIAS = 2;
+
   async function _loadCoachLog() {
     const el = document.getElementById('cfg-coach-log');
     if (!el) return;
@@ -392,15 +395,49 @@ const Configuracion = (() => {
     if (!rows.length) { el.innerHTML = 'Todavía no hay registros. Se llenan al generar un consejo (requiere el servidor actualizado y haber corrido <b>setupSheets()</b>).'; return; }
     const esc = Utils.escapeHtml;
     const icon = (r) => r.result === 'ok' ? '✅' : '❌';
-    el.innerHTML = `<div style="overflow-x:auto;max-height:340px;overflow-y:auto"><table style="width:100%;border-collapse:collapse;font-size:11px">
-      <thead><tr style="text-align:left;color:var(--text-4)"><th style="padding:4px 6px">Cuándo</th><th style="padding:4px 6px">Modelo</th><th style="padding:4px 6px"></th><th style="padding:4px 6px">Causa</th><th style="padding:4px 6px;text-align:right">Seg.</th><th style="padding:4px 6px">Detalle</th></tr></thead>
-      <tbody>${rows.map(r => `<tr style="border-top:1px solid var(--border)">
+    const dia = (r) => String(r.ts || '').slice(0, 10);
+
+    // Se corta por DÍAS completos, no por número de filas. Un día trae
+    // entre 2 y 15 filas (cada reintento contra cada modelo deja la
+    // suya), así que un corte por filas partiría una generación a la
+    // mitad y esconderría justo el reintento que explica por qué se
+    // cambió de modelo — lo único que este registro sirve para ver.
+    // Las filas vienen más reciente primero.
+    const dias = [...new Set(rows.map(dia))].sort().reverse();
+    const visibles = new Set(dias.slice(0, COACH_LOG_DIAS));
+    const nOcultas = rows.filter(r => !visibles.has(dia(r))).length;
+
+    // Las viejas se dibujan pero ocultas, para que el botón solo cambie
+    // un display en vez de volver a pedir el registro al servidor.
+    const fila = (r) => {
+      const oculta = !visibles.has(dia(r));
+      return `<tr class="${oculta ? 'coachlog-extra' : ''}" style="border-top:1px solid var(--border)${oculta ? ';display:none' : ''}">
         <td style="padding:5px 6px;white-space:nowrap">${esc(String(r.ts || '').slice(5, 16))}</td>
         <td style="padding:5px 6px;white-space:nowrap">${esc(r.model || '')}</td>
         <td style="padding:5px 6px">${icon(r)}</td>
         <td style="padding:5px 6px">${esc(r.kind || '')}</td>
         <td style="padding:5px 6px;text-align:right">${esc(String(r.dur ?? ''))}</td>
-        <td style="padding:5px 6px;color:var(--text-3);min-width:180px">${esc(String(r.detail || '').slice(0, 160))}</td></tr>`).join('')}</tbody></table></div>`;
+        <td style="padding:5px 6px;color:var(--text-3);min-width:180px">${esc(String(r.detail || '').slice(0, 160))}</td></tr>`;
+    };
+
+    const etiqueta = (n) => `Ver ${n} intento${n === 1 ? '' : 's'} más antiguo${n === 1 ? '' : 's'}`;
+    el.innerHTML = `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11px">
+      <thead><tr style="text-align:left;color:var(--text-4)"><th style="padding:4px 6px">Cuándo</th><th style="padding:4px 6px">Modelo</th><th style="padding:4px 6px"></th><th style="padding:4px 6px">Causa</th><th style="padding:4px 6px;text-align:right">Seg.</th><th style="padding:4px 6px">Detalle</th></tr></thead>
+      <tbody id="cfg-coach-log-body">${rows.map(fila).join('')}</tbody></table></div>
+      ${nOcultas ? `<button id="cfg-coach-log-toggle" class="btn btn-sm" style="width:100%;margin-top:10px;background:var(--bg-input);color:var(--text-2);font-size:11px"
+          onclick="Configuracion.toggleCoachLog()">${etiqueta(nOcultas)}</button>` : ''}`;
+  }
+
+  function toggleCoachLog() {
+    const extras = [...document.querySelectorAll('#cfg-coach-log-body .coachlog-extra')];
+    const btn = document.getElementById('cfg-coach-log-toggle');
+    if (!extras.length || !btn) return;
+    const abriendo = extras[0].style.display === 'none';
+    // 'table-row', no 'flex': son <tr>.
+    extras.forEach(el => { el.style.display = abriendo ? 'table-row' : 'none'; });
+    const n = extras.length;
+    btn.textContent = abriendo ? 'Ver menos' : `Ver ${n} intento${n === 1 ? '' : 's'} más antiguo${n === 1 ? '' : 's'}`;
+    Sounds.click();
   }
 
   // ── QUÉ SABE LA APP Y QUÉ LE LLEGA A LA IA ───────────────────────────
@@ -454,7 +491,7 @@ const Configuracion = (() => {
     }).join('');
 
     const pct = a.presupuesto ? Math.min(100, Math.round(a.charsVariable / a.presupuesto * 100)) : 0;
-    el.innerHTML = aviso + `
+    const resumen = `
       <div style="color:var(--text-2)">
         Hoy le llegan <b>${bloques.filter(b => b.estado === 'incluido').length}</b> de <b>${bloques.length}</b> datos,
         <b>${(a.chars || 0).toLocaleString('es-MX')}</b> caracteres de contexto.
@@ -467,7 +504,43 @@ const Configuracion = (() => {
           Presupuesto de la parte variable: ${(a.charsVariable || 0).toLocaleString('es-MX')} de ${(a.presupuesto || 0).toLocaleString('es-MX')} caracteres.
           Lo que decide seguridad (carga, sobrecarga, forma, qué tan listo estás) va aparte y nunca se recorta.
         </div>
-      </div>` + grupos;
+      </div>`;
+
+    // El desglose de los 37 bloques se va al modal; en la tarjeta queda
+    // el resumen. El AVISO se queda FUERA del modal a propósito: un dato
+    // de nivel "siempre" sin información es la única falla de aquí que
+    // hay que atender, y esconderla detrás de un clic la vuelve
+    // invisible, que es justo lo contrario de para lo que existe.
+    _ctxDetalle = grupos;
+    el.innerHTML = aviso + resumen + `
+      <button class="btn btn-sm" style="width:100%;margin-top:12px;background:var(--bg-input);color:var(--text-2);font-size:11px"
+              onclick="Configuracion.openContexto()">Ver los ${bloques.length} datos uno por uno</button>`;
+  }
+
+  // El desglose, guardado al revisar para que abrir el modal no vuelva a
+  // pedirle la auditoría al servidor.
+  let _ctxDetalle = '';
+
+  function openContexto() {
+    if (!_ctxDetalle) return;
+    Sounds.click();
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+      <div class="modal" style="max-width:560px">
+        <div class="modal-header">
+          <div class="modal-title">🧠 Qué le llega a la IA hoy</div>
+          <button class="btn btn-ghost btn-icon" onclick="Motion.closeModal(this.closest('.modal-overlay'))">✕</button>
+        </div>
+        <div class="modal-body" style="font-size:12px;color:var(--text-3)">
+          <div style="color:var(--text-4);font-size:11px;line-height:1.55;margin-bottom:4px">
+            Un dato puede quedar fuera del consejo por tres razones muy distintas: no cambió, no viene al caso hoy, o no existe. Desde afuera las tres se ven igual. La última es la única que hay que arreglar.
+          </div>
+          ${_ctxDetalle}
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    if (typeof Motion !== 'undefined' && Motion.modalIn) Motion.modalIn(overlay);
   }
 
   // ¿El Apps Script publicado está al día, y al Sheet no le falta ninguna
@@ -499,6 +572,20 @@ const Configuracion = (() => {
     // modelo al que redirige. Eso no se nota hasta que un día el consejo
     // no sale. Si el servidor es viejo y no reporta el campo, no se
     // afirma nada (la línea de versión ya avisa).
+    // Columnas que el CÓDIGO pidió y el Sheet no tiene. Es el caso que
+    // schemaIssues no puede ver: cuando el Sheet y el esquema coinciden,
+    // schemaIssues dice que todo está bien aunque una lectura se haya
+    // quedado con el nombre viejo de una columna renombrada — y entonces
+    // el dato se vuelve null y la gráfica sale vacía sin que nada falle.
+    // Si el servidor es viejo y no manda el campo, no se afirma nada.
+    const cols = res.columnIssues;
+    const colLine = cols === undefined ? '' : cols.length
+      ? `<br>⚠️ <b>El código pidió columnas que tu Sheet no tiene:</b><br>` + cols.map(c =>
+          `• <b>${Utils.escapeHtml(c.sheet)}</b>: ${c.columns.map(x => Utils.escapeHtml(x)).join(', ')}` +
+          (c.seen ? ` <span style="color:var(--text-4)">(visto el ${Utils.escapeHtml(c.seen)})</span>` : '')
+        ).join('<br>') + `<br><span style="color:var(--text-4)">Pasa al renombrar una columna y dejar una lectura con el nombre viejo: ese dato se vuelve nulo en silencio. Si acabas de renombrar, corre <b>setupSheets()</b>; si ya lo corriste, falta actualizar esa lectura en el Apps Script. El aviso se borra solo al correr setupSheets().</span>`
+      : '';
+
     const gem = res.geminiIssues;
     const gemLine = gem === undefined ? '' : gem.length
       ? `<br>⚠️ <b>Modelos de Gemini que Google ya redirige:</b><br>` + gem.map(g =>
@@ -508,7 +595,7 @@ const Configuracion = (() => {
             : ` — cámbialo por ${Utils.escapeHtml(g.replacement)}.`)
         ).join('<br>') + `<br><span style="color:var(--text-4)">Se ajusta en Apps Script → Configuración del proyecto → Propiedades del script → <b>GEMINI_MODELS</b>. Si no tienes esa propiedad, basta con pegar el <b>06_CoachIA.gs</b> actualizado.</span>`
       : '';
-    el.innerHTML = verLine + issueLine + deployLine + gemLine;
+    el.innerHTML = verLine + issueLine + colLine + deployLine + gemLine;
   }
 
   // ── MOVIMIENTO Y DISEÑO ──────────────────────────────────────────
@@ -705,6 +792,7 @@ const Configuracion = (() => {
     setMotionDuration, setGlassIntensity, setCardRadius, setMotionPreset, resetMotion,
     setSpotifyLogging, disconnectSpotify, flushSpotify,
     setWinter, previewWinter, setFrost,
+    toggleCoachLog, openContexto,
   };
 })();
 

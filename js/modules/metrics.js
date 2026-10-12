@@ -122,17 +122,213 @@ const Metrics = (() => {
     render();
   }
 
+  // FC de cardio agrupada por FAMILIA de protocolo, nunca todo junto.
+  //
+  // El promedio global de las 16 sesiones da 158 bpm, y ese número no
+  // significa nada: mete en la misma bolsa un HIT a 166 y una zona 2 a
+  // 142, que son dos esfuerzos distintos a propósito. Peor: en zona 2 la
+  // FC es CONSTANTE por diseño (la meta es 143-153), así que graficarla
+  // como tendencia no mide progreso — lo que mejora ahí es la velocidad
+  // a esa misma FC, y eso ya se ve en otra parte.
+  //
+  // HIT y sprint sí se suman en un solo grupo porque midiéndolos salen
+  // iguales (160 y 162 bpm, con rangos traslapados): separarlos daría dos
+  // líneas flacas diciendo lo mismo.
+  //
+  // Y NO se declara tendencia. Las 13 sesiones de esfuerzo alto están
+  // repartidas en 5 variantes de protocolo y en octubre subió de nivel;
+  // una FC más alta ahí puede ser "entrena más fuerte", no "está peor".
+  // Es el mismo error que ya se cometió una vez con la recuperación.
+  // La banda de FC que zona 2 persigue, igual que la que el módulo de
+  // cardio le muestra al capturar la sesión.
+  const Z2_META = [143, 153];
+
+  // Cuántas fechas de "Tus marcas" se ven sin desplegar. Eran 8 y la
+  // tarjeta se volvía una pared: lo que se consulta a diario es la
+  // última medición y las dos previas para comparar.
+  const MARCAS_VISIBLES = 3;
+
+  // ── LAS 4 TARJETAS DE ARRIBA ──────────────────────────────────────
+  //
+  // Antes eran cuatro fijas y tres de ellas no se movían nunca: un
+  // récord histórico, una mediana y un contador. Parecían indicadores
+  // vivos y eran monumentos.
+  //
+  // Ahora hay un pool de candidatos y cada uno dice qué tan relevante
+  // es HOY. Se muestran los 4 de arriba. La escala, para que se pueda
+  // auditar en vez de adivinar:
+  //
+  //   85-95  algo que conviene atender ahora (un hueco de días sin
+  //          entrenar frente a un plan de 6 por semana)
+  //   50-70  una tendencia con señal por encima del ruido, o un logro
+  //          reciente
+  //   30-45  un valor estable, informativo pero quieto
+  //   10     un contador
+  //
+  // Nada entra al pool si ya tiene su propia tarjeta con el MISMO
+  // detalle más abajo: el ACWR, por ejemplo, tiene la suya completa, y
+  // repetirlo arriba sería el duplicado que había que quitar.
+  const KPI_VISIBLES = 4;
+
+  // Hoy en texto YYYY-MM-DD local. Comparar las fechas del Sheet como
+  // texto evita que un Date en UTC corra el día hacia atrás.
+  function _hoyISO() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
+  function _diasEntre(isoA, isoB) {
+    return Math.round((Date.parse(isoB + 'T00:00:00') - Date.parse(isoA + 'T00:00:00')) / 864e5);
+  }
+
+  function _kpiCandidatos() {
+    const C = [];
+    const hoy = _hoyISO();
+    const soloFecha = (d) => String(d || '').slice(0, 10);
+
+    // 1. Días sin entrenar. No lo dice ninguna otra tarjeta de la
+    //    página, y es lo único de aquí sobre lo que se puede actuar hoy
+    //    mismo. Enuncia el hecho y el plan; no regaña.
+    const fechas = [..._sessions, ..._cardio].map(s => soloFecha(s.date)).filter(Boolean).sort();
+    const ultima = fechas[fechas.length - 1];
+    if (ultima) {
+      const d = _diasEntre(ultima, hoy);
+      if (d >= 2) {
+        C.push({
+          key: 'descanso', label: 'Días sin entrenar',
+          value: d, unit: d === 1 ? 'día' : 'días',
+          color: d >= 5 ? 'var(--danger)' : 'var(--warning)',
+          nota: `último: ${Utils.formatDateShort(ultima)}`,
+          tono: 'flat',
+          rel: d >= 5 ? 92 : d >= 3 ? 85 : 55,
+        });
+      }
+    }
+
+    // 2. FC de fuerza. Esta tarjeta MENTÍA: comparaba la última sesión
+    //    suelta contra la primera de todas, dos puntos en una serie con
+    //    8.4 bpm de desviación, y con eso pintaba un veredicto en rojo.
+    //    Daba "+6 bpm, peor" cuando el promedio de las primeras 10
+    //    sesiones (131.6) contra las últimas 10 (124.9) da -6.7, o sea
+    //    mejorando. Ahora el titular es un PROMEDIO de ventana y el
+    //    delta compara ventana contra ventana.
+    const fu = _sessions.filter(s => s.type === 'Fuerza' && s.fcAvg);
+    if (fu.length) {
+      const prom = (a) => a.reduce((s, x) => s + x, 0) / a.length;
+      const vals = fu.map(s => s.fcAvg);
+      const n = Math.min(10, Math.floor(vals.length / 2));
+      const actual = Math.round(prom(vals.slice(-Math.max(n, 1))));
+      let delta = null, rel = 35, nota = `promedio de las últimas ${Math.max(n, 1)} sesiones`;
+      if (vals.length >= 6 && n >= 3) {
+        const base = prom(vals.slice(0, n));
+        delta = Math.round((prom(vals.slice(-n)) - base) * 10) / 10;
+        // ¿La señal le gana al ruido? Si el cambio no llega a media
+        // desviación estándar, es una tarjeta informativa, no un
+        // hallazgo — y no se anuncia como tal.
+        const media = prom(vals);
+        const sd = Math.sqrt(prom(vals.map(v => (v - media) ** 2)));
+        rel = Math.abs(delta) >= sd / 2 ? 60 : 40;
+        nota = `${delta <= 0 ? '↓ ' : '↑ +'}${Math.abs(delta)} bpm vs tus primeras ${n}`;
+      }
+      C.push({
+        key: 'fcFuerza', label: 'FC en fuerza', value: actual, unit: 'bpm',
+        color: 'var(--danger)', nota,
+        // En FC de fuerza, bajar es mejorar.
+        tono: delta === null ? 'flat' : delta < 0 ? 'up' : delta > 0 ? 'down' : 'flat',
+        rel,
+      });
+    }
+
+    // 3. Metas logradas. Resume la tarjeta de Proyección de metas, que
+    //    está hasta abajo — dos de las seis ya están alcanzadas y eso
+    //    no se veía en ninguna parte sin scrollear.
+    const targets = Object.entries(_goalProjections.targets || {});
+    if (targets.length) {
+      const goals = _goalProjections.goals || {};
+      const logradas = targets.filter(([k]) => goals[k] && goals[k].reached);
+      C.push({
+        key: 'metas', label: 'Metas logradas', value: logradas.length,
+        unit: `de ${targets.length}`, color: 'var(--accent)',
+        nota: logradas.length ? logradas.map(([, t]) => t.label.split(' (')[0]).join(' · ') : 'ninguna todavía',
+        tono: logradas.length ? 'up' : 'flat',
+        rel: logradas.length ? 55 : 30,
+      });
+    }
+
+    // 4. Pico típico de cadencia. Es una mediana: estable por
+    //    naturaleza, así que solo sube de relevancia si el dato es
+    //    fresco.
+    const cad = _records.cadencePeak;
+    if (cad && cad.value != null) {
+      const d = cad.date ? _diasEntre(soloFecha(cad.date), hoy) : 999;
+      C.push({
+        key: 'cadencia', label: 'Pico típico de cadencia', value: cad.value, unit: 'spm',
+        color: 'var(--purple-light)', nota: 'mediana de tus sprints', tono: 'flat',
+        rel: d <= 14 ? 45 : 30,
+      });
+    }
+
+    // 5. Mejor recuperación. Un récord histórico: deja de ser noticia
+    //    en cuanto envejece. Con 18 días encima, cede el lugar.
+    const rec = _records.fcRecovery;
+    if (rec && rec.value != null) {
+      const d = rec.date ? _diasEntre(soloFecha(rec.date), hoy) : 999;
+      C.push({
+        key: 'recuperacion', label: 'Mejor recuperación', value: rec.value, unit: 'bpm',
+        color: 'var(--accent)',
+        nota: rec.date ? `${Utils.formatDateShort(rec.date)} · hace ${d} días` : 'objetivo: -20',
+        tono: 'flat',
+        rel: d <= 14 ? 65 : 25,
+      });
+    }
+
+    // 6. El contador. Siempre al final: no hay nada que hacer con él,
+    //    pero rellena si no hay seis candidatos con datos.
+    C.push({
+      key: 'sesiones', label: 'Sesiones totales', value: _sessions.length + _cardio.length,
+      unit: '', color: 'var(--cyan)',
+      nota: `${_sessions.length} fuerza · ${_cardio.length} cardio`, tono: 'flat', rel: 10,
+    });
+
+    // Empate: el orden del pool decide, para que la fila no baile sola
+    // entre recargas cuando dos candidatos valen lo mismo.
+    return C.sort((a, b) => b.rel - a.rel).slice(0, KPI_VISIBLES);
+  }
+
+  function _cardioFC() {
+    const conFC = _cardio.filter(c => c.fcAvg);
+    // protoKind lo manda el backend desde _protoKind, su dueño único. Si
+    // no viene, el backend está sin actualizar: mejor decirlo que repetir
+    // aquí la regex de clasificación y que las dos se desincronicen.
+    const faltaBackend = conFC.length > 0 && conFC.every(c => !c.protoKind);
+    const grupo = (kinds) => {
+      const xs = conFC.filter(c => kinds.indexOf(c.protoKind) !== -1);
+      if (!xs.length) return null;
+      const fcs = xs.map(c => c.fcAvg);
+      return {
+        sesiones: xs,
+        n: xs.length,
+        avg: Math.round(fcs.reduce((s, x) => s + x, 0) / fcs.length),
+        min: Math.min(...fcs),
+        max: Math.max(...fcs),
+        // Cuántas sesiones cayeron DENTRO de la banda, no si el promedio
+        // cayó dentro. No es lo mismo: con 156, 142 y 146 el promedio da
+        // 148 (centro exacto de la meta) solo porque el alto y el bajo se
+        // cancelan, cuando en realidad solo una de las tres acertó. Un ✓
+        // verde sobre ese promedio sería un número que engaña.
+        enBanda: xs.filter(c => c.fcAvg >= Z2_META[0] && c.fcAvg <= Z2_META[1]).length,
+        protocolos: [...new Set(xs.map(c => c.protocol).filter(Boolean))],
+      };
+    };
+    return { faltaBackend, alto: grupo(['hit', 'sprint']), zona2: grupo(['zona2']) };
+  }
+
   function render() {
     const container = document.getElementById('page-content');
     if (!container) return;
 
-    const strengthSessions = _sessions.filter(s => s.type === 'Fuerza' && s.fcAvg);
-    const latestFC = strengthSessions[strengthSessions.length - 1]?.fcAvg;
-    const firstFC  = strengthSessions[0]?.fcAvg;
-    const fcDelta  = (latestFC && firstFC) ? latestFC - firstFC : null;
-
-    const bestRec = _records.fcRecovery || { value: null };
-    const bestCad = _records.cadencePeak || { value: null };
+    const fcCardio = _cardioFC();
+    const _kpis = _kpiCandidatos();
 
     container.innerHTML = `
       <div style="max-width:1100px;margin:0 auto">
@@ -149,27 +345,19 @@ const Metrics = (() => {
           <button class="btn btn-primary btn-sm" onclick="Metrics.openCapture()">+ Registrar métricas clave</button>
         </div>
 
-        <!-- KPIs -->
-        <div class="grid-4 section" style="margin-bottom:24px">
-          <div class="metric-card">
-            <div class="metric-label">FC fuerza (tendencia)</div>
-            <div class="metric-value" style="color:var(--danger)">${latestFC || '—'}<span class="metric-unit">bpm</span></div>
-            ${fcDelta !== null ? `<div class="metric-delta ${fcDelta <= 0 ? 'up' : 'down'}">${fcDelta <= 0 ? '↓' : '↑'} ${Math.abs(fcDelta)} bpm desde inicio</div>` : ''}
+        <!-- KPIs — ya no son cuatro fijas: ver _kpiCandidatos() -->
+        <div class="section" style="margin-bottom:24px">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px">
+            <div style="font-size:11px;color:var(--text-3)">Lo más relevante ahora</div>
+            ${_infoBtn('kpis_dinamicas')}
           </div>
-          <div class="metric-card">
-            <div class="metric-label">Mejor recuperación</div>
-            <div class="metric-value accent">${bestRec.value ?? '—'}<span class="metric-unit">bpm</span></div>
-            <div class="metric-delta ${bestRec.value <= -10 ? 'up' : 'flat'}">${bestRec.date ? Utils.formatDateShort(bestRec.date) : 'objetivo: -20'}</div>
-          </div>
-          <div class="metric-card">
-            <div class="metric-label">Pico típico de cadencia</div>
-            <div class="metric-value" style="color:var(--purple-light)">${bestCad.value ?? '—'}<span class="metric-unit">spm</span></div>
-            <div class="metric-delta flat">${bestCad.value ? 'mediana de tus sprints' : 'objetivo: 170+'}</div>
-          </div>
-          <div class="metric-card">
-            <div class="metric-label">Sesiones totales</div>
-            <div class="metric-value" style="color:var(--cyan)">${_sessions.length + _cardio.length}</div>
-            <div class="metric-delta flat">${_sessions.length} fuerza · ${_cardio.length} cardio</div>
+          <div class="grid-4">
+            ${_kpis.map(k => `
+              <div class="metric-card">
+                <div class="metric-label">${k.label}</div>
+                <div class="metric-value" style="color:${k.color}">${k.value ?? '—'}${k.unit ? `<span class="metric-unit">${k.unit}</span>` : ''}</div>
+                <div class="metric-delta ${k.tono}">${k.nota}</div>
+              </div>`).join('')}
           </div>
         </div>
 
@@ -222,20 +410,37 @@ const Metrics = (() => {
             <div style="position:relative;height:180px;width:100%;overflow:hidden;margin-bottom:16px">
               <canvas id="perf-trend-chart"></canvas>
             </div>` : ''}
-            <div style="display:flex;flex-direction:column">
-              ${_metricsHistory.slice(0, 8).map((h, i, arr) => `
-                <div style="display:flex;align-items:center;gap:14px;padding:8px 0;${i < arr.length-1 ? 'border-bottom:1px solid var(--border)' : ''}">
+            <!-- Solo las 3 fechas más recientes a la vista. Las demás se
+                 quedan dibujadas pero ocultas: así el botón solo cambia
+                 un display y NO hay que llamar render(), que redibujaría
+                 las catorce gráficas de la página por abrir una lista. -->
+            <div style="display:flex;flex-direction:column" id="marcas-hist">
+              ${_metricsHistory.map((h, i) => `
+                <!-- La línea va ARRIBA, no abajo: con el borde abajo, la
+                     última fila visible dejaba una raya colgando sobre el
+                     botón de "ver más" cuando la lista está recogida. -->
+                <div class="${i >= MARCAS_VISIBLES ? 'marcas-extra' : ''}" style="display:flex;align-items:center;gap:14px;padding:8px 0;${i > 0 ? 'border-top:1px solid var(--border)' : ''}${i >= MARCAS_VISIBLES ? ';display:none' : ''}">
                   <div style="font-size:11px;color:var(--text-3);min-width:70px">${Utils.formatDateShort(h.date)}</div>
                   <div style="flex:1;display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--text-2)">
                     ${h.weight ? `<span>⚖️ ${h.weight} kg</span>` : ''}
-                    ${h.sprintSpeed ? `<span>⚡ ${h.sprintSpeed} km/h</span>` : ''}
+                    ${h.sprintSpeed ? `<span>⚡ ${h.sprintSpeed} km/h sprint</span>` : ''}
+                    <!-- hitSpeed se quedó sin mostrar cuando la velocidad
+                         se partió en dos (sprint medido vs. HIT
+                         configurado). Tres fechas salían con fecha y
+                         NINGÚN dato por eso, no porque estuvieran
+                         vacías. Va con otra etiqueta porque no es una
+                         marca que logres: es el nivel en que entrenas. -->
+                    ${h.hitSpeed ? `<span style="color:var(--text-3)">⚙️ HIT a ${h.hitSpeed} km/h</span>` : ''}
                     ${h.pullUps ? `<span>💪 ${h.pullUps} dominadas</span>` : ''}
                     ${h.cadAvg ? `<span>🦵 ${h.cadAvg} spm</span>` : ''}
                     ${h.deadHang ? `<span>🕐 ${h.deadHang}s hang</span>` : ''}
                     ${h.plankMax ? `<span>📏 ${h.plankMax}s plancha</span>` : ''}
                   </div>
                 </div>`).join('')}
-            </div>`}
+            </div>
+            ${_metricsHistory.length > MARCAS_VISIBLES ? `
+            <button id="marcas-toggle" class="btn btn-sm" style="width:100%;margin-top:10px;background:var(--bg-input);color:var(--text-2);font-size:11px"
+                    onclick="Metrics.toggleMarcas()">Ver las ${_metricsHistory.length - MARCAS_VISIBLES} fechas anteriores</button>` : ''}`}
         </div>
 
         <!-- Gráficas -->
@@ -251,6 +456,49 @@ const Metrics = (() => {
             <div style="position:relative;height:220px;width:100%">
               <canvas id="chart-fc-strength"></canvas>
             </div>
+          </div>
+
+          <!-- La gemela de la de fuerza, pero el cardio NO se puede
+               promediar todo junto: ver _cardioFC(). -->
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <div class="card-title">FC promedio — Cardio</div>
+                <div class="card-subtitle">Por tipo de esfuerzo, no todo revuelto</div>
+              </div>
+              ${_infoBtn('fc_cardio')}
+            </div>
+            ${fcCardio.faltaBackend ? `
+              <div style="text-align:center;padding:30px 20px;color:var(--text-3)">
+                <div style="font-size:32px;margin-bottom:10px">🔌</div>
+                <div style="font-size:12px">Falta pegar el backend actualizado: esta tarjeta necesita que el Sheet mande la familia de cada protocolo.</div>
+              </div>`
+            : (!fcCardio.alto && !fcCardio.zona2) ? `
+              <div style="text-align:center;padding:30px 20px;color:var(--text-3)">
+                <div style="font-size:32px;margin-bottom:10px">💓</div>
+                <div style="font-size:12px">Sin sesiones de cardio con FC promedio todavía.</div>
+              </div>` : `
+            <div style="display:flex;gap:10px;margin-bottom:14px">
+              ${fcCardio.alto ? `
+              <div style="flex:1;background:var(--bg-input);border-radius:10px;padding:12px">
+                <div style="font-size:10px;color:var(--text-3);margin-bottom:4px">Esfuerzo alto · HIT y sprint</div>
+                <div style="font-size:20px;font-weight:700;color:var(--warning)">${fcCardio.alto.avg}<span style="font-size:10px;color:var(--text-3)"> bpm</span></div>
+                <div style="font-size:10px;color:var(--text-4);margin-top:3px">${fcCardio.alto.min}–${fcCardio.alto.max} bpm · ${fcCardio.alto.n} sesiones</div>
+              </div>` : ''}
+              ${fcCardio.zona2 ? `
+              <div style="flex:1;background:var(--bg-input);border-radius:10px;padding:12px">
+                <div style="font-size:10px;color:var(--text-3);margin-bottom:4px">Zona 2 · constante a propósito</div>
+                <div style="font-size:20px;font-weight:700;color:var(--cyan)">${fcCardio.zona2.avg}<span style="font-size:10px;color:var(--text-3)"> bpm</span></div>
+                <div style="font-size:10px;color:${fcCardio.zona2.enBanda === fcCardio.zona2.n ? 'var(--success)' : 'var(--warning)'};margin-top:3px">${fcCardio.zona2.enBanda} de ${fcCardio.zona2.n} dentro de ${Z2_META[0]}–${Z2_META[1]}</div>
+              </div>` : ''}
+            </div>
+            <div style="position:relative;height:180px;width:100%">
+              <canvas id="chart-fc-cardio"></canvas>
+            </div>
+            ${fcCardio.alto && fcCardio.alto.protocolos.length > 1 ? `
+            <div style="font-size:10px;color:var(--text-4);margin-top:10px;line-height:1.5">
+              Tu esfuerzo alto cubre ${fcCardio.alto.protocolos.length} protocolos distintos (${fcCardio.alto.protocolos.join(', ')}). Por eso aquí no hay flecha de tendencia: si subes de nivel, una FC más alta puede ser que entrenas más fuerte, no que estés peor.
+            </div>` : ''}`}
           </div>
 
           <div class="card">
@@ -658,6 +906,8 @@ const Metrics = (() => {
   const _chartInfo = {
     perf_trend: { title: '📈 Métricas de rendimiento', desc: 'Velocidad de sprint, dominadas y cadencia a través de tus mediciones manuales — tu progreso hacia las metas del programa, no solo el número de hoy.' },
     fc_fuerza: { title: '❤️ Evolución FC en fuerza', desc: 'Tu frecuencia cardíaca promedio durante las sesiones de fuerza — si baja con el tiempo a un esfuerzo parecido, tu corazón se está volviendo más eficiente.' },
+    kpis_dinamicas: { title: '📌 Por qué estas cuatro', desc: 'Estas tarjetas no son fijas: hay seis candidatas y se muestran las cuatro que más importan hoy. Primero lo que conviene atender (un hueco de días sin entrenar), luego las tendencias con señal real y los logros recientes, después los valores estables, y al final los contadores. Un récord de hace tres semanas cede su lugar; si lo rompes hoy, vuelve. Nada que ya tenga su propia tarjeta abajo con el mismo detalle entra aquí, para no repetir el dato dos veces.' },
+    fc_cardio: { title: '💓 FC promedio en cardio', desc: 'Separada por tipo de esfuerzo, porque juntarla no diría nada: un HIT y una zona 2 son esfuerzos distintos a propósito. En zona 2 tu FC debe quedarse quieta dentro de 143–153 bpm (lo que mejora ahí es ir más rápido a esa misma FC). En esfuerzo alto no verás flecha de tendencia: tus sesiones cubren varios protocolos y niveles, y una FC más alta puede significar que entrenas más fuerte, no que estés peor.' },
     cadencia: { title: '🦵 Cadencia', desc: 'Tus pasos por minuto en cardio a través del tiempo — acercarte a tu meta de 170spm reduce el impacto por zancada y mejora tu eficiencia de carrera.' },
     volumen: { title: '🏋️ Volumen', desc: 'El peso total que moviste por sesión (peso × repeticiones) — la tendencia de fondo de tu fuerza, más confiable que ver un solo ejercicio suelto.' },
     recuperacion: { title: '💚 Recuperación', desc: 'Qué tanto baja tu FC en los 2 minutos después de esforzarte — entre más baje, mejor está respondiendo tu corazón al entrenamiento.' },
@@ -723,8 +973,23 @@ const Metrics = (() => {
     render();
   }
 
+  // Despliega o recoge las fechas viejas de "Tus marcas". No pasa por
+  // render() a propósito: el estado no vive en una variable del módulo
+  // sino en el DOM, así abrir una lista no obliga a reconstruir la
+  // página entera ni a redibujar las gráficas.
+  function toggleMarcas() {
+    const extras = document.querySelectorAll('#marcas-hist .marcas-extra');
+    const btn = document.getElementById('marcas-toggle');
+    if (!extras.length || !btn) return;
+    const abriendo = extras[0].style.display === 'none';
+    extras.forEach(el => { el.style.display = abriendo ? 'flex' : 'none'; });
+    btn.textContent = abriendo ? 'Ver menos' : `Ver las ${extras.length} fechas anteriores`;
+    Sounds.click();
+  }
+
   function _renderCharts() {
     _chartFCStrength();
+    _chartFCCardio();
     _chartCadence();
     _chartVolume();
     _chartRecovery();
@@ -758,6 +1023,61 @@ const Metrics = (() => {
       options: {
         ...CHART_BASE,
         plugins: { ...CHART_BASE.plugins, tooltip: { ...CHART_BASE.plugins.tooltip, callbacks: { label: c => `${c.raw} bpm` } } },
+        scales: {
+          x: { ...AXIS_STYLE, ticks: { ...AXIS_STYLE.ticks, maxRotation: 0, maxTicksLimit: 6 } },
+          y: { ...AXIS_STYLE, ticks: { ...AXIS_STYLE.ticks, callback: v => v + ' bpm' } },
+        }
+      }
+    });
+  }
+
+  // Dos series sobre el MISMO eje de fechas, con huecos: así se ve que
+  // zona 2 corre plana mientras el esfuerzo alto se mueve, en vez de
+  // aplastar las dos en un promedio que no describe ninguna.
+  function _chartFCCardio() {
+    const canvas = _setupCanvas('chart-fc-cardio');
+    if (!canvas) return;
+    const g = _cardioFC();
+    if (g.faltaBackend || (!g.alto && !g.zona2)) return;
+
+    const conFC = _cardio.filter(c => c.fcAvg && c.protoKind).slice(-14);
+    if (!conFC.length) { _emptyState(canvas); return; }
+
+    const esAlto = (c) => c.protoKind === 'hit' || c.protoKind === 'sprint';
+    const sets = [];
+    if (g.alto) sets.push({
+      label: 'Esfuerzo alto',
+      data: conFC.map(c => (esAlto(c) ? c.fcAvg : null)),
+      borderColor: '#F59E0B', backgroundColor: 'rgba(245,158,11,0.08)',
+      tension: 0.4, fill: true, pointRadius: 4, borderWidth: 2, spanGaps: true,
+      pointBackgroundColor: '#F59E0B', pointBorderColor: 'transparent',
+    });
+    if (g.zona2) sets.push({
+      label: 'Zona 2',
+      data: conFC.map(c => (c.protoKind === 'zona2' ? c.fcAvg : null)),
+      borderColor: '#06B6D4', backgroundColor: 'transparent',
+      tension: 0.4, fill: false, pointRadius: 4, borderWidth: 2,
+      borderDash: [5, 4], spanGaps: true,
+      pointBackgroundColor: '#06B6D4', pointBorderColor: 'transparent',
+    });
+
+    new Chart(canvas, {
+      type: 'line',
+      data: { labels: conFC.map(c => Utils.formatDateShort(c.date)), datasets: sets },
+      options: {
+        ...CHART_BASE,
+        plugins: {
+          ...CHART_BASE.plugins,
+          legend: { display: sets.length > 1, labels: { color: '#B4B2CC', font: { size: 10, family: 'Poppins' }, boxWidth: 10 } },
+          tooltip: {
+            ...CHART_BASE.plugins.tooltip,
+            callbacks: {
+              // El protocolo exacto va en el tooltip: es lo que hace
+              // comparable un punto con otro.
+              label: c => `${c.raw} bpm · ${conFC[c.dataIndex].protocol || 'sin protocolo'}`,
+            },
+          },
+        },
         scales: {
           x: { ...AXIS_STYLE, ticks: { ...AXIS_STYLE.ticks, maxRotation: 0, maxTicksLimit: 6 } },
           y: { ...AXIS_STYLE, ticks: { ...AXIS_STYLE.ticks, callback: v => v + ' bpm' } },
@@ -1611,7 +1931,7 @@ const Metrics = (() => {
     }
   }
 
-  return { init, openCapture, saveCapture, openExerciseDetail, setExerciseFilter, setExerciseViewMode, showInsight, setMuscleWindow, setVolumeShape };
+  return { init, openCapture, saveCapture, openExerciseDetail, setExerciseFilter, setExerciseViewMode, showInsight, setMuscleWindow, setVolumeShape, toggleMarcas };
 })();
 
 function initMetrics(container) { Metrics.init(container); }
