@@ -316,7 +316,7 @@ const Utils = {
   },
 
   // ── RANGOS DE REFERENCIA DE LA OMS (espejo del backend) ───────────────
-  // Deben coincidir EXACTO con WHO_RANGES en Code.gs — son estándares
+  // Deben coincidir EXACTO con WHO_RANGES en 00_Core.gs — son estándares
   // médicos fijos, no datos que cambien por usuario ni por día.
   WHO_RANGES: {
     bodyFatMale: [
