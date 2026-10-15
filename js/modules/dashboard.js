@@ -249,7 +249,10 @@ function _rdyMainHTML(r, at) {
         <div id="rdy-score" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:19px;font-weight:800;color:${cfg.color}">${r.score}</div>
       </div>
       <div style="flex:1;min-width:0">
-        <div style="font-weight:700;font-size:14px;line-height:1.3">${recov ? '⏳ ' : cfg.emoji + ' '}${title}</div>
+        <div style="display:flex;align-items:center;gap:6px">
+          <div style="font-weight:700;font-size:14px;line-height:1.3;flex:1;min-width:0">${recov ? '⏳ ' : cfg.emoji + ' '}${title}</div>
+          <button class="btn btn-ghost" style="flex-shrink:0;width:22px;height:22px;padding:0;border-radius:50%;border:1px solid var(--border);background:var(--bg-input);color:var(--text-3);font-size:11px;line-height:1" onclick="rdyComoFunciona()" aria-label="Cómo se calcula">i</button>
+        </div>
         <div id="rdy-sub" style="font-size:11px;color:var(--text-3);margin-top:3px;line-height:1.5">${sub}</div>
       </div>
     </div>
@@ -267,7 +270,7 @@ function _rdyMainHTML(r, at) {
       ${comps.map(c => `<div style="display:flex;gap:8px;align-items:flex-start;font-size:11px;line-height:1.5;margin-bottom:6px">
         <span style="flex-shrink:0;min-width:30px;text-align:center;padding:1px 6px;border-radius:99px;font-weight:700;background:var(--bg-input);color:${_TONE_COLOR[c.tone] || 'var(--text-2)'}">${c.delta > 0 ? '+' : ''}${c.delta}</span>
         <span style="color:var(--text-2)">${Utils.escapeHtml(c.text)}</span></div>`).join('')}
-      <div style="font-size:10px;color:var(--text-4);line-height:1.5;margin-top:4px">El tiempo de recuperación es una estimación general (24–48 h según qué tan dura fue tu sesión), no tu fisiología exacta. Se actualiza solo con las horas, tu forma, tu sueño y tu energía.</div>
+      <div style="font-size:10px;color:var(--text-4);line-height:1.5;margin-top:4px">Empiezas en 100 y de ahí solo se resta. El tiempo de recuperación es una estimación general (20–48 h según qué tan dura fue tu sesión), no tu fisiología exacta. El número se actualiza solo conforme pasan las horas.</div>
     </div>`;
 }
 
@@ -381,6 +384,120 @@ async function _rdyRefresh(animate) {
 
 function _rdyRepaintCheckin() { const ck = document.getElementById('rdy-checkin'); if (ck && _rdy) { ck.innerHTML = _rdyCheckinHTML(_rdy); ck.dataset.sig = (_rdy.missing || []).join(',') + '|' + (_rdyEditing ? 1 : 0); } }
 function rdyToggleWhy() { _rdyWhyOpen = !_rdyWhyOpen; const w = document.getElementById('rdy-why'), a = document.getElementById('rdy-why-arrow'); if (w) w.style.display = _rdyWhyOpen ? 'block' : 'none'; if (a) a.textContent = _rdyWhyOpen ? '▾' : '▸'; if (_rdyWhyOpen && typeof gsap !== 'undefined' && w) gsap.from(w, { opacity: 0, y: -6, duration: 0.3 }); }
+// ── CÓMO SE CALCULA EL PUNTAJE ────────────────────────────────────────
+// En palabras, y con un ejemplo armado con los números DE HOY, para que
+// se pueda seguir la cuenta en vez de creerla.
+function rdyComoFunciona() {
+  Sounds.click();
+  const r = _rdy || {};
+  const comps = r.components || [];
+  const dameC = (k) => comps.find(c => c.key === k);
+  const esc = Utils.escapeHtml;
+
+  const TOPES = [
+    ['Fatiga de tu última sesión', 35, 'Lo que te acaba de costar entrenar. Es el único que se mueve solo: baja cada hora que descansas.'],
+    ['Carga acumulada', 20, 'Lo que vienes arrastrando de semanas anteriores, incluida la tendencia de tu recuperación cardíaca.'],
+    ['Sueño', 20, 'De 8/10 para arriba no resta nada.'],
+    ['Energía al despertar', 15, 'Cómo amaneciste, de 1 a 5.'],
+    ['Recuperación cardíaca', 10, 'Solo resta si tu última sesión recuperó peor que TU rango normal, no peor que un número fijo. Y caduca: si llevas mucho sin medirla, deja de contar.'],
+  ];
+
+  // El ejemplo sale de la cuenta real de ahora, con sus propios valores.
+  const ses = dameC('sesion');
+  const restado = comps.reduce((t, c) => t + c.delta, 0);
+  const lineas = comps.map(c => `<tr>
+      <td style="padding:3px 8px 3px 0;color:var(--text-2)">${esc(c.label)}</td>
+      <td style="padding:3px 0;text-align:right;font-weight:700;color:${c.delta < 0 ? 'var(--warning)' : 'var(--success)'};white-space:nowrap">${c.delta === 0 ? '0' : c.delta}</td>
+    </tr>`).join('');
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal" style="max-width:520px">
+      <div class="modal-header">
+        <div class="modal-title">Cómo se calcula tu condición</div>
+        <button class="btn btn-ghost btn-icon" onclick="Motion.closeModal(this.closest('.modal-overlay'))">✕</button>
+      </div>
+      <div class="modal-body" style="font-size:13px;line-height:1.65;color:var(--text-2)">
+
+        <p style="margin:0 0 12px"><b style="color:var(--text-1)">Empiezas en 100: entero, descansado, sin nada encima.</b>
+        De ahí solo se resta. Nada te sube por arriba de 100 — descansar no te da puntos,
+        lo que hace es <i>quitarte</i> el descuento de tu última sesión conforme pasan las horas.</p>
+
+        <p style="margin:0 0 6px;color:var(--text-3);font-size:12px">Lo que resta, y cuánto como máximo:</p>
+        <div style="background:var(--bg-input);border-radius:10px;padding:12px;margin-bottom:16px">
+          ${TOPES.map(([n, t, d]) => `<div style="margin-bottom:9px">
+            <div style="display:flex;justify-content:space-between;gap:10px">
+              <b style="color:var(--text-1);font-size:12px">${n}</b>
+              <span style="color:var(--warning);font-weight:700;font-size:12px;white-space:nowrap">hasta −${t}</span>
+            </div>
+            <div style="font-size:11px;color:var(--text-3);line-height:1.5">${d}</div>
+          </div>`).join('')}
+          <div style="font-size:11px;color:var(--text-4);border-top:1px solid var(--border);padding-top:8px;margin-top:2px">
+            Si todo está en cero, tu puntaje es 100.
+          </div>
+        </div>
+
+        <p style="margin:0 0 6px;color:var(--text-3);font-size:12px">Tu cuenta de ahora mismo:</p>
+        <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:6px">
+          <tr><td style="padding:3px 8px 3px 0;color:var(--text-1)"><b>Punto de partida</b></td>
+              <td style="padding:3px 0;text-align:right;font-weight:700;color:var(--text-1)">100</td></tr>
+          ${lineas}
+          <tr style="border-top:1px solid var(--border)">
+            <td style="padding:6px 8px 0 0;color:var(--text-1)"><b>Tu condición ahora</b></td>
+            <td style="padding:6px 0 0;text-align:right;font-weight:800;font-size:15px;color:var(--text-1)">${r.score != null ? r.score : '—'}</td></tr>
+        </table>
+        <div style="font-size:11px;color:var(--text-4);line-height:1.5;margin-bottom:16px">
+          100 ${restado === 0 ? '' : '− ' + Math.abs(restado)} = ${r.score != null ? r.score : '—'}
+        </div>
+
+        <p style="margin:0 0 6px;color:var(--text-3);font-size:12px">Y cómo se mueve con las horas:</p>
+        <div style="background:var(--bg-input);border-radius:10px;padding:12px;margin-bottom:16px;font-size:12px;line-height:1.7">
+          ${ses && ses.delta < 0
+            ? `Ahora mismo tu última sesión te resta <b style="color:var(--warning)">${ses.delta}</b>.
+               Ese descuento se encoge solo: a la mitad del tiempo que tu cuerpo necesita irá por
+               <b>${Math.round(ses.delta / 2)}</b>, y al completarlo llegará a <b style="color:var(--success)">0</b>.
+               Si nada más te resta, ahí tu puntaje será <b>100</b>.<br><br>
+               No se reinicia ni espera al día siguiente: sube cada hora que pasa.`
+            : `Ya asimilaste tu última sesión: pasó el tiempo que tu cuerpo necesitaba, así que su
+               cansancio dejó de restar. No es que la sesión se haya descartado — es que ya te
+               recuperaste de ella.<br><br>
+               Cuando vuelvas a entrenar, el puntaje caerá de golpe y volverá a subir solo, hora por hora.`}
+        </div>
+
+        <p style="margin:0 0 6px;color:var(--text-3);font-size:12px">Tu última sesión cuenta por dos caminos:</p>
+        <div style="background:var(--bg-input);border-radius:10px;padding:12px;margin-bottom:16px;font-size:12px;line-height:1.6">
+          <div style="margin-bottom:10px">
+            <b style="color:var(--text-1)">1. El cansancio que te dejó</b> — este sí se agota con las horas.
+            Que llegue a 0 significa <i>ya me recuperé</i>, no <i>ya no cuenta</i>. Es justo el punto:
+            el cansancio de un sprint de anteayer no debería seguir pesándote hoy.
+          </div>
+          <div>
+            <b style="color:var(--text-1)">2. Qué tan bien recuperaste</b> — cuántos bpm te bajó el pulso
+            al terminar. Esto <b>no</b> se agota con las horas: dice cómo respondió tu cuerpo, y sigue
+            contando hasta que hagas otro cardio intenso que lo actualice — o hasta que se vuelva
+            tan vieja que ya no hable de hoy, y entonces deja de restar sola.
+          </div>
+        </div>
+
+        <p style="margin:0 0 6px;color:var(--text-3);font-size:12px">Cómo leer el número:</p>
+        <div style="font-size:12px;line-height:1.7">
+          <b style="color:var(--success)">80 a 100</b> — nada te está frenando.<br>
+          <b style="color:var(--warning)">55 a 79</b> — algo te está restando; abre <i>¿Por qué este puntaje?</i> y ahí dice qué.<br>
+          <b style="color:var(--danger)">menos de 55</b> — hay varias cosas restando a la vez.
+        </div>
+
+        <div style="font-size:11px;color:var(--text-4);line-height:1.5;margin-top:16px;border-top:1px solid var(--border);padding-top:10px">
+          El tiempo de recuperación (20–48 h) es una estimación general según qué tan dura fue tu
+          sesión, no tu fisiología exacta. Y mientras no hagas el check-in del día, el sueño y la
+          energía se asumen en tu valor de siempre en vez de castigarte por un dato que falta.
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  if (typeof Motion !== 'undefined' && Motion.modalIn) Motion.modalIn(overlay);
+}
+
 function rdyPick(kind, n) { Sounds.click(); _rdyForm[kind] = _rdyForm[kind] === n ? null : n; _rdyRepaintCheckin(); }
 function rdyToggleAct(i) { Sounds.click(); const a = _REST_ACTS[i], k = _rdyForm.acts.indexOf(a); if (k >= 0) _rdyForm.acts.splice(k, 1); else _rdyForm.acts.push(a); _rdyRepaintCheckin(); }
 function rdyEditCheckin() { _rdyEditing = true; _rdyRepaintCheckin(); }
@@ -1059,7 +1176,7 @@ function _renderDashboard(container, data, doneDayNames, records, allSessions, l
       <div style="display:flex;flex-direction:column;gap:14px">
         ${Object.entries(goals).map(([key, g]) => {
           const current = key === 'hrRecovery'
-            ? (records.fcRecovery?.value ?? rec.delta ?? null)
+            ? (records.fcRecovery?.value ?? rec?.delta ?? null)
             : key === 'plank'
               ? (records.plankMax?.value || null)
               : _getCurrentGoalValue(key, latestMetrics, records);
