@@ -100,6 +100,9 @@ const Exercises = (() => {
     estancado: { badge: '⚠️ Estancado', bg: 'rgba(245,158,11,0.18)', fg: '#F59E0B' },
     retroceso: { badge: '🔻 Bajando',   bg: 'rgba(239,68,68,0.18)',  fg: '#EF4444' },
     caida:     { badge: '❗ Bajón',      bg: 'rgba(168,85,247,0.18)', fg: '#A855F7' },
+    // nov-2026: la serie tope mejoró y el volumen de la sesión cayó. No
+    // es advertencia, es una observación — por eso azul y no ámbar.
+    tope_sube_volumen_baja: { badge: '📊 Tope arriba', bg: 'rgba(59,130,246,0.18)', fg: '#3B82F6' },
   };
   const _plOf = (k) => _PL[k] || _PL.estancado;
   const _plBadge = (k) => _plOf(k).badge;
@@ -112,6 +115,10 @@ const Exercises = (() => {
     }
     if (m.plateauKind === 'caida') {
       return `❗ <b>La última sesión se cayó${pct}</b> respecto a las anteriores, aunque la tendencia venía bien. Si fue a propósito (descarga, cambio de enfoque), todo en orden; si no, vale la pena recordar qué pasó ese día.`;
+    }
+    if (m.plateauKind === 'tope_sube_volumen_baja') {
+      const vp = (m.plateauVolPct === null || m.plateauVolPct === undefined) ? '' : ` (${m.plateauVolPct}%)`;
+      return `📊 <b>Tu serie tope mejoró${pct}, pero el volumen de la sesión bajó${vp}.</b> Apretaste la primera serie y lo pagaste en las siguientes. No es meseta ni retroceso: si buscabas fuerza, vas bien; si buscabas volumen, reparte mejor el esfuerzo entre las series.`;
     }
     return `⚠️ <b>Estancado${pct}:</b> ${m.mode === 'tiempo' || m.mode === 'reps' ? 'sin marca nueva en tus últimas 4 sesiones.' : 'la carga no se movió en las últimas sesiones.'} Cambia el estímulo (rango de repeticiones, descanso o variante) para romperlo.`;
   }

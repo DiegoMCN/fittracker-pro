@@ -22,14 +22,17 @@ const Metrics = (() => {
   // sección de la página volvería a entrar en cascada solo porque
   // cambiaste el filtro de una gráfica al fondo.
   let _shouldStagger = false;
-  // Estancado / retroceso / bajón: tres casos distintos, antes todos
-  // salían como "meseta" (ver el detector en 02_Ejercicios_Plan.gs).
-  const _PL_COLOR = (k) => k === 'retroceso' ? '#EF4444' : k === 'caida' ? '#A855F7' : '#F59E0B';
-  const _PL_BORDE = (k) => k === 'retroceso' ? 'rgba(239,68,68,0.35)' : k === 'caida' ? 'rgba(168,85,247,0.35)' : 'rgba(245,158,11,0.35)';
+  // Estancado / retroceso / bajón / tope-sube-volumen-baja: cuatro casos
+  // distintos (ver el detector en 02_Ejercicios_Plan.gs). El cuarto es de
+  // nov-2026 y NO es una advertencia — la serie tope mejoró y el volumen
+  // de la sesión cayó — así que va en azul, no en ámbar.
+  const _PL_COLOR = (k) => k === 'retroceso' ? '#EF4444' : k === 'caida' ? '#A855F7' : k === 'tope_sube_volumen_baja' ? '#3B82F6' : '#F59E0B';
+  const _PL_BORDE = (k) => k === 'retroceso' ? 'rgba(239,68,68,0.35)' : k === 'caida' ? 'rgba(168,85,247,0.35)' : k === 'tope_sube_volumen_baja' ? 'rgba(59,130,246,0.35)' : 'rgba(245,158,11,0.35)';
   const _PL_TXT = (p) => {
     const pct = (p.changePct === null || p.changePct === undefined) ? '' : ` ${p.changePct > 0 ? '+' : ''}${p.changePct}%`;
     if (p.kind === 'retroceso') return `🔻 bajando${pct} en ${p.sessions} sesiones`;
     if (p.kind === 'caida') return `❗ bajón la última sesión${pct}`;
+    if (p.kind === 'tope_sube_volumen_baja') return `📊 tope${pct}, volumen ${p.volumenPct}%`;
     return `⚠️ estancado${pct} en ${p.sessions} sesiones`;
   };
 
