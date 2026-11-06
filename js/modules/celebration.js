@@ -86,10 +86,14 @@ const RecordCelebration = (() => {
           const raw = parseFloat(s.kg) || 0;
           return s.unit === 'lbs' ? Utils.lbsToKg(raw) : raw;
         }).filter(k => k > 0);
+        // El `k > 0` que estaba aquí dejaba fuera la asistencia en CERO,
+        // o sea la dominada SIN ayuda: el récord más importante del
+        // programa no podía celebrarse nunca. Es el mismo filtro que ya
+        // se corrigió en el backend el 2-nov, viviendo una segunda vida.
         const assistKgs = (ex.sets || []).filter(s => s.kind === 'assist').map(s => {
           const raw = parseFloat(s.kg) || 0;
           return s.unit === 'lbs' ? Utils.lbsToKg(raw) : raw;
-        }).filter(k => k > 0);
+        }).filter(k => k >= 0);
 
         if (loadKgs.length > 0) {
           const newMax = Math.max(...loadKgs);
@@ -104,11 +108,16 @@ const RecordCelebration = (() => {
 
         if (assistKgs.length > 0) {
           const newMin = Math.min(...assistKgs);
-          if (prevMin === 0 || newMin < prevMin) {
+          // `prevMin === 0` significaba "todavía no hay récord", pero 0
+          // ES un récord legítimo (sin ayuda) y el mejor posible. Se usa
+          // null para "no hay" y se compara de verdad.
+          const sinRecord = rec === null || rec === undefined || rec.minKg === null
+                            || rec.minKg === undefined || rec.minKg === '';
+          if (sinRecord || newMin < prevMin) {
             broken.push({
               label: `${ex.name} (menos asistencia)`,
               value: `${Utils.formatNum(newMin)} kg de asistencia`,
-              prev: prevMin > 0 ? `antes: ${Utils.formatNum(prevMin)} kg` : 'primer registro',
+              prev: sinRecord ? 'primer registro' : `antes: ${Utils.formatNum(prevMin)} kg`,
             });
           }
         }

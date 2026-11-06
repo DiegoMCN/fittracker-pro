@@ -1882,12 +1882,20 @@ const Metrics = (() => {
     try {
       const res = await API.getStrengthHistory(name);
       const rows = res.history || [];
+      // El modo lo manda el REGISTRO del backend (res.metrica), no una
+      // deducción local. En asistencia MÁS peso es más ayuda, o sea
+      // PEOR: tomar el máximo del día dibujaba la línea al revés —
+      // subía cuando empeoraba y bajaba cuando mejoraba.
+      const esAsist = (res.metrica && res.metrica.modo === 'asistencia')
+        || rows.some(r => r.kind === 'asistencia');
       const byDate = {};
       rows.forEach(r => {
         const raw = parseFloat(r.kg) || 0;
-        if (raw <= 0) return;
+        if (raw < 0) return;
+        if (raw === 0 && !esAsist) return;   // en asistencia, 0 es sin ayuda: cuenta
         const kg = r.unit === 'lbs' ? Utils.lbsToKg(raw) : raw;
-        if (!byDate[r.date] || kg > byDate[r.date]) byDate[r.date] = kg;
+        const cur = byDate[r.date];
+        if (cur === undefined || (esAsist ? kg < cur : kg > cur)) byDate[r.date] = kg;
       });
       const points = Object.entries(byDate).sort((a,b) => a[0].localeCompare(b[0]));
 

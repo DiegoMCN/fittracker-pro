@@ -128,7 +128,7 @@ const Workout = (() => {
         supersetGroup: null, // 'A', 'B'... si está ligado a otro ejercicio
         sets: Array.from({ length: ex.sets }, () => ({
           repsTarget: `${ex.repsMin}-${ex.repsMax}`,
-          reps: '', kg: '', unit: ex.unit, kind: _defaultKind(ex.name), done: false,
+          reps: '', kg: '', unit: ex.unit, kind: _defaultKind(ex.name), done: false, rir: null,
         })),
       })),
       rest: { running: false, remaining: 0, total: 0 },
@@ -526,6 +526,20 @@ const Workout = (() => {
         `}
       </div>
 
+      ${!previewMode ? `
+        <div style="display:flex;align-items:center;gap:6px;padding-left:32px">
+          <span style="font-size:9px;color:var(--text-4);width:50px;flex-shrink:0" title="Repeticiones en reserva: cuántas MÁS habrías podido hacer al terminar la serie. 0 = llegaste al fallo.">RIR</span>
+          <div style="display:flex;background:var(--bg-card);border-radius:6px;padding:2px;gap:1px">
+            ${[0, 1, 2, 3, 4, 5].map(v => `
+              <button id="rir-${exIdx}-${sIdx}-${v}" onclick="Workout.setRir(${exIdx},${sIdx},${v})" title="${_RIR_AYUDA[v]}"
+                style="font-size:10px;min-width:22px;padding:3px 4px;border-radius:5px;font-weight:600;border:none;
+                background:${set.rir === v ? 'var(--accent)' : 'transparent'};
+                color:${set.rir === v ? 'var(--bg-primary)' : 'var(--text-3)'}">${v === 5 ? '5+' : v}</button>`).join('')}
+          </div>
+          <span id="rir-eco-${exIdx}-${sIdx}" style="font-size:9px;color:var(--text-4);white-space:nowrap">${(set.rir === null || set.rir === undefined) ? '' : _RIR_AYUDA[set.rir]}</span>
+        </div>
+      ` : ''}
+
       ${!previewMode && showWeight ? `
         <div style="display:flex;align-items:center;gap:8px;padding-left:32px">
           <div style="display:flex;background:var(--bg-card);border-radius:6px;padding:2px;gap:2px">
@@ -667,6 +681,40 @@ const Workout = (() => {
     _rerender();
   }
 
+  // RIR = repeticiones en reserva: cuántas MÁS habría podido hacer al
+  // terminar la serie. Es lo que le falta al simulador de forma para ser
+  // honesto: su carga es RPE × minutos, y entre la semana 4 y la 11 el
+  // tonelaje de Diego subió 38% mientras su RPE bajaba de 8.0 a 6.4. Con
+  // el RPE solo no se puede saber si eso fue adaptación (lo mismo le
+  // cuesta menos) o si está dejando más en el tanque. El RIR sí lo dice,
+  // y la columna ya existía en REGISTRO_FUERZA sin que nadie la llenara.
+  //
+  // Es OPCIONAL a propósito: no bloquea guardar, y una serie sin RIR
+  // sigue valiendo igual que antes.
+  const _RIR_AYUDA = {
+    0: 'al fallo', 1: 'quedaba 1', 2: 'quedaban 2', 3: 'quedaban 3',
+    4: 'quedaban 4', 5: 'quedaban 5 o más',
+  };
+  function setRir(exIdx, sIdx, v) {
+    const set = state.exercises[exIdx] && state.exercises[exIdx].sets[sIdx];
+    if (!set) return;
+    // Volver a tocar el mismo número lo quita: es el gesto natural para
+    // corregir sin buscar una ✕.
+    set.rir = (set.rir === v) ? null : v;
+    Sounds.click();
+    // Se repintan los botones EN EL SITIO, como hace setKind: un render
+    // completo a media sesión le movería el scroll y el foco.
+    for (let i = 0; i <= 5; i++) {
+      const b = document.getElementById(`rir-${exIdx}-${sIdx}-${i}`);
+      if (!b) continue;
+      const on = set.rir === i;
+      b.style.background = on ? 'var(--accent)' : 'transparent';
+      b.style.color = on ? 'var(--bg-primary)' : 'var(--text-3)';
+    }
+    const eco = document.getElementById(`rir-eco-${exIdx}-${sIdx}`);
+    if (eco) eco.textContent = (set.rir === null || set.rir === undefined) ? '' : _RIR_AYUDA[set.rir];
+  }
+
   function updateSet(exIdx, sIdx, field, value) {
     state.exercises[exIdx].sets[sIdx][field] = value;
   }
@@ -760,24 +808,48 @@ const Workout = (() => {
         const repsReal = Number(r.repsReal) || 0;
         if (repsReal <= 0) return; // sin serie completada real, se omite
 
-        let metric, value;
+        let metric, value, raw = null;
         if (r.unit === 'seg') {
           metric = 'seconds'; value = repsReal; // en 'seg' el campo de reps guarda los segundos
         } else if (r.unit === 'PC') {
           metric = 'reps'; value = repsReal;
         } else {
-          const raw = parseFloat(r.kg) || 0;
+          raw = parseFloat(r.kg) || 0;
           if (raw <= 0) return; // se marcó kg/lbs pero sin peso escrito — se omite
           metric = 'weight';
-          value = r.unit === 'lbs' ? Utils.lbsToKg(raw) : raw;
+          // Para COMPARAR se normaliza a kg sin redondear: el redondeo a
+          // 0.1 de Utils.lbsToKg es para los textos "≈ X kg" de la
+          // pantalla, no para decidir cuál serie fue la mejor. El
+          // backend normaliza a 0.01 (_toKg), y tener dos precisiones
+          // distintas hacía que el mismo levantamiento se viera con dos
+          // números según la pantalla.
+          value = r.unit === 'lbs' ? raw * 0.453592 : raw;
         }
 
         const existing = byDate[r.date];
-        // Si el mismo día hay métricas mixtas (raro — cambiaste de PC a
-        // peso agregado a media sesión), prioriza 'weight' porque
-        // implica progresión real hacia carga añadida.
-        if (!existing || (existing.metric === metric && value > existing.value) || (metric === 'weight' && existing.metric !== 'weight')) {
-          byDate[r.date] = { date: r.date, metric, value, reps: repsReal };
+        // CUÁL ES LA MEJOR SERIE DEL DÍA. Antes esto comparaba solo el
+        // peso con `>` estricto, sin desempatar por repeticiones. Como
+        // las series de un día suelen ir todas al MISMO peso, ninguna
+        // reemplazaba a la primera procesada — y como las filas llegan
+        // de la más reciente a la más vieja, la que se quedaba era la
+        // ÚLTIMA serie: justo la más fatigada. El 6-nov Diego hizo 10
+        // reps con 80 kg y la tarjeta mostraba 4, que fue su cuarta
+        // serie. Pasaba en todas sus sesiones de peso constante (16-oct
+        // mostraba 4 en vez de 9; 23-oct, 4 en vez de 6).
+        //
+        // El desempate por reps ya existía en el backend
+        // (02_Ejercicios_Plan.gs); esta copia simplemente no lo tenía.
+        const mejor = !existing
+          || (metric === 'weight' && existing.metric !== 'weight')
+          || (existing.metric === metric && (
+                value > existing.value
+                || (value === existing.value && repsReal > existing.reps)));
+        if (mejor) {
+          // `raw` y `unit` se guardan para MOSTRAR el peso tal como lo
+          // registró, en su unidad. Convertirlo a kg en pantalla le
+          // enseñaba un número que él nunca escribió y que no coincide
+          // con el pin de la máquina.
+          byDate[r.date] = { date: r.date, metric, value, reps: repsReal, raw, unit: r.unit };
         }
       });
 
@@ -786,9 +858,14 @@ const Workout = (() => {
         .slice(-6)
         .map(([, v]) => v);
 
-      _historyCache[name] = { loading: false, values };
+      // El consejo y el récord vienen YA CALCULADOS del backend, del
+      // mismo registro que usan todas las pantallas. No se recalculan
+      // aquí: esa duplicación es lo que produjo que la tarjeta y el tip
+      // del Coach se contradijeran.
+      _historyCache[name] = { loading: false, values,
+                              metrica: res.metrica || null, advice: res.advice || null };
     } catch(e) {
-      _historyCache[name] = { loading: false, values: [] };
+      _historyCache[name] = { loading: false, values: [], metrica: null, advice: null };
     }
 
     // Actualiza cualquier tarjeta visible de este ejercicio, sin re-render completo
@@ -875,11 +952,31 @@ const Workout = (() => {
     // Solo compara delta entre dos puntos de la MISMA métrica — si el
     // ejercicio pasó de peso corporal a peso agregado, comparar
     // "8 reps" contra "20kg" no tiene sentido.
-    const delta = (prev !== null && prev.metric === last.metric) ? Math.round((last.value - prev.value) * 10) / 10 : null;
-
-    const unitLabel = last.metric === 'weight' ? 'kg' : last.metric === 'seconds' ? 'seg' : 'reps';
+    // Se muestra el peso EN LA UNIDAD QUE REGISTRÓ. Si entrenó en libras
+    // porque la máquina está en libras, ver "59.0 kg" es ver un número
+    // que no escribió y que no puede comparar con el pin del aparato.
+    // La comparación interna sigue en kg (last.value), que es lo que
+    // permite que la gráfica tenga sentido si una sesión fue en kg y
+    // otra en libras; lo que cambia es solo lo que se imprime.
+    const mismaUnidad = prev !== null && prev.unit === last.unit;
+    const uPeso = last.unit === 'lbs' ? 'lbs' : 'kg';
+    // Solo compara delta entre dos puntos de la MISMA métrica — si el
+    // ejercicio pasó de peso corporal a peso agregado, comparar
+    // "8 reps" contra "20kg" no tiene sentido. Y si las dos sesiones se
+    // registraron en la misma unidad, la diferencia se da EN ESA
+    // unidad: un delta calculado en kg pero rotulado "lbs" sería un
+    // número falso.
+    const delta = (prev === null || prev.metric !== last.metric) ? null
+      : (last.metric === 'weight' && mismaUnidad && last.raw != null && prev.raw != null)
+        ? Math.round((last.raw - prev.raw) * 10) / 10
+        : Math.round((last.value - prev.value) * 10) / 10;
+    const uDelta = last.metric === 'weight' ? (mismaUnidad ? uPeso : 'kg') : null;
+    const unitLabel = last.metric === 'weight' ? (uDelta || uPeso) : last.metric === 'seconds' ? 'seg' : 'reps';
+    // Sin decimal cuando el peso es entero: "80 kg", no "80.0 kg".
+    const num = (v) => Utils.formatNum(v, Math.abs(v % 1) < 0.05 ? 0 : 1);
+    const peso = last.raw !== null && last.raw !== undefined ? last.raw : last.value;
     const mainText = last.metric === 'weight'
-      ? `${last.reps ? `${last.reps} reps @ ` : ''}${Utils.formatNum(last.value, 1)} kg`
+      ? `${last.reps ? `${last.reps} reps @ ` : ''}${num(peso)} ${uPeso}`
       : `${Utils.formatNum(last.value, 0)} ${unitLabel}`;
 
     // La nota de progreso ya no se calcula aquí — EJERCICIOS.Notas es
@@ -898,7 +995,43 @@ const Workout = (() => {
             ? `<div style="font-size:10px;color:${delta >= 0 ? 'var(--success)' : 'var(--text-3)'}">${delta >= 0 ? '+' : ''}${Utils.formatNum(delta, delta % 1 === 0 ? 0 : 1)} ${unitLabel} vs anterior · ${Utils.formatDateShort(last.date)}</div>`
             : `<div style="font-size:10px;color:var(--text-4)">${Utils.formatDateShort(last.date)}</div>`}
         </div>
-      </div>`;
+      </div>
+      ${_prYConsejoHTML(entry, last)}`;
+  }
+
+  // El récord y QUÉ LO ROMPE, que es para lo que Diego mira esta tarjeta:
+  // "ya sea para levantar más peso o hacer más reps, porque si no así me
+  // confundo". Los dos números salen del registro del backend, nunca de
+  // un cálculo local.
+  function _prYConsejoHTML(entry, last) {
+    const m = entry.metrica, a = entry.advice;
+    if (!m && !a) return '';
+    const partes = [];
+
+    if (m && m.pr) {
+      const u = (m.unidad === 'PC' || m.unidad === 'seg') ? '' : ' ' + m.unidad;
+      const nPR = (v) => Utils.formatNum(v, Math.abs(v % 1) < 0.05 ? 0 : 1);
+      const txtPR = m.pr.peso === null || m.pr.peso === undefined
+        ? `${m.pr.reps} ${m.modo === 'tiempo' ? 'seg' : 'reps'}`
+        : `${m.pr.reps} reps @ ${nPR(m.pr.peso)}${u}`;
+      // Si la última sesión ES el récord se dice así, en vez de repetir
+      // la misma cifra dos renglones seguidos.
+      const esHoy = last && m.pr.fecha === last.date;
+      partes.push(`<div style="font-size:10px;color:${esHoy ? 'var(--success)' : 'var(--text-3)'}">
+        ${esHoy ? '🏆 Tu mejor marca, hoy' : '🏆 Tu marca'}: ${txtPR}${esHoy ? '' : ` · ${Utils.formatDateShort(m.pr.fecha)}`}
+      </div>`);
+    }
+
+    if (a && a.texto) {
+      // Consolidar es ámbar (te falta cerrar algo), avanzar es verde.
+      const color = a.accion === 'peso' ? 'var(--success)'
+                  : a.accion === 'consolidar' ? '#F59E0B' : 'var(--accent)';
+      partes.push(`<div style="font-size:11px;line-height:1.45;color:${color};margin-top:4px">
+        ${a.accion === 'peso' ? '↑' : a.accion === 'consolidar' ? '◆' : '→'} ${a.texto}
+      </div>`);
+    }
+    if (!partes.length) return '';
+    return `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">${partes.join('')}</div>`;
   }
 
   function _hydrateHistories() {
@@ -925,7 +1058,7 @@ const Workout = (() => {
     ex.sets.push({
       repsTarget: lastSet?.repsTarget || '',
       reps: '', kg: lastSet?.kg || '', unit: lastSet?.unit || 'PC',
-      kind: lastSet?.kind || _defaultKind(ex.name), done: false
+      kind: lastSet?.kind || _defaultKind(ex.name), done: false, rir: null
     });
     Sounds.click();
     _rerender();
@@ -1196,7 +1329,7 @@ const Workout = (() => {
     const catalogNote = (catalogData && catalogData[_normalizeExName(name)]?.Notas) || '';
     state.exercises.push({
       id: Utils.uid(), name, group, notes: catalogNote, lastUserNote: _lastUserNoteFor(name), userNote: '', collapsed: false, supersetGroup: null,
-      sets: Array.from({ length: sets }, () => ({ repsTarget: reps, reps: '', kg: '', unit, kind: _defaultKind(name), done: false })),
+      sets: Array.from({ length: sets }, () => ({ repsTarget: reps, reps: '', kg: '', unit, kind: _defaultKind(name), done: false, rir: null })),
     });
 
     Motion.closeModal(document.querySelector('.modal-overlay'));
@@ -1499,7 +1632,8 @@ const Workout = (() => {
       exercises: state.exercises.map(ex => ({
         name: ex.name, group: ex.group, supersetGroup: ex.supersetGroup || '', userNote: ex.userNote || '',
         sets: ex.sets.filter(s => s.done).map(s => ({
-          repsReal: s.reps, kg: s.kg, unit: s.unit, kind: s.kind, repsObj: s.repsTarget
+          repsReal: s.reps, kg: s.kg, unit: s.unit, kind: s.kind, repsObj: s.repsTarget,
+          rir: (s.rir === null || s.rir === undefined) ? '' : s.rir
         }))
       })).filter(ex => ex.sets.length > 0),
     };
@@ -1634,7 +1768,7 @@ const Workout = (() => {
   }
 
   return {
-    init, selectDay, backToPicker, startSession, toggleCollapse, updateSet, updateExNote, changeUnit, setKind, refreshKgHint, toggleSetDone, addSet, removeSet,
+    init, selectDay, backToPicker, startSession, toggleCollapse, updateSet, updateExNote, changeUnit, setKind, setRir, refreshKgHint, toggleSetDone, addSet, removeSet,
     removeExercise, addExercise, confirmAddExercise, startRest, addRestTime,
     skipRest, customRest, finishSession, saveFinalSession, toggleAdvancedStats, discardSession, cleanup, onRouteChange,
     quickStartDay, toggleSupersetPicker, linkSuperset, shareSession,

@@ -51,12 +51,20 @@ const Coach = (() => {
 
         const histRes = await API.getStrengthHistory(featured.name);
         const rows = histRes.history || [];
+      // El modo lo manda el REGISTRO del backend (histRes.metrica), no una
+        // deducción local. En asistencia MÁS peso es más ayuda, o sea
+        // PEOR: tomar el máximo del día dibujaba la línea al revés —
+        // subía cuando empeoraba y bajaba cuando mejoraba.
+        const esAsist = (histRes.metrica && histRes.metrica.modo === 'asistencia')
+          || rows.some(r => r.kind === 'asistencia');
         const byDate = {};
         rows.forEach(r => {
           const raw = parseFloat(r.kg) || 0;
-          if (raw <= 0) return;
+          if (raw < 0) return;
+          if (raw === 0 && !esAsist) return;   // en asistencia, 0 es sin ayuda: cuenta
           const kg = r.unit === 'lbs' ? Utils.lbsToKg(raw) : raw;
-          if (!byDate[r.date] || kg > byDate[r.date]) byDate[r.date] = kg;
+          const cur = byDate[r.date];
+          if (cur === undefined || (esAsist ? kg < cur : kg > cur)) byDate[r.date] = kg;
         });
         const points = Object.entries(byDate).sort((a,b) => a[0].localeCompare(b[0])).slice(-8);
 
